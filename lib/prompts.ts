@@ -1,0 +1,330 @@
+import { AmazonData, TrendsData, RedditData, PainPoint } from './types'
+import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+function booksTable(amazon: AmazonData): string {
+  return amazon.topBooks
+    .map((b, i) =>
+      `${i + 1}. "${b.title}" (ASIN: ${b.asin}) — BSR: ${b.bsr.toLocaleString()}, ` +
+      `Prezzo: ${b.currency}${b.price.toFixed(2)}, Recensioni: ${b.reviewCount}, ` +
+      `Rating: ${b.rating}, Pagine: ${b.pages ?? 'N/D'}, ` +
+      `Editore: ${b.publisher ?? 'N/D'}, Self-pub: ${b.selfPublished ? 'sì' : 'no'}`
+    )
+    .join('\n')
+}
+
+function painPointsList(painPoints: PainPoint[]): string {
+  return painPoints
+    .slice(0, 10)
+    .map((p, i) =>
+      `${i + 1}. [Score ${p.score}${p.criticalSignal ? ' ⚠CRITICO' : ''}] "${p.pain_point}" ` +
+      `(F=${p.F} I=${p.I} S=${p.S}) — ${p.evidence}`
+    )
+    .join('\n')
+}
+
+// ─── PASSO 0 — Competitor target (Sonnet) ────────────────────────────────────
+// §3: angolo posizionamento, target reader, USP del competitor selezionato
+
+export function promptPasso0(amazon: AmazonData): string {
+  const t = amazon.competitorTarget
+  return `Sei un esperto di analisi KDP (Kindle Direct Publishing). Analizza il seguente libro competitor su Amazon ${amazon.market}.
+
+LIBRO TARGET:
+- Titolo: "${t.title}"
+- ASIN: ${t.asin}
+- BSR: ${t.bsr.toLocaleString()} (posizione in classifica)
+- Prezzo: ${t.currency}${t.price.toFixed(2)}
+- Recensioni: ${t.reviewCount} (rating ${t.rating}/5)
+- Pagine: ${t.pages ?? 'N/D'}
+- Editore: ${t.publisher ?? 'N/D'}${t.selfPublished ? ' [self-published]' : ''}
+
+CONTESTO NICCHIA (top ${amazon.topBooks.length} libri per keyword "${amazon.keyword}"):
+${booksTable(amazon)}
+
+Rispondi SOLO con un oggetto JSON valido (nessun testo prima o dopo), con questa struttura esatta:
+{
+  "angolo": "stringa — l'angolo di posizionamento principale del libro (max 20 parole)",
+  "target_reader": "stringa — chi è il lettore ideale di questo libro (max 20 parole)",
+  "usp": "stringa — la promessa unica del libro vs altri nella nicchia (max 25 parole)",
+  "punti_forza": ["stringa 1", "stringa 2", "stringa 3"],
+  "punti_debolezza": ["stringa 1", "stringa 2"],
+  "confidence": "ALTA | MEDIA | BASSA"
+}`
+}
+
+// ─── Pain Points — estrazione Haiku da Reddit ─────────────────────────────────
+// §5: Haiku legge il corpus Reddit e restituisce pain point grezzi F/I/S
+
+export function promptPainPointsReddit(
+  keyword: string,
+  reddit: RedditData,
+): string {
+  const corpus = reddit.posts
+    .slice(0, 20)
+    .map(p => {
+      const comments = p.comments
+        .slice(0, 5)
+        .map(c => `    [score ${c.score}] ${c.body.substring(0, 300)}`)
+        .join('\n')
+      return `POST (r/${p.subreddit}, score ${p.score}): "${p.title}"\n${p.selftext ? '  ' + p.selftext.substring(0, 200) + '\n' : ''}${comments}`
+    })
+    .join('\n\n---\n\n')
+
+  return `Sei un ricercatore di mercato specializzato in libri non-fiction. Analizza le discussioni Reddit sulla keyword "${keyword}" ed estrai i pain point reali degli utenti.
+
+CORPUS REDDIT (${reddit.totalComments} commenti totali da ${reddit.subredditsUsed.join(', ')}):
+${corpus}
+
+ISTRUZIONI:
+- Identifica 5-12 pain point distinti e concreti espressi dagli utenti
+- Per ogni pain point assegna:
+  - F (Frequenza): quante volte appare nel corpus, scala 1-10
+  - I (Intensità emotiva): quanto è forte il disagio espresso, scala 1-10
+  - S (Specificità/Solvibilità con un libro): quanto può essere risolto con contenuto scritto, scala 1-10
+- evidence: citazione breve o parafrase dal corpus (max 80 caratteri)
+- fonte: sempre "reddit"
+- tipo: "gap_esecuzione" se è un problema pratico non risolto dai libri esistenti, "job_confermato" se è un bisogno già servito ma migliorabile
+
+Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
+[
+  {
+    "pain_point": "descrizione concisa del problema (max 15 parole)",
+    "F": numero,
+    "I": numero,
+    "S": numero,
+    "evidence": "citazione o parafrasi",
+    "fonte": "reddit",
+    "tipo": "gap_esecuzione | job_confermato",
+    "linguaggio": "frase verbatim dell'utente se tipo=job_confermato, altrimenti null"
+  }
+]`
+}
+
+// ─── Key Insights (Sonnet) ────────────────────────────────────────────────────
+// §1: 6 insight con dati numerici, basati su tutti i dati raccolti
+
+export function promptKeyInsights(
+  amazon: AmazonData,
+  trends: TrendsData,
+  reddit: RedditData,
+  scoring: ProfitabilityBreakdown,
+  painPoints: PainPoint[],
+): string {
+  const topPains = painPoints.slice(0, 5).map(p => `"${p.pain_point}" (score ${p.score})`).join(', ')
+  const trendSummary = trends.available
+    ? `YoY ${trends.yoyGrowth > 0 ? '+' : ''}${trends.yoyGrowth}%, trend: ${scoring.trendSignal}`
+    : 'dati trend non disponibili'
+  const subNicheSummary = amazon.subNiches.length > 0
+    ? amazon.subNiches.map(s => `"${s.keyword}" (BSR ${s.bsr.toLocaleString()}, ${s.vulnerable ? 'vulnerabile' : 'competitiva'})`).join(', ')
+    : 'nessuna sub-nicchia identificata'
+
+  return `Sei un analista KDP esperto. Genera 6 Key Insights per la nicchia "${amazon.keyword}" sul mercato ${amazon.market}.
+
+DATI DISPONIBILI:
+- Profitability Score: ${scoring.score}/100
+- BSR medio top ${amazon.topBooks.length}: ${scoring.avgBsr.toLocaleString()}
+- Royalty media: ${amazon.topBooks[0]?.currency ?? '$'}${scoring.avgRoyalty.toFixed(2)}
+- Entry Difficulty: ${scoring.entryDifficulty}
+- Trend: ${trendSummary}
+- Reddit: ${reddit.available ? `${reddit.totalComments} commenti` : 'non disponibile'}
+- Top pain point: ${topPains || 'non estratti'}
+- Sub-nicchie: ${subNicheSummary}
+- Competitor target: "${amazon.competitorTarget.title}" (BSR ${amazon.competitorTarget.bsr.toLocaleString()}, ${amazon.competitorTarget.reviewCount} rec.)
+- Top 5 libri: BSR da ${amazon.topBooks[0]?.bsr.toLocaleString()} a ${amazon.topBooks[amazon.topBooks.length - 1]?.bsr.toLocaleString()}
+
+REGOLE:
+- Ogni insight DEVE contenere almeno un dato numerico specifico
+- Varia il tipo: opportunità, rischio, dato di mercato, osservazione competitor, trend, suggerimento
+- Linguaggio diretto, niente frasi generiche
+- Max 2 righe per insight
+
+Rispondi SOLO con un array JSON valido:
+[
+  { "insight": "testo insight con dati", "tipo": "opportunita | rischio | mercato | competitor | trend | suggerimento" },
+  ...6 elementi totali
+]`
+}
+
+// ─── Trend Forecast (Sonnet) ──────────────────────────────────────────────────
+// §4B: classificazione vincolata + narrativa trend
+
+export function promptTrendForecast(
+  keyword: string,
+  trends: TrendsData,
+  trendSignal: TrendSignal,
+): string {
+  const timeline = trends.timelineData
+    .slice(-12)
+    .map(d => `${d.date}: ${d.value}`)
+    .join(', ')
+
+  const related = trends.relatedQueries
+    .slice(0, 5)
+    .map(q => `"${q.query}" (${q.value}, YoY ${q.growthYoY > 0 ? '+' : ''}${q.growthYoY}%${q.isEmerging ? ' 🌱' : ''})`)
+    .join(', ')
+
+  return `Sei un analista di mercato KDP. Analizza i dati di Google Trends per "${keyword}".
+
+DATI TREND (ultimi 12 mesi, scala 0-100):
+${timeline}
+
+QUERY CORRELATE: ${related || 'nessuna'}
+CLASSIFICAZIONE ALGORITMICA: ${trendSignal}
+
+Rispondi SOLO con un oggetto JSON valido:
+{
+  "classificazione": "${trendSignal === 'N/A' ? 'CRESCITA | STABILE | DECLINO' : trendSignal}",
+  "narrativa": "2-3 frasi che spiegano il trend con riferimento ai dati numerici",
+  "stagionalita": "descrizione eventuale stagionalità o null",
+  "query_emergenti": ["query1", "query2"] oppure []
+}`
+}
+
+// ─── Gap Analysis 5 passi (Sonnet) ────────────────────────────────────────────
+// §5: il cuore del report — 5 passi + Gap Inventory Table
+
+export function promptGapAnalysis(
+  amazon: AmazonData,
+  painPoints: PainPoint[],
+  reddit: RedditData,
+): string {
+  const topPains = painPointsList(painPoints)
+  const books = booksTable(amazon)
+
+  const reviewSample = amazon.topBooks
+    .slice(0, 3)
+    .map(b => `"${b.title}": ${b.reviewCount} rec. ${b.rating}/5`)
+    .join(', ')
+
+  return `Sei un esperto di strategia editoriale KDP. Esegui una Gap Analysis completa per la nicchia "${amazon.keyword}" (mercato ${amazon.market}).
+
+TOP ${amazon.topBooks.length} COMPETITOR:
+${books}
+
+TOP PAIN POINT (da Reddit/recensioni):
+${topPains || 'Nessun pain point estratto — basati sui dati competitor.'}
+
+CAMPIONE RECENSIONI: ${reviewSample}
+REDDIT DISPONIBILE: ${reddit.available ? 'sì' : 'no'} (${reddit.totalComments} commenti)
+
+Esegui i 5 passi e rispondi SOLO con un oggetto JSON valido:
+{
+  "passo1_problemi_non_risolti": {
+    "descrizione": "Quali problemi i lettori hanno ancora dopo aver letto i libri esistenti?",
+    "items": ["problema 1", "problema 2", "problema 3"]
+  },
+  "passo2_angoli_mancanti": {
+    "descrizione": "Quali angoli/approcci NON sono coperti dai competitor?",
+    "items": ["angolo 1", "angolo 2", "angolo 3"]
+  },
+  "passo3_formato_gap": {
+    "descrizione": "Il formato dei libri esistenti è ottimale? Cosa manca?",
+    "items": ["gap formato 1", "gap formato 2"]
+  },
+  "passo4_target_non_servito": {
+    "descrizione": "Quale segmento di lettori è ignorato dai competitor?",
+    "segmento": "descrizione segmento specifico",
+    "dimensione": "stima relativa: piccolo | medio | grande"
+  },
+  "passo5_tesi_libro": {
+    "titolo_proposto": "Titolo concreto per il libro ottimale",
+    "sottotitolo": "Sottotitolo con keyword e beneficio",
+    "hook": "Una frase che cattura l'attenzione del target (max 20 parole)",
+    "differenziatori": ["diff 1", "diff 2", "diff 3"]
+  },
+  "gap_inventory_table": [
+    {
+      "gap": "nome gap",
+      "tipo": "contenuto | formato | target | angolo",
+      "priorita": "ALTA | MEDIA | BASSA",
+      "opportunita": "come sfruttarlo (max 15 parole)"
+    }
+  ]
+}`
+}
+
+// ─── Series Strategy (Sonnet) ─────────────────────────────────────────────────
+// §6: verdetto INVEST/PARTIAL/PASS + strategia serie
+
+export function promptSeriesStrategy(
+  amazon: AmazonData,
+  gapTesi: { titolo_proposto: string; sottotitolo: string; differenziatori: string[] },
+  scoring: ProfitabilityBreakdown,
+  roi: RoiEstimate,
+): string {
+  return `Sei un editore KDP strategico. Valuta la fattibilità di una serie di libri per la nicchia "${amazon.keyword}" (${amazon.market}).
+
+LIBRO ÂNCORA (proposto dalla Gap Analysis):
+- Titolo: "${gapTesi.titolo_proposto}"
+- Sottotitolo: "${gapTesi.sottotitolo}"
+- Differenziatori: ${gapTesi.differenziatori.join('; ')}
+
+DATI DI MERCATO:
+- Profitability Score: ${scoring.score}/100
+- Entry Difficulty: ${scoring.entryDifficulty}
+- Trend: ${scoring.trendSignal}
+- Royalty media: $${scoring.avgRoyalty.toFixed(2)}
+- Vendite stimate/giorno: ${roi.avgDailySalesMin}-${roi.avgDailySalesMax}
+- Break-even: ${roi.breakEvenMonths} mesi (${roi.bepSignal})
+- ROI proiettato 12m: $${roi.roiCluster12mMin.toFixed(0)}-$${roi.roiCluster12mMax.toFixed(0)}
+- Sub-nicchie disponibili: ${amazon.subNiches.map(s => `"${s.keyword}"`).join(', ') || 'nessuna'}
+
+Rispondi SOLO con un oggetto JSON valido:
+{
+  "verdetto": "INVEST | PARTIAL | PASS",
+  "motivazione_verdetto": "2-3 frasi che giustificano il verdetto con dati numerici",
+  "libro_1": {
+    "titolo": "${gapTesi.titolo_proposto}",
+    "focus": "focus principale del primo volume",
+    "pagine_target": numero,
+    "tempo_scrittura_settimane": numero
+  },
+  "libro_2": {
+    "titolo": "titolo proposto per il secondo volume",
+    "focus": "angolo complementare o approfondimento",
+    "timing": "mesi dopo il lancio del libro 1"
+  },
+  "libro_3": {
+    "titolo": "titolo proposto per il terzo volume (opzionale)",
+    "focus": "nicchia adiacente o spin-off",
+    "condizione": "quando considerarlo (es. se libro 1 supera X vendite/mese)"
+  },
+  "strategia_lancio": "descrizione tattica lancio libro 1 (pricing, ARC, ads) in 3-5 punti",
+  "rischi_principali": ["rischio 1", "rischio 2"]
+}`
+}
+
+// ─── Investment ROI narrativa (Haiku) ─────────────────────────────────────────
+// §7: 4 blocchi narrativi su dati deterministici già calcolati
+
+export function promptRoiNarrative(
+  keyword: string,
+  market: string,
+  roi: RoiEstimate,
+  scoring: ProfitabilityBreakdown,
+  budget: number,
+): string {
+  return `Sei un consulente finanziario KDP. Scrivi una narrativa di investimento per la nicchia "${keyword}" (${market}).
+
+DATI CALCOLATI (NON modificare i numeri):
+- Budget totale stimato: $${budget}
+- Vendite/giorno stimate: ${roi.avgDailySalesMin}-${roi.avgDailySalesMax} copie
+- Ricavo mensile stimato: $${roi.avgMonthlyRevenueMin.toFixed(0)}-$${roi.avgMonthlyRevenueMax.toFixed(0)}
+- Break-even: ${roi.breakEvenMonths} mesi
+- Segnale BEP: ${roi.bepSignal}
+- Budget ads mensile suggerito: $${roi.suggestedAdsMonthly.toFixed(0)}
+- Cashflow buffer consigliato: $${roi.cashflowBuffer.toFixed(0)} (= budget ads × 2)
+- ROI cluster 12 mesi: $${roi.roiCluster12mMin.toFixed(0)}-$${roi.roiCluster12mMax.toFixed(0)}
+- Verdetto: ${roi.investVerdict}
+- Profitability Score: ${scoring.score}/100
+
+Rispondi SOLO con un oggetto JSON valido con 4 blocchi narrativi:
+{
+  "blocco_scenario": "Descrivi lo scenario realistico di guadagno usando i numeri forniti (3-4 righe)",
+  "blocco_budget": "Spiega come distribuire il budget (scrittura, copertina, ads) e perché il buffer cashflow è necessario (2-3 righe)",
+  "blocco_timeline": "Timeline mese per mese fino al break-even, con milestone concrete (3-4 righe)",
+  "blocco_verdetto": "Verdetto finale con raccomandazione d'azione specifica, tono diretto (2-3 righe)"
+}`
+}
