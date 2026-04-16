@@ -3,6 +3,7 @@ import { AmazonData, TrendsData, RedditData, PainPoint } from '@/lib/types'
 import { ProfitabilityBreakdown } from '@/lib/scoring'
 import { runKeyInsights, runTrendForecast, runGapAnalysis } from '@/lib/ai'
 
+// Vercel Hobby con Fluid Compute (default apr 2025): max 300s
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {

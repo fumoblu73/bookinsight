@@ -4,6 +4,7 @@ import { ProfitabilityBreakdown, RoiEstimate } from '@/lib/scoring'
 import { GapAnalysisResult, Passo0Result, runSeriesStrategy, runRoiNarrative } from '@/lib/ai'
 import { updateReport } from '@/lib/upstash'
 
+// Vercel Hobby con Fluid Compute (default apr 2025): max 300s
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {

@@ -5,6 +5,8 @@ import { detectComplianceCategory, getComplianceRisk } from '@/lib/compliance'
 import { runPasso0, runPainPointsReddit } from '@/lib/ai'
 import { saveReport } from '@/lib/upstash'
 
+// Vercel Hobby con Fluid Compute (default apr 2025): max 300s
+// Senza Fluid Compute (legacy): default 10s, max configurabile 60s
 export const maxDuration = 60
 
 const DEFAULT_BUDGET: Record<Market, number> = {
