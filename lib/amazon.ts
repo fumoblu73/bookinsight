@@ -305,36 +305,30 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
     throw new Error(`Nessun risultato per "${keyword}" su ${market}. Prova una keyword più generica.`)
   }
 
-  // Step 2: dettagli prodotto per i top 15 (in parallelo, max 5 alla volta)
-  const batchSize = 5
-  const rawBooks: RawBook[] = []
-
-  for (let i = 0; i < Math.min(serpResults.length, 15); i += batchSize) {
-    const batch = serpResults.slice(i, i + batchSize)
-    const details = await Promise.all(
-      batch.map(s => fetchProductDetails(s.asin, market))
-    )
-    for (let j = 0; j < batch.length; j++) {
-      const s = batch[j]
-      const d = details[j]
-      rawBooks.push({
-        asin:          s.asin,
-        title:         s.title,
-        bsr:           d.bsr,
-        bsrTimestamp:  new Date().toISOString(),
-        price:         s.price,
-        currency:      MARKET_CURRENCY[market],
-        reviewCount:   s.reviewCount,
-        rating:        s.rating,
-        publishedDate: d.publishedDate || undefined,
-        pages:         d.pages || undefined,
-        publisher:     d.publisher || undefined,
-        selfPublished: d.selfPublished,
-        sponsored:     s.sponsored,
-        format:        d.format,
-      })
+  // Step 2: dettagli prodotto per i top 15 — tutti in parallelo (~4s vs ~12s in batch sequenziali)
+  const top15 = serpResults.slice(0, 15)
+  const allDetails = await Promise.all(
+    top15.map(s => fetchProductDetails(s.asin, market))
+  )
+  const rawBooks: RawBook[] = top15.map((s, i) => {
+    const d = allDetails[i]
+    return {
+      asin:          s.asin,
+      title:         s.title,
+      bsr:           d.bsr,
+      bsrTimestamp:  new Date().toISOString(),
+      price:         s.price,
+      currency:      MARKET_CURRENCY[market],
+      reviewCount:   s.reviewCount,
+      rating:        s.rating,
+      publishedDate: d.publishedDate || undefined,
+      pages:         d.pages || undefined,
+      publisher:     d.publisher || undefined,
+      selfPublished: d.selfPublished,
+      sponsored:     s.sponsored,
+      format:        d.format,
     }
-  }
+  })
 
   // Filtri e ordinamento
   const filtered = applyFilters(rawBooks)
