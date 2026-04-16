@@ -3,17 +3,18 @@ import { RawBook, FilteredBook, SubNiche, AmazonData, Market } from './types'
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
 const MARKET_KEEPA_CODE: Record<Market, number> = {
-  US: 1, UK: 3, DE: 4, IT: 8, ES: 9,
+  US: 1, UK: 3, DE: 4, FR: 5, IT: 8, ES: 9,
 }
 
 const MARKET_CURRENCY: Record<Market, string> = {
-  US: 'USD', UK: 'GBP', DE: 'EUR', IT: 'EUR', ES: 'EUR',
+  US: 'USD', UK: 'GBP', DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EUR',
 }
 
 const MARKET_AMAZON_DOMAIN: Record<Market, string> = {
   US: 'amazon.com',
   UK: 'amazon.co.uk',
   DE: 'amazon.de',
+  FR: 'amazon.fr',
   IT: 'amazon.it',
   ES: 'amazon.es',
 }
@@ -22,6 +23,7 @@ const KDP_PRINT_COST: Record<Market, { fixed: number; perPage: number }> = {
   US: { fixed: 1.00, perPage: 0.012 },
   UK: { fixed: 0.85, perPage: 0.010 },
   DE: { fixed: 0.75, perPage: 0.012 },
+  FR: { fixed: 0.75, perPage: 0.012 },
   IT: { fixed: 0.75, perPage: 0.012 },
   ES: { fixed: 0.75, perPage: 0.012 },
 }
@@ -210,7 +212,7 @@ export function calcRoyalty(price: number, pages: number, market: Market): numbe
 function bsrToSales(bsr: number, market: Market): { min: number; max: number } {
   const B = -0.778151
   const marketMult: Record<Market, number> = {
-    US: 1.00, UK: 0.35, DE: 0.25, IT: 0.15, ES: 0.12,
+    US: 1.00, UK: 0.35, DE: 0.25, FR: 0.20, IT: 0.15, ES: 0.12,
   }
   let A: number
   if (bsr < 1000)        A = 31622.78

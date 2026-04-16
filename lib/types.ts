@@ -1,6 +1,6 @@
 // ─── Amazon / Apify ───────────────────────────────────────────────────────────
 
-export type Market = 'US' | 'UK' | 'DE' | 'IT' | 'ES'
+export type Market = 'US' | 'UK' | 'DE' | 'IT' | 'ES' | 'FR'
 
 export interface RawBook {
   asin: string

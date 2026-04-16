@@ -13,7 +13,7 @@ import { saveReport, updateReport } from '@/lib/upstash'
 export const maxDuration = 300
 
 const DEFAULT_BUDGET: Record<Market, number> = {
-  US: 1200, UK: 1000, DE: 900, IT: 800, ES: 800,
+  US: 1200, UK: 1000, DE: 900, FR: 800, IT: 800, ES: 800,
 }
 
 // ─── Helper streaming ─────────────────────────────────────────────────────────

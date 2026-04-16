@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     if (!keyword?.trim()) {
       return NextResponse.json({ error: 'keyword richiesta' }, { status: 400 })
     }
-    if (!['US', 'UK', 'DE', 'IT', 'ES'].includes(market)) {
+    if (!['US', 'UK', 'DE', 'FR', 'IT', 'ES'].includes(market)) {
       return NextResponse.json({ error: 'mercato non valido' }, { status: 400 })
     }
 

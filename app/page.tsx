@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import ReportView from '@/components/ReportView'
 import type { FullReport } from '@/components/ReportView'
 
-type Market = 'US' | 'UK' | 'DE' | 'IT' | 'ES'
+import type { Market } from '@/lib/types'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
@@ -38,6 +38,7 @@ const MARKETS: { value: Market; label: string }[] = [
   { value: 'US', label: 'US' },
   { value: 'UK', label: 'UK' },
   { value: 'DE', label: 'DE' },
+  { value: 'FR', label: 'FR' },
   { value: 'IT', label: 'IT' },
   { value: 'ES', label: 'ES' },
 ]
