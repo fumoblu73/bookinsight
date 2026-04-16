@@ -6,25 +6,32 @@ import type { FullReport } from '@/components/ReportView'
 
 type Market = 'US' | 'UK' | 'DE' | 'IT' | 'ES'
 
+// Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
   | 'idle'
-  | 'loading_amazon'
-  | 'loading_signals'
-  | 'loading_ai_1'
-  | 'loading_ai_2'
-  | 'loading_ai_3'
+  | 'loading_amazon'    // fetch /api/amazon in corso
+  | 'loading_signals'   // fetch /api/trends + /api/reddit in corso
+  | 'loading_passo0'    // server: passo0 + pain points (stream event: passo0)
+  | 'loading_insights'  // server: insights + trend + gap (stream event: insights)
+  | 'loading_strategy'  // server: strategy + ROI (stream event: strategy)
   | 'done'
   | 'error'
 
 const STAGE_LABELS: Record<Stage, string> = {
-  idle: '',
-  loading_amazon:  'Raccolta dati Amazon…',
-  loading_signals: 'Raccolta segnali (trend + Reddit)…',
-  loading_ai_1:    'Analisi competitor e pain points…',
-  loading_ai_2:    'Analisi insight, trend e gap…',
-  loading_ai_3:    'Strategia di serie e ROI…',
+  idle:              '',
+  loading_amazon:    'Raccolta dati Amazon…',
+  loading_signals:   'Raccolta segnali (trend + Reddit)…',
+  loading_passo0:    'Analisi competitor e pain points…',
+  loading_insights:  'Analisi insight, trend e gap…',
+  loading_strategy:  'Strategia di serie e ROI…',
   done:  'Report completato',
   error: 'Errore',
+}
+
+const SERVER_STAGE_MAP: Record<string, Stage> = {
+  passo0:   'loading_passo0',
+  insights: 'loading_insights',
+  strategy: 'loading_strategy',
 }
 
 const MARKETS: { value: Market; label: string }[] = [
@@ -65,7 +72,7 @@ export default function HomePage() {
     setStage('loading_amazon')
 
     try {
-      // ── Raccolta dati Amazon ──────────────────────────────────────────────
+      // ── Amazon ────────────────────────────────────────────────────────────
       const amazonData = await postJSON('/api/amazon', { keyword: kw, market })
 
       // ── Segnali: Trends + Reddit in parallelo ─────────────────────────────
@@ -83,55 +90,55 @@ export default function HomePage() {
         }).then(r => r.ok ? r.json() : { posts: [] }),
       ])
 
-      // ── AI Step 1: compliance + scoring + passo0 + pain points ───────────
-      setStage('loading_ai_1')
-      const step1 = await postJSON('/api/analyze', {
-        keyword: kw, market, amazonData, trendsData, redditData,
-      })
+      // ── AI pipeline (streaming) ───────────────────────────────────────────
+      // Il server emette un evento JSON per ogni step completato:
+      //   {type:'progress', stage:'passo0'}   → passo0+painPoints done
+      //   {type:'progress', stage:'insights'} → insights+gap done
+      //   {type:'progress', stage:'strategy'} → strategy in corso
+      //   {type:'done', report:{...}}          → report completo
+      setStage('loading_passo0')
 
-      // ── AI Step 2: insights + trend forecast + gap analysis ───────────────
-      setStage('loading_ai_2')
-      const step2 = await postJSON('/api/analyze/step2', {
-        amazonData, trendsData, redditData,
-        scoring: step1.scoring,
-        painPoints: step1.painPoints,
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw, market, amazonData, trendsData, redditData }),
       })
+      if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
+      if (!res.body) throw new Error('Stream non supportato dal browser')
 
-      // ── AI Step 3: series strategy + ROI + salva Redis ────────────────────
-      setStage('loading_ai_3')
-      const result: FullReport = await postJSON('/api/analyze/step3', {
-        reportId:   step1.reportId,
-        keyword:    kw,
-        market,
-        amazonData,
-        trendsData,
-        scoring:    step1.scoring,
-        roi:        step1.roi,
-        budget:     step1.budget,
-        passo0:     step1.passo0,
-        painPoints: step1.painPoints,
-        keyInsights:  step2.keyInsights,
-        trendForecast: step2.trendForecast,
-        gapAnalysis:  step2.gapAnalysis,
-        complianceCategory: step1.complianceCategory,
-        complianceRisk:     step1.complianceRisk,
-      })
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer    = ''
 
-      setReport(result)
-      setStage('done')
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const event = JSON.parse(line) as { type: string; stage?: string; report?: FullReport; message?: string }
+
+          if (event.type === 'progress' && event.stage) {
+            const next = SERVER_STAGE_MAP[event.stage]
+            if (next) setStage(next)
+          } else if (event.type === 'done' && event.report) {
+            setReport(event.report)
+            setStage('done')
+          } else if (event.type === 'error') {
+            throw new Error(event.message ?? 'Errore sconosciuto dal server')
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStage('error')
     }
   }, [keyword, market])
 
-  const isLoading = (
-    stage === 'loading_amazon'  ||
-    stage === 'loading_signals' ||
-    stage === 'loading_ai_1'    ||
-    stage === 'loading_ai_2'    ||
-    stage === 'loading_ai_3'
-  )
+  const isLoading = stage !== 'idle' && stage !== 'done' && stage !== 'error'
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -202,11 +209,11 @@ export default function HomePage() {
 // ─── Pipeline Progress ─────────────────────────────────────────────────────────
 
 const STEPS: { key: Stage; label: string }[] = [
-  { key: 'loading_amazon',  label: 'Amazon' },
-  { key: 'loading_signals', label: 'Segnali' },
-  { key: 'loading_ai_1',    label: 'Competitor' },
-  { key: 'loading_ai_2',    label: 'Insight & Gap' },
-  { key: 'loading_ai_3',    label: 'Strategia' },
+  { key: 'loading_amazon',   label: 'Amazon' },
+  { key: 'loading_signals',  label: 'Segnali' },
+  { key: 'loading_passo0',   label: 'Competitor' },
+  { key: 'loading_insights', label: 'Insight & Gap' },
+  { key: 'loading_strategy', label: 'Strategia' },
 ]
 
 function PipelineProgress({ stage }: { stage: Stage }) {
