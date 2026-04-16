@@ -202,11 +202,35 @@ export default function HomePage() {
                 />
                 <span className="text-xs text-zinc-400">$/€ per click · stima i click/mese acquistabili con il budget ads in §7</span>
               </div>
-              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
-                <strong className="font-semibold">Come stimare il CPC Amazon Ads:</strong>
-                {' '}Accedi ad <em>Amazon Ads → Sponsored Products → crea campagna manuale</em> (non pubblicarla),
-                aggiungi la keyword principale e leggi il <em>Bid suggerito</em> — quello è il tuo CPC di riferimento.
-                In alternativa usa <strong>Helium10 Adtomic</strong> o <strong>DataHawk</strong> per una stima più precisa senza creare campagne.
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed space-y-2">
+                <p className="font-semibold text-amber-900">Come stimare il CPC Amazon Ads</p>
+                <div className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <span className="shrink-0 font-bold text-amber-600">①</span>
+                    <p>
+                      <strong>Amazon Ads (gratuito, diretto):</strong> accedi ad{' '}
+                      <em>Amazon Ads → Sponsored Products → crea campagna manuale</em>.
+                      Aggiungi la keyword nella sezione <em>Targeting per keyword</em> e leggi il{' '}
+                      <em>Bid suggerito</em> che appare accanto — non serve pubblicare la campagna.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="shrink-0 font-bold text-amber-600">②</span>
+                    <p>
+                      <strong>Helium10 Adtomic:</strong> nel modulo Adtomic cerca la keyword e leggi la colonna{' '}
+                      <em>Suggested Bid</em>. Offre anche la fascia min/max (bid basso / bid alto) per calibrare meglio il budget.
+                      Richiede piano Platinum o superiore.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="shrink-0 font-bold text-amber-600">③</span>
+                    <p>
+                      <strong>Publisher Rocket:</strong> nella scheda <em>AMS Keyword</em> inserisci la keyword
+                      e ottieni direttamente il <em>Avg. CPC</em> stimato insieme al volume di ricerca Amazon.
+                      È il metodo più rapido se hai già Publisher Rocket attivo.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
