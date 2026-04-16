@@ -1,33 +1,15 @@
 import Link from 'next/link'
-
-interface ReportSummary {
-  id: string
-  keyword: string
-  market: string
-  createdAt: string
-  status: string
-  profitabilityScore?: number
-}
-
-async function fetchHistory(): Promise<ReportSummary[]> {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-  try {
-    const res = await fetch(`${base}/api/history`, { cache: 'no-store' })
-    if (!res.ok) return []
-    return res.json()
-  } catch {
-    return []
-  }
-}
+import { listReports } from '@/lib/upstash'
+import type { ReportRecord } from '@/lib/types'
 
 function statusBadge(status: string) {
   switch (status) {
-    case 'complete':        return { label: 'Completo',  cls: 'bg-green-100 text-green-700' }
-    case 'partial_gap':     return { label: 'Parziale',  cls: 'bg-yellow-100 text-yellow-700' }
-    case 'partial_trends':  return { label: 'Parziale',  cls: 'bg-yellow-100 text-yellow-700' }
-    case 'partial_reddit':  return { label: 'Parziale',  cls: 'bg-yellow-100 text-yellow-700' }
-    case 'failed':          return { label: 'Fallito',   cls: 'bg-red-100 text-red-700' }
-    default:                return { label: status,      cls: 'bg-zinc-100 text-zinc-600' }
+    case 'complete':       return { label: 'Completo', cls: 'bg-green-100 text-green-700' }
+    case 'partial_gap':
+    case 'partial_trends':
+    case 'partial_reddit': return { label: 'Parziale', cls: 'bg-yellow-100 text-yellow-700' }
+    case 'failed':         return { label: 'Fallito',  cls: 'bg-red-100 text-red-700' }
+    default:               return { label: status,     cls: 'bg-zinc-100 text-zinc-600' }
   }
 }
 
@@ -39,7 +21,12 @@ function scoreColor(score?: number) {
 }
 
 export default async function HistoryPage() {
-  const reports = await fetchHistory()
+  let reports: ReportRecord[] = []
+  try {
+    reports = await listReports(50)
+  } catch {
+    // Redis non disponibile: mostra lista vuota
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50">

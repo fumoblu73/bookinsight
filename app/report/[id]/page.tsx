@@ -2,28 +2,22 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import ReportView from '@/components/ReportView'
 import type { FullReport } from '@/components/ReportView'
+import { getReport } from '@/lib/upstash'
 
 interface Props {
   params: Promise<{ id: string }>
 }
 
-async function fetchReport(id: string): Promise<FullReport | null> {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-  try {
-    const res = await fetch(`${base}/api/history/${id}`, { cache: 'no-store' })
-    if (res.status === 404) return null
-    if (!res.ok) return null
-    const record = await res.json()
-    // The API returns the full ReportRecord; data field holds the FullReport
-    return (record.data ?? record) as FullReport
-  } catch {
-    return null
-  }
-}
-
 export default async function ReportPage({ params }: Props) {
   const { id } = await params
-  const report = await fetchReport(id)
+
+  let report: FullReport | null = null
+  try {
+    const record = await getReport(id)
+    if (record?.data) report = record.data as FullReport
+  } catch {
+    // Redis non disponibile
+  }
 
   if (!report) notFound()
 
