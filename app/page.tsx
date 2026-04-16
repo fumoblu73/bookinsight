@@ -188,18 +188,26 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* CPC opzionale — mostrato come campo secondario */}
-            <div className="mt-3 flex items-center gap-2">
-              <label className="text-xs text-zinc-500 whitespace-nowrap">CPC Google Ads (opzionale):</label>
-              <input
-                type="text"
-                value={cpc}
-                onChange={e => setCpc(e.target.value)}
-                placeholder="es. 0.85"
-                disabled={isLoading}
-                className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
-              />
-              <span className="text-xs text-zinc-400">€/$  · usato per stimare i click/mese in §7</span>
+            {/* CPC Amazon Ads — campo opzionale con box esplicativo */}
+            <div className="mt-4 border-t border-zinc-100 pt-4 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-xs font-medium text-zinc-500 whitespace-nowrap">CPC Amazon Ads stimato (opzionale):</label>
+                <input
+                  type="text"
+                  value={cpc}
+                  onChange={e => setCpc(e.target.value)}
+                  placeholder="es. 0.85"
+                  disabled={isLoading}
+                  className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
+                />
+                <span className="text-xs text-zinc-400">$/€ per click · stima i click/mese acquistabili con il budget ads in §7</span>
+              </div>
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+                <strong className="font-semibold">Come stimare il CPC Amazon Ads:</strong>
+                {' '}Accedi ad <em>Amazon Ads → Sponsored Products → crea campagna manuale</em> (non pubblicarla),
+                aggiungi la keyword principale e leggi il <em>Bid suggerito</em> — quello è il tuo CPC di riferimento.
+                In alternativa usa <strong>Helium10 Adtomic</strong> o <strong>DataHawk</strong> per una stima più precisa senza creare campagne.
+              </div>
             </div>
 
             {isLoading && (

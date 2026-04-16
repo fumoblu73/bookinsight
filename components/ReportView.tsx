@@ -193,7 +193,7 @@ export default function ReportView({ report }: { report: FullReport }) {
             </span>
             <span className="text-sm text-zinc-400">{date}</span>
             {report.cpc && (
-              <span className="text-sm text-zinc-400">CPC: ${report.cpc.toFixed(2)}</span>
+              <span className="text-sm text-zinc-400">CPC Amazon Ads: ${report.cpc.toFixed(2)}</span>
             )}
           </div>
         </div>
@@ -222,12 +222,23 @@ export default function ReportView({ report }: { report: FullReport }) {
           <h1 className="text-2xl font-bold text-zinc-900">{report.keyword}</h1>
           <p className="text-sm text-zinc-400 mt-0.5">
             Mercato {report.market} · {date}
-            {report.cpc ? ` · CPC $${report.cpc.toFixed(2)}` : ''}
+            {report.cpc ? ` · CPC Amazon Ads $${report.cpc.toFixed(2)}` : ''}
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
           <button
-            onClick={() => window.print()}
+            onClick={() => {
+              const d = new Date(report.createdAt)
+              const aa = String(d.getFullYear()).slice(-2)
+              const mm = String(d.getMonth() + 1).padStart(2, '0')
+              const gg = String(d.getDate()).padStart(2, '0')
+              const filename = `${aa}${mm}${gg} BookInsight - ${report.keyword} (${report.market})`
+              const prev = document.title
+              document.title = filename
+              window.print()
+              // Restore after print dialog closes
+              window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
+            }}
             className="px-4 py-2 text-sm rounded-lg border border-zinc-300 hover:bg-zinc-50 transition-colors font-medium"
           >
             Stampa / PDF
@@ -545,7 +556,7 @@ export default function ReportView({ report }: { report: FullReport }) {
         {/* CPC disclaimer se presente */}
         {report.cpc && (
           <div className="mb-4 flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2">
-            <span className="font-semibold">CPC inserito: ${report.cpc.toFixed(2)}</span>
+            <span className="font-semibold">CPC Amazon Ads: ${report.cpc.toFixed(2)}</span>
             <span className="text-zinc-400">·</span>
             <span>Con il budget ads di ${fmt(roi.suggestedAdsMonthly, 0)}/mese puoi acquistare circa <strong>~{Math.round(roi.suggestedAdsMonthly / report.cpc).toLocaleString('it-IT')} click/mese</strong></span>
           </div>
