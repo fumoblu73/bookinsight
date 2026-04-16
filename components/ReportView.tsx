@@ -288,9 +288,9 @@ export default function ReportView({ report }: { report: FullReport }) {
         <div className="grid sm:grid-cols-2 gap-6">
           <div className="space-y-4">
             {/* Pain Points */}
-            {report.painPoints.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Top Pain Point</p>
+            <div>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Top Pain Points</p>
+              {report.painPoints.length > 0 ? (
                 <div className="space-y-1.5">
                   {report.painPoints.slice(0, 5).map((pp, i) => (
                     <div key={i} className={`p-2.5 rounded-lg border text-sm ${pp.criticalSignal ? 'bg-red-50 border-red-200' : 'bg-zinc-50 border-zinc-200'}`}>
@@ -304,8 +304,12 @@ export default function ReportView({ report }: { report: FullReport }) {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-zinc-400 italic">
+                  Nessun dato Reddit disponibile per questa keyword — i pain points sono stati inferiti dal contesto Amazon nella Gap Analysis.
+                </p>
+              )}
+            </div>
             {/* Problemi non risolti */}
             <div>
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">Problemi non risolti dai competitor</p>

@@ -12,7 +12,6 @@
     "@anthropic-ai/sdk": "^0.89.0",
     "@upstash/redis": "^1.37.0",
     "cheerio": "^1.2.0",
-    "google-trends-api": "^4.9.2",
     "https-proxy-agent": "^9.0.0",
     "next": "16.2.3",
     "node-fetch": "^3.3.2",

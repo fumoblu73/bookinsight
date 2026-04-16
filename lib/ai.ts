@@ -32,7 +32,10 @@ function parseJSON<T>(raw: string): T {
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim()
-  return JSON.parse(cleaned) as T
+  // NFC: converte caratteri Unicode decomposti in forme composte corrette
+  // es. "a\u0300" (a + combining grave) → "à", prevenendo mojibake nell'output AI
+  const normalized = cleaned.normalize('NFC')
+  return JSON.parse(normalized) as T
 }
 
 // ─── callSonnet ───────────────────────────────────────────────────────────────

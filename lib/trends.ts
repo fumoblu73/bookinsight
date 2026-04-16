@@ -1,18 +1,24 @@
-import googleTrends from 'google-trends-api'
 import { TrendsData, TrendsDataPoint, RelatedQuery } from './types'
 
-const MONTHS = 60   // 5 anni
+const MONTHS = 60  // 5 anni
+
+// ─── SerpApi fetch (riuso stesso pattern di amazon.ts) ───────────────────────
+
+async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
+  const apiKey = process.env.SERPAPI_KEY
+  if (!apiKey) throw new Error('SERPAPI_KEY non configurata')
+  const qs = new URLSearchParams({ ...params, api_key: apiKey }).toString()
+  const res = await fetch(`https://serpapi.com/search?${qs}`)
+  if (!res.ok) throw new Error(`SerpApi ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  return res.json()
+}
 
 // ─── Filtro related queries ───────────────────────────────────────────────────
 
 function filterRelatedQuery(query: string): boolean {
-  // Escludi nomi propri (prima lettera maiuscola in ogni parola = probabilmente nome)
   if (/^[A-Z][a-z]+ [A-Z][a-z]+/.test(query)) return false
-
-  // Escludi brand noti
   const brandPattern = /\b(amazon|netflix|youtube|spotify|google|apple|facebook|instagram|tiktok|twitter|reddit|pinterest)\b/i
   if (brandPattern.test(query)) return false
-
   return true
 }
 
@@ -28,108 +34,84 @@ function calcYoY(timeline: TrendsDataPoint[]): number {
   return Math.round(((avgRecent - avgPrev) / avgPrev) * 100)
 }
 
-// ─── Parser timeline ──────────────────────────────────────────────────────────
-
-function parseTimeline(raw: unknown): TrendsDataPoint[] {
-  if (!Array.isArray(raw)) return []
-  return (raw as Array<{ formattedTime: string; value: number[] }>).map(item => ({
-    date:  item.formattedTime?.slice(0, 7) ?? '',
-    value: item.value?.[0] ?? 0,
-  }))
-}
-
-// ─── Parser related queries ───────────────────────────────────────────────────
-
-function parseRelatedQueries(raw: unknown, timelineYoY: number): RelatedQuery[] {
-  if (!raw || typeof raw !== 'object') return []
-  const obj = raw as Record<string, unknown>
-
-  const items: Array<{ query: string; value: number }> = []
-
-  // Top queries
-  const top = (obj.top as Array<{ query: string; value: number }>) ?? []
-  for (const q of top) {
-    if (filterRelatedQuery(q.query)) {
-      items.push({ query: q.query, value: q.value })
-    }
-  }
-
-  // Rising queries (valore può essere 'Breakout' o numero)
-  const rising = (obj.rising as Array<{ query: string; value: number | string }>) ?? []
-  for (const q of rising) {
-    if (!filterRelatedQuery(q.query)) continue
-    const val = typeof q.value === 'number' ? q.value : 100
-    if (!items.find(i => i.query === q.query)) {
-      items.push({ query: q.query, value: val })
-    }
-  }
-
-  return items
-    .filter(q => {
-      const growthYoY = q.value
-      // Escludi: interest < 10 E crescita < 50%
-      if (q.value < 10 && growthYoY < 50) return false
-      return true
-    })
-    .map(q => {
-      const growthYoY = q.value
-      const isEmerging = q.value < 10 && growthYoY >= 50
-      return {
-        query:      q.query,
-        value:      q.value,
-        growthYoY,
-        isEmerging,
-      }
-    })
-    .slice(0, 10)
-}
-
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function fetchTrendsData(keyword: string): Promise<TrendsData> {
-  const endTime = new Date()
-  const startTime = new Date()
-  startTime.setMonth(startTime.getMonth() - MONTHS)
+  const endDate   = new Date()
+  const startDate = new Date()
+  startDate.setMonth(startDate.getMonth() - MONTHS)
+
+  // SerpApi usa formato "YYYY-MM-DD YYYY-MM-DD"
+  const dateRange = `${startDate.toISOString().slice(0, 10)} ${endDate.toISOString().slice(0, 10)}`
 
   try {
-    const [interestRes, relatedRes] = await Promise.all([
-      googleTrends.interestOverTime({
-        keyword,
-        startTime,
-        endTime,
-        granularTimeResolution: false,
-      }),
-      googleTrends.relatedQueries({ keyword, startTime, endTime }),
+    // Due chiamate in parallelo: timeline + related queries
+    const [timelineRaw, relatedRaw] = await Promise.all([
+      serpApiFetch({ engine: 'google_trends', q: keyword, date: dateRange, data_type: 'TIMESERIES' }),
+      serpApiFetch({ engine: 'google_trends', q: keyword, date: dateRange, data_type: 'RELATED_QUERIES' }),
     ])
 
-    const interestData = JSON.parse(interestRes) as {
-      default: { timelineData: unknown }
-    }
-    const relatedData = JSON.parse(relatedRes) as {
-      default: { rankedList: Array<{ rankedKeyword: unknown }> }
+    // ── Parse timeline ────────────────────────────────────────────────────────
+    const timelineRes = timelineRaw as {
+      interest_over_time?: {
+        timeline_data?: Array<{
+          date?: string
+          values?: Array<{ extracted_value?: number }>
+        }>
+      }
     }
 
-    const timeline = parseTimeline(interestData.default.timelineData)
+    const timeline: TrendsDataPoint[] = (timelineRes.interest_over_time?.timeline_data ?? [])
+      .map(item => ({
+        date:  (item.date ?? '').slice(0, 7),   // "Jan 2020" → usato solo per display
+        value: item.values?.[0]?.extracted_value ?? 0,
+      }))
+      .filter(p => p.date !== '')
+
     const yoyGrowth = calcYoY(timeline)
 
-    const relatedRaw = relatedData.default?.rankedList?.[0]?.rankedKeyword ?? []
-    const relatedQueries = parseRelatedQueries({ top: relatedRaw, rising: [] }, yoyGrowth)
+    // ── Parse related queries ─────────────────────────────────────────────────
+    const relatedRes = relatedRaw as {
+      related_queries?: {
+        top?:    Array<{ query?: string; extracted_value?: number }>
+        rising?: Array<{ query?: string; extracted_value?: number }>
+      }
+    }
+
+    const topItems    = relatedRes.related_queries?.top    ?? []
+    const risingItems = relatedRes.related_queries?.rising ?? []
+
+    const seen = new Set<string>()
+    const relatedQueries: RelatedQuery[] = []
+
+    for (const item of [...topItems, ...risingItems]) {
+      const q = item.query ?? ''
+      if (!q || seen.has(q)) continue
+      if (!filterRelatedQuery(q)) continue
+      seen.add(q)
+      const value = item.extracted_value ?? 0
+      relatedQueries.push({
+        query:      q,
+        value,
+        growthYoY:  value,
+        isEmerging: value < 10,
+      })
+    }
 
     return {
       keyword,
-      timelineData: timeline,
-      relatedQueries,
+      timelineData:   timeline,
+      relatedQueries: relatedQueries.slice(0, 10),
       yoyGrowth,
-      available: true,
+      available: timeline.length > 0,
     }
   } catch {
-    // Fallback: Trends non disponibile
     return {
       keyword,
-      timelineData: [],
+      timelineData:   [],
       relatedQueries: [],
-      yoyGrowth: 0,
-      available: false,
+      yoyGrowth:      0,
+      available:      false,
     }
   }
 }
