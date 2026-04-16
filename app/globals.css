@@ -20,7 +20,17 @@ body {
 
 @media print {
   .no-print { display: none !important; }
-  body { background: white; font-size: 11pt; }
+  body { background: white; font-size: 10.5pt; color: #18181b; }
   .print-break-before { break-before: page; }
   a { color: inherit; text-decoration: none; }
+
+  /* Cover page */
+  .print-cover { display: flex !important; }
+
+  /* Prevent orphaned headings / cards */
+  h2, h3 { break-after: avoid; }
+  .rounded-2xl, .rounded-xl { border-radius: 8pt; }
+
+  /* Print margins */
+  @page { margin: 18mm 20mm; }
 }

@@ -44,12 +44,13 @@ function makeStream(fn: (push: (e: StreamEvent) => void) => Promise<void>) {
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { keyword, market, amazonData, trendsData, redditData } = await req.json() as {
+  const { keyword, market, amazonData, trendsData, redditData, cpc } = await req.json() as {
     keyword: string
     market: Market
     amazonData: AmazonData
     trendsData: TrendsData
     redditData: RedditData
+    cpc?: number
   }
 
   if (!amazonData?.topBooks || amazonData.topBooks.length < 3) {
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
       id: reportId, keyword, market,
       createdAt: new Date().toISOString(),
       status: 'complete' as const,
+      ...(cpc !== undefined && !isNaN(cpc) && cpc > 0 ? { cpc } : {}),
       keyInsights,
       profitabilityScore: scoring.score,
       scoringBreakdown: scoring,

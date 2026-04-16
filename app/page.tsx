@@ -58,6 +58,7 @@ async function postJSON(url: string, body: unknown) {
 export default function HomePage() {
   const [keyword, setKeyword] = useState('')
   const [market, setMarket] = useState<Market>('US')
+  const [cpc, setCpc] = useState('')
   const [stage, setStage] = useState<Stage>('idle')
   const [report, setReport] = useState<FullReport | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -67,6 +68,7 @@ export default function HomePage() {
     if (!keyword.trim()) return
 
     const kw = keyword.trim()
+    const cpcValue = cpc.trim() ? parseFloat(cpc.trim().replace(',', '.')) : undefined
     setReport(null)
     setError(null)
     setStage('loading_amazon')
@@ -101,7 +103,7 @@ export default function HomePage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: kw, market, amazonData, trendsData, redditData }),
+        body: JSON.stringify({ keyword: kw, market, amazonData, trendsData, redditData, cpc: cpcValue }),
       })
       if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
       if (!res.body) throw new Error('Stream non supportato dal browser')
@@ -184,6 +186,20 @@ export default function HomePage() {
               >
                 {isLoading ? 'Analisi…' : 'Analizza'}
               </button>
+            </div>
+
+            {/* CPC opzionale — mostrato come campo secondario */}
+            <div className="mt-3 flex items-center gap-2">
+              <label className="text-xs text-zinc-500 whitespace-nowrap">CPC Google Ads (opzionale):</label>
+              <input
+                type="text"
+                value={cpc}
+                onChange={e => setCpc(e.target.value)}
+                placeholder="es. 0.85"
+                disabled={isLoading}
+                className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
+              />
+              <span className="text-xs text-zinc-400">€/$  · usato per stimare i click/mese in §7</span>
             </div>
 
             {isLoading && (
