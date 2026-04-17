@@ -27,6 +27,13 @@ body {
   .report-root .bg-zinc-100 { background-color: white !important; }
   .print-break-before { break-before: page; }
   a { color: inherit; text-decoration: none; }
+  /* Link ASIN nella tabella competitor: blu sottolineato */
+  .report-root table a {
+    color: #1d4ed8 !important;
+    text-decoration: underline !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 
   /* Cover page */
   .print-cover { display: flex !important; break-after: page; }

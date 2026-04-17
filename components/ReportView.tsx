@@ -142,12 +142,12 @@ function Section({ num, title, children, breakBefore = true }: {
   num: string; title: string; children: React.ReactNode; breakBefore?: boolean
 }) {
   return (
-    <section className={`report-section bg-white rounded-2xl border border-zinc-200 shadow-sm print:shadow-[0_2px_8px_rgba(0,0,0,0.08)] overflow-hidden${breakBefore ? ' print-break-before' : ''}`}>
-      <div className="px-7 py-4 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white print:bg-none print:from-transparent print:to-transparent flex items-baseline gap-3">
+    <section className={`report-section bg-white rounded-2xl border border-zinc-200 shadow-sm print:bg-transparent print:border-0 print:shadow-none print:rounded-none print:overflow-visible overflow-hidden${breakBefore ? ' print-break-before' : ''}`}>
+      <div className="px-7 py-4 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white print:bg-none print:from-transparent print:to-transparent print:border-0 print:px-0 print:py-0 print:pb-3 flex items-baseline gap-3">
         <span className="text-xs font-bold tracking-widest text-zinc-400 shrink-0">§{num}</span>
         <h2 className="text-base font-bold text-zinc-800">{title}</h2>
       </div>
-      <div className="px-7 py-5">
+      <div className="px-7 py-5 print:px-0 print:py-0 print:space-y-3">
         {children}
       </div>
     </section>
@@ -173,7 +173,7 @@ function SubCard({ title, accent = 'zinc', children }: {
 }) {
   const cls = ACCENT_CLASSES[accent]
   return (
-    <div className="rounded-xl border border-zinc-200 overflow-hidden print:break-inside-avoid">
+    <div className="rounded-xl border border-zinc-200 overflow-hidden print:break-inside-avoid print:bg-white print:shadow-[0_1px_6px_rgba(0,0,0,0.08)]">
       <div className={`px-4 py-2.5 border-b ${cls.header}`}>
         <p className={`text-xs font-bold uppercase tracking-widest ${cls.label}`}>{title}</p>
       </div>
@@ -186,13 +186,14 @@ function SubCard({ title, accent = 'zinc', children }: {
 
 function SectionNote({ children }: { children: React.ReactNode }) {
   return (
-    <details className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 overflow-hidden">
+    <details className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 print:bg-white print:shadow-[0_1px_6px_rgba(0,0,0,0.08)] overflow-hidden">
       <summary className="px-4 py-3 cursor-pointer select-none text-xs font-semibold text-zinc-500 hover:bg-zinc-100 transition-colors flex items-center gap-2 list-none">
         <span className="text-zinc-400">▸</span>
         Come leggere questa sezione
       </summary>
       <div className="px-5 py-4 border-t border-zinc-200">
-        <p className="text-sm text-zinc-600 leading-relaxed">{children}</p>
+        <p className="hidden print:block text-[8pt] font-bold uppercase tracking-widest text-zinc-400 mb-2">Come leggere questa sezione</p>
+        <p className="text-sm print:text-[8pt] text-zinc-600 leading-relaxed">{children}</p>
       </div>
     </details>
   )
@@ -272,7 +273,7 @@ export default function ReportView({ report }: { report: FullReport }) {
         {/* Titolo */}
         <div className="flex-1 flex flex-col justify-center">
           <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase mb-4">Report di analisi</p>
-          <h1 className="text-5xl print:text-3xl font-black text-zinc-900 leading-tight mb-3">{report.keyword}</h1>
+          <h1 className="text-5xl print:text-3xl font-black text-zinc-900 leading-tight mb-3 print:uppercase">{report.keyword}</h1>
           <div className="flex items-center gap-4 mt-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-600 bg-zinc-100 rounded-full px-4 py-1.5">
               Mercato {report.market}
@@ -670,7 +671,7 @@ export default function ReportView({ report }: { report: FullReport }) {
 
         </div>
         <SectionNote>
-          Questa è la sezione più importante del report: ti dice cosa scrivere e perché i lettori sceglieranno il tuo libro al posto degli altri. I Pain Points sono problemi reali espressi dai lettori in prima persona, raccolti da discussioni online e recensioni Amazon. Per ogni problema viene indicato un punteggio che riflette tre cose: quanto spesso viene citato, quanto è frustrante per chi lo vive, e quanto è concreto e risolvibile con un libro. I problemi con il simbolo ⚠ sono segnali critici: sono così intensi e diffusi che non affrontarli nel tuo libro sarebbe un&apos;opportunità sprecata. I Problemi non risolti dai competitor sono le lacune concrete dei libri esistenti — cose che i lettori cercano e non trovano. Gli Angoli non coperti sono approcci editoriali completamente inesplorati nella nicchia: potrebbe essere un formato diverso, un tono più pratico, o un sotto-segmento di pubblico completamente ignorato dai concorrenti. Il Libro proposto è la sintesi operativa di tutta l&apos;analisi: titolo, sottotitolo, hook e differenziatori sono già redatti dall&apos;AI come punto di partenza concreto su cui lavorare. La Gap Inventory classifica ogni opportunità per priorità — Alta, Media, Bassa — con un&apos;indicazione su come sfruttarla: parti sempre dalle priorità Alta quando costruisci la scaletta del libro.
+          Questa è la sezione più importante del report: ti dice cosa scrivere e perché i lettori sceglieranno il tuo libro al posto degli altri. I Pain Points sono problemi reali espressi dai lettori in prima persona, estratti da due fonti distinte: le discussioni Reddit (cosa chiedono i lettori prima di acquistare) e le recensioni Amazon dei top competitor (cosa criticano dopo aver letto). Ogni pain point ha un punteggio che riflette tre dimensioni: Frequenza (quanto spesso viene citato), Intensità (quanto è frustrante) e Solvability (quanto è risolvibile con un libro). I problemi con il simbolo ⚠ sono segnali critici ad alta intensità: non affrontarli sarebbe un&apos;opportunità sprecata. I Problemi non risolti dai competitor sono le lacune concrete dei libri esistenti, ricavate dall&apos;analisi del testo reale delle recensioni negative. Gli Angoli non coperti sono approcci editoriali completamente inesplorati: un formato diverso, un tono più pratico, un sotto-segmento ignorato. Il Libro proposto è la sintesi operativa: titolo, sottotitolo, hook e differenziatori redatti dall&apos;AI come punto di partenza concreto. La Gap Inventory classifica ogni opportunità per priorità — Alta, Media, Bassa: parti sempre dalle priorità Alta quando costruisci la scaletta del libro.
         </SectionNote>
       </Section>
 

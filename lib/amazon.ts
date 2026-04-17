@@ -308,6 +308,8 @@ function applyFilters(books: RawBook[]): RawBook[] {
     if (b.sponsored) return false
     if (b.reviewCount < 1) return false
     if (b.format && !BOOK_FORMATS.has(b.format)) return false
+    // Esclude prodotti fisici non-libro: nessun formato noto E nessun metadato editoriale
+    if (!b.format && !b.publisher && !b.publishedDate) return false
     if (b.publishedDate) {
       const ageMs = now - new Date(b.publishedDate).getTime()
       if (ageMs / (1000 * 60 * 60 * 24) < MIN_AGE_DAYS) return false
