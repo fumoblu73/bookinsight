@@ -408,10 +408,18 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
   const subNiches = detectSubNiches(rawBooks, keyword)
   const competitorTarget = selectCompetitorTarget(topBooks, subNiches)
 
-  // Recensioni testuali dei top 2 competitor (in parallelo, non bloccano se falliscono)
+  // Recensioni: top 2 per BSR + competitorTarget; se target già tra i top 2, aggiunge il 3°
+  const top2Asins = new Set(topBooks.slice(0, 2).map(b => b.asin))
+  const reviewCandidates = topBooks.slice(0, 2) as FilteredBook[]
+  if (top2Asins.has(competitorTarget.asin)) {
+    if (topBooks[2]) reviewCandidates.push(topBooks[2])
+  } else {
+    reviewCandidates.push(competitorTarget)
+  }
+
   const topBookReviews: BookReviews[] = (
     await Promise.all(
-      topBooks.slice(0, 2).map(async b => ({
+      reviewCandidates.map(async b => ({
         asin: b.asin,
         bookTitle: b.title,
         reviews: await fetchBookReviews(b.asin, market),
