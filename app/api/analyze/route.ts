@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { AmazonData, TrendsData, RedditData, Market } from '@/lib/types'
+import { AmazonData, TrendsData, RedditData, Market, LogEntry, AnalysisLog } from '@/lib/types'
 import { calcProfitabilityScore, calcRoiEstimate } from '@/lib/scoring'
 import { detectComplianceCategory, getComplianceRisk } from '@/lib/compliance'
 import {
@@ -69,12 +69,101 @@ export async function POST(req: NextRequest) {
     const roi     = calcRoiEstimate(amazonData.topBooks, budget, market)
     const reportId = await saveReport({ keyword, market, status: 'partial_gap' })
 
+    const startedAt = new Date().toISOString()
+    const logEntries: LogEntry[] = []
+
+    // ── Log entry: Amazon ─────────────────────────────────────────────────────
+    logEntries.push({
+      step: 'amazon', label: 'Amazon SERP',
+      status: 'ok',
+      summary: `${amazonData.rawTop15.length} candidati → ${amazonData.topBooks.length} libri filtrati`,
+      details: {
+        market,
+        candidatesAfterPreFilter: amazonData.rawTop15.length,
+        topBooksCount: amazonData.topBooks.length,
+        subNiches: amazonData.subNiches.map(s => s.keyword),
+        topBooks: amazonData.topBooks.map(b => ({
+          asin: b.asin, title: b.title, bsr: b.bsr,
+          reviewCount: b.reviewCount, format: b.format ?? '',
+        })),
+        rawBooks: amazonData.rawTop15.map(b => ({
+          asin: b.asin, title: b.title, format: b.format ?? '',
+          sponsored: b.sponsored, reviewCount: b.reviewCount,
+        })),
+      },
+    })
+
+    // ── Log entry: Reddit ─────────────────────────────────────────────────────
+    const postsBySubreddit = redditData.posts.reduce<Record<string, number>>((acc, p) => {
+      acc[p.subreddit] = (acc[p.subreddit] ?? 0) + 1; return acc
+    }, {})
+    logEntries.push({
+      step: 'reddit', label: 'Reddit',
+      status: !redditData.available ? 'error' : redditData.insufficientCorpus ? 'warn' : 'ok',
+      summary: redditData.available
+        ? `${redditData.threadCount} thread · ${redditData.totalComments} commenti · ${redditData.subredditsUsed.length} subreddit`
+        : 'Nessun dato disponibile',
+      details: {
+        available: redditData.available,
+        insufficientCorpus: redditData.insufficientCorpus,
+        threadCount: redditData.threadCount,
+        totalComments: redditData.totalComments,
+        subredditsUsed: redditData.subredditsUsed,
+        postsBySubreddit,
+        posts: redditData.posts.map(p => ({
+          id: p.id, title: p.title.slice(0, 80), subreddit: p.subreddit,
+          score: p.score, commentsLoaded: p.comments.length, month: p.month,
+        })),
+      },
+    })
+
+    // ── Log entry: Trends ─────────────────────────────────────────────────────
+    logEntries.push({
+      step: 'trends', label: 'Google Trends',
+      status: trendsData.available ? 'ok' : 'warn',
+      summary: trendsData.available
+        ? `${trendsData.timelineData.length} mesi di dati · YoY ${trendsData.yoyGrowth >= 0 ? '+' : ''}${trendsData.yoyGrowth}%`
+        : 'Dati non disponibili (query troppo specifica o rate limit)',
+      details: {
+        available: trendsData.available,
+        queryUsed: trendsData.keyword,
+        dataPoints: trendsData.timelineData.length,
+        yoyGrowth: trendsData.yoyGrowth,
+        relatedQueriesCount: trendsData.relatedQueries.length,
+        relatedQueries: trendsData.relatedQueries.map(q => q.query),
+      },
+    })
+
     // ── Step 1: passo0 + pain points ──────────────────────────────────────────
     push({ type: 'progress', stage: 'passo0' })
     const [passo0, painPoints] = await Promise.all([
       runPasso0(amazonData),
       runPainPointsReddit(keyword, redditData),
     ])
+
+    logEntries.push({
+      step: 'passo0', label: 'Analisi competitor (AI)',
+      status: 'ok',
+      summary: `Angolo: ${passo0.angolo} · Target: ${passo0.target_reader}`,
+      details: {
+        angolo: passo0.angolo,
+        target_reader: passo0.target_reader,
+        usp: passo0.usp,
+        punti_forza: passo0.punti_forza,
+        punti_debolezza: passo0.punti_debolezza,
+      },
+    })
+    const criticalCount = painPoints.filter(p => p.criticalSignal).length
+    logEntries.push({
+      step: 'painpoints', label: 'Pain Points (AI)',
+      status: painPoints.length === 0 ? 'warn' : 'ok',
+      summary: `${painPoints.length} pain point · ${criticalCount} segnali critici`,
+      details: {
+        count: painPoints.length,
+        criticalSignals: criticalCount,
+        list: painPoints.map(p => ({ pain_point: p.pain_point, score: p.score, criticalSignal: !!p.criticalSignal })),
+      },
+    })
 
     // ── Step 2: insights + trend forecast + gap analysis ─────────────────────
     push({ type: 'progress', stage: 'insights' })
@@ -84,12 +173,41 @@ export async function POST(req: NextRequest) {
       runGapAnalysis(amazonData, painPoints, redditData),
     ])
 
+    logEntries.push({
+      step: 'insights', label: 'Insight & Gap Analysis (AI)',
+      status: 'ok',
+      summary: `${keyInsights.length} insight · trend: ${trendForecast?.classificazione ?? 'N/A'}`,
+      details: {
+        keyInsightsCount: keyInsights.length,
+        trendClassificazione: trendForecast?.classificazione ?? null,
+        gapItemsCount: (gapAnalysis.gap_inventory_table as unknown[])?.length ?? 0,
+      },
+    })
+
     // ── Step 3: series strategy + ROI ─────────────────────────────────────────
     push({ type: 'progress', stage: 'strategy' })
     const [seriesStrategy, roiNarrative] = await Promise.all([
       runSeriesStrategy(amazonData, gapAnalysis.passo5_tesi_libro, scoring, roi),
       runRoiNarrative(keyword, market, roi, scoring, budget),
     ])
+
+    logEntries.push({
+      step: 'strategy', label: 'Strategia e ROI (AI)',
+      status: 'ok',
+      summary: `Verdetto: ${seriesStrategy.verdetto} · Breakeven: ${roi.breakEvenMonths} mesi`,
+      details: {
+        verdetto: seriesStrategy.verdetto,
+        breakEvenMonths: roi.breakEvenMonths,
+        avgMonthlyRevenueMin: roi.avgMonthlyRevenueMin,
+        avgMonthlyRevenueMax: roi.avgMonthlyRevenueMax,
+      },
+    })
+
+    const analysisLog: AnalysisLog = {
+      entries: logEntries,
+      startedAt,
+      completedAt: new Date().toISOString(),
+    }
 
     // ── Assembla + salva ──────────────────────────────────────────────────────
     const report = {
@@ -128,6 +246,7 @@ export async function POST(req: NextRequest) {
       profitabilityScore: scoring.score,
       estimatedDailyRevenue: roi.avgMonthlyRevenueMin,
       competitionLevel: scoring.entryDifficulty,
+      log: analysisLog,
       data: report,
     })
 

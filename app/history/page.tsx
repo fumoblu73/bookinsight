@@ -61,40 +61,50 @@ export default async function HistoryPage() {
                 hour: '2-digit', minute: '2-digit',
               })
               return (
-                <Link
+                <div
                   key={r.id}
-                  href={`/report/${r.id}`}
-                  className="block bg-white rounded-xl border border-zinc-200 px-5 py-4 hover:border-indigo-300 hover:shadow-sm transition-all"
+                  className="bg-white rounded-xl border border-zinc-200 hover:border-indigo-300 hover:shadow-sm transition-all flex items-center"
                 >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-zinc-900 truncate">{r.keyword}</span>
-                        <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">
-                          {r.market}
-                        </span>
-                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${badge.cls}`}>
-                          {badge.label}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400">{date}</p>
-                    </div>
-                    <div className="flex items-center gap-4 shrink-0">
-                      {r.profitabilityScore !== undefined && (
-                        <div className="text-right">
-                          <p className={`text-lg ${scoreColor(r.profitabilityScore)}`}>
-                            {r.profitabilityScore}
-                            <span className="text-xs font-normal text-zinc-400">/100</span>
-                          </p>
-                          <p className="text-xs text-zinc-400">Score</p>
+                  <Link
+                    href={`/report/${r.id}`}
+                    className="flex-1 min-w-0 px-5 py-4 block"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-zinc-900 truncate">{r.keyword}</span>
+                          <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">
+                            {r.market}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${badge.cls}`}>
+                            {badge.label}
+                          </span>
                         </div>
-                      )}
-                      <svg className="w-5 h-5 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                        <p className="text-xs text-zinc-400">{date}</p>
+                      </div>
+                      <div className="flex items-center gap-4 shrink-0">
+                        {r.profitabilityScore !== undefined && (
+                          <div className="text-right">
+                            <p className={`text-lg ${scoreColor(r.profitabilityScore)}`}>
+                              {r.profitabilityScore}
+                              <span className="text-xs font-normal text-zinc-400">/100</span>
+                            </p>
+                            <p className="text-xs text-zinc-400">Score</p>
+                          </div>
+                        )}
+                        <svg className="w-5 h-5 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                  <Link
+                    href={`/log/${r.id}`}
+                    className="shrink-0 text-xs text-zinc-400 hover:text-indigo-600 font-medium px-4 py-4 hover:bg-indigo-50 transition-colors rounded-r-xl border-l border-zinc-100"
+                  >
+                    Log
+                  </Link>
+                </div>
               )
             })}
           </div>

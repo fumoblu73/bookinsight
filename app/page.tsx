@@ -62,6 +62,7 @@ export default function HomePage() {
   const [cpc, setCpc] = useState('')
   const [stage, setStage] = useState<Stage>('idle')
   const [report, setReport] = useState<FullReport | null>(null)
+  const [reportId, setReportId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
@@ -71,6 +72,7 @@ export default function HomePage() {
     const kw = keyword.trim()
     const cpcValue = cpc.trim() ? parseFloat(cpc.trim().replace(',', '.')) : undefined
     setReport(null)
+    setReportId(null)
     setError(null)
     setStage('loading_amazon')
 
@@ -129,6 +131,7 @@ export default function HomePage() {
             if (next) setStage(next)
           } else if (event.type === 'done' && event.report) {
             setReport(event.report)
+            setReportId((event.report as { id?: string }).id ?? null)
             setStage('done')
           } else if (event.type === 'error') {
             throw new Error(event.message ?? 'Errore sconosciuto dal server')
@@ -250,6 +253,13 @@ export default function HomePage() {
         </div>
 
         {report && <ReportView report={report} />}
+        {stage === 'done' && reportId && (
+          <div className="mt-4 text-center no-print">
+            <a href={`/log/${reportId}`} className="text-sm text-zinc-400 hover:text-indigo-600 underline transition-colors">
+              Vedi log dell&apos;analisi
+            </a>
+          </div>
+        )}
       </main>
     </div>
   )

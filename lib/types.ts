@@ -145,5 +145,22 @@ export interface ReportRecord {
   profitabilityScore?: number
   estimatedDailyRevenue?: number
   competitionLevel?: string
-  data?: unknown   // full report JSON
+  data?: unknown       // full report JSON
+  log?: AnalysisLog    // pipeline execution log
+}
+
+// ─── Analysis Log ─────────────────────────────────────────────────────────────
+
+export interface LogEntry {
+  step: string
+  label: string
+  status: 'ok' | 'warn' | 'error'
+  summary: string
+  details: Record<string, unknown>
+}
+
+export interface AnalysisLog {
+  entries: LogEntry[]
+  startedAt: string
+  completedAt: string
 }
