@@ -20,7 +20,11 @@ body {
 
 @media print {
   .no-print { display: none !important; }
-  body { background: white; font-size: 10.5pt; color: #18181b; }
+  body { background: white !important; font-size: 10.5pt; color: #18181b; }
+
+  /* Rimuovi sfondi grigi — le schede restano bianche con solo il bordo/ombra */
+  .report-root .bg-zinc-50,
+  .report-root .bg-zinc-100 { background-color: white !important; }
   .print-break-before { break-before: page; }
   a { color: inherit; text-decoration: none; }
 

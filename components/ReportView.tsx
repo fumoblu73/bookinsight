@@ -142,8 +142,8 @@ function Section({ num, title, children, breakBefore = true }: {
   num: string; title: string; children: React.ReactNode; breakBefore?: boolean
 }) {
   return (
-    <section className={`report-section bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden${breakBefore ? ' print-break-before' : ''}`}>
-      <div className="px-7 py-4 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white flex items-baseline gap-3">
+    <section className={`report-section bg-white rounded-2xl border border-zinc-200 shadow-sm print:shadow-[0_2px_8px_rgba(0,0,0,0.08)] overflow-hidden${breakBefore ? ' print-break-before' : ''}`}>
+      <div className="px-7 py-4 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white print:bg-none print:from-transparent print:to-transparent flex items-baseline gap-3">
         <span className="text-xs font-bold tracking-widest text-zinc-400 shrink-0">§{num}</span>
         <h2 className="text-base font-bold text-zinc-800">{title}</h2>
       </div>

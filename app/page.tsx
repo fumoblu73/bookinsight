@@ -147,7 +147,7 @@ export default function HomePage() {
   const isLoading = stage !== 'idle' && stage !== 'done' && stage !== 'error'
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-screen bg-zinc-50 print:bg-white">
       <header className="bg-white border-b border-zinc-200 no-print">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
