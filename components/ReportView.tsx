@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import type { Market } from '@/lib/types'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -229,6 +230,21 @@ function KpiCard({ label, value, sub, subColor = '' }: { label: string; value: s
 
 export default function ReportView({ report }: { report: FullReport }) {
   const { scoringBreakdown: sb, roi } = report
+
+  useEffect(() => {
+    const openAll = () => {
+      document.querySelectorAll('.report-root details').forEach(el => el.setAttribute('open', ''))
+    }
+    const closeAll = () => {
+      document.querySelectorAll('.report-root details').forEach(el => el.removeAttribute('open'))
+    }
+    window.addEventListener('beforeprint', openAll)
+    window.addEventListener('afterprint', closeAll)
+    return () => {
+      window.removeEventListener('beforeprint', openAll)
+      window.removeEventListener('afterprint', closeAll)
+    }
+  }, [])
   const date = new Date(report.createdAt).toLocaleDateString('it-IT', {
     day: '2-digit', month: 'long', year: 'numeric'
   })
@@ -329,7 +345,7 @@ export default function ReportView({ report }: { report: FullReport }) {
       </div>
 
       {/* ── §1 Key Insights ─────────────────────────────────────────────── */}
-      <Section num="1" title="Key Insights">
+      <Section num="1" title="Key Insights" breakBefore={false}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {report.keyInsights.map((ins, i) => (
             <div key={i} className={`p-4 rounded-xl border print:break-inside-avoid ${tipoStyle(ins.tipo)}`}>

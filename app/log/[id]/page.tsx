@@ -47,6 +47,20 @@ function DetailValue({ value }: { value: unknown }) {
   if (typeof value === 'number') {
     return <span className="font-mono text-indigo-700">{value}</span>
   }
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length === 0) return <span className="text-zinc-400">{'{}'}</span>
+    return (
+      <div className="space-y-0.5 mt-1">
+        {entries.map(([k, v]) => (
+          <div key={k} className="flex items-baseline gap-2 text-xs">
+            <span className="text-zinc-400 font-mono shrink-0">{k}:</span>
+            <span className="font-mono text-zinc-600">{String(v)}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
   return <span className="font-mono text-zinc-700 break-all">{String(value ?? '')}</span>
 }
 
