@@ -1,14 +1,8 @@
-import { RedditData, RedditPost, RedditComment } from './types'
+import { RedditData, RedditPost } from './types'
 
-const USER_AGENT = 'BookInsight/1.0'
-const MIN_COMMENT_SCORE = 2
-const MAX_POSTS_PER_SUBREDDIT = 10
-const TARGET_MIN_COMMENTS = 20
-const TARGET_MAX_COMMENTS = 150
-const MONTHS_BACK = 24
-const MIN_SUBREDDIT_SUBSCRIBERS = 1000
+const MIN_RESULTS_FOR_ANALYSIS = 5
 
-// Parole generiche da rimuovere per ottenere il nucleo tematico della keyword
+// Parole generiche da rimuovere per ottenere la variante corta
 const GENERIC_WORDS = new Set([
   'for', 'beginners', 'beginner', 'guide', 'book', 'complete', 'easy', 'simple',
   'how', 'to', 'the', 'a', 'an', 'and', 'or', 'with', 'your', 'my',
@@ -18,197 +12,105 @@ const GENERIC_WORDS = new Set([
   'over', 'under', 'learn', 'learning', 'master', 'mastering',
 ])
 
-/**
- * Costruisce varianti di ricerca broad da una keyword KDP.
- * Es. "stock option for beginners" → ["stock option for beginners", "stock option"]
- * Es. "keto diet for women over 50" → ["keto diet for women over 50", "keto diet women", "keto diet"]
- */
-function buildSearchVariants(keyword: string): string[] {
+function shortVariant(keyword: string): string {
   const words = keyword.toLowerCase().split(/\s+/)
-  const coreWords = words.filter(w => !GENERIC_WORDS.has(w))
-
-  const variants: string[] = []
-
-  // 1. Keyword completa (sempre presente)
-  variants.push(keyword.toLowerCase())
-
-  // 2. Solo le parole core (es. "stock option" da "stock option for beginners")
-  const corePhrase = coreWords.join(' ')
-  if (corePhrase && corePhrase !== keyword.toLowerCase()) {
-    variants.push(corePhrase)
-  }
-
-  // 3. Prime 2 parole core (se ci sono almeno 2 core words e differisce dai precedenti)
-  if (coreWords.length > 1) {
-    variants.push(coreWords.slice(0, 2).join(' '))
-  }
-
-  // Deduplica e limita a 3
-  return [...new Set(variants)].slice(0, 3)
+  const core = words.filter(w => !GENERIC_WORDS.has(w))
+  if (core.length === 0) return keyword.toLowerCase()
+  return core.slice(0, 2).join(' ')
 }
 
-// ─── Fetch con retry ──────────────────────────────────────────────────────────
+// ─── SerpApi fetch ────────────────────────────────────────────────────────────
 
-async function redditFetch(url: string): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      Accept: 'application/json',
-    },
-  })
-  if (!res.ok) throw new Error(`Reddit fetch failed: ${res.status} ${url}`)
+async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
+  const apiKey = process.env.SERPAPI_KEY
+  if (!apiKey) throw new Error('SERPAPI_KEY non configurata')
+  const qs = new URLSearchParams({ ...params, api_key: apiKey }).toString()
+  const res = await fetch(`https://serpapi.com/search?${qs}`)
+  if (!res.ok) throw new Error(`SerpApi ${res.status}: ${(await res.text()).slice(0, 200)}`)
   return res.json()
 }
 
-// ─── Ricerca subreddit rilevanti ──────────────────────────────────────────────
+// ─── Google search su Reddit ──────────────────────────────────────────────────
 
-async function findRelevantSubreddits(keyword: string): Promise<string[]> {
-  // Usa l'ultimo variant (il più generico) per trovare subreddit tematici
-  const variants = buildSearchVariants(keyword)
-  const searchQuery = variants[variants.length - 1]
-  const url = `https://www.reddit.com/subreddits/search.json?q=${encodeURIComponent(searchQuery)}&limit=10`
+interface GoogleResult {
+  title?: string
+  link?: string
+  snippet?: string
+}
+
+async function searchRedditViaGoogle(query: string): Promise<GoogleResult[]> {
   try {
-    const data = await redditFetch(url) as {
-      data: { children: Array<{ data: { display_name: string; subscribers: number; last_created_utc?: number } }> }
-    }
-    return data.data.children
-      .filter(s => s.data.subscribers >= MIN_SUBREDDIT_SUBSCRIBERS)
-      .map(s => s.data.display_name)
-      .slice(0, 5)
-  } catch {
+    const data = await serpApiFetch({
+      engine: 'google',
+      q: `site:reddit.com ${query}`,
+      num: '10',
+    }) as { organic_results?: GoogleResult[] }
+    return (data.organic_results ?? [])
+      .filter(r => r.link?.includes('reddit.com/r/') && r.link.includes('/comments/'))
+  } catch (err) {
+    console.error(`[reddit] Google search failed for "${query}":`, err)
     return []
   }
 }
 
-// ─── Ricerca post per keyword in un subreddit ─────────────────────────────────
-
-async function fetchPostsFromSubreddit(
-  subreddit: string,
-  keyword: string,
-  cutoffUtc: number
-): Promise<RedditPost[]> {
-  const variants = buildSearchVariants(keyword)
-
-  const posts: RedditPost[] = []
-  const seenIds = new Set<string>()
-
-  for (const query of variants) {
-    const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(query)}&sort=top&t=year&limit=${MAX_POSTS_PER_SUBREDDIT}&restrict_sr=1`
-    try {
-      const data = await redditFetch(url) as {
-        data: { children: Array<{ data: Record<string, unknown> }> }
-      }
-
-      for (const child of data.data.children) {
-        const p = child.data
-        const createdUtc = Number(p.created_utc ?? 0)
-        if (createdUtc < cutoffUtc) continue
-        if (seenIds.has(String(p.id))) continue
-        seenIds.add(String(p.id))
-
-        posts.push({
-          id:         String(p.id ?? ''),
-          title:      String(p.title ?? ''),
-          selftext:   String(p.selftext ?? ''),
-          score:      Number(p.score ?? 0),
-          subreddit,
-          createdUtc,
-          month:      utcToMonth(createdUtc),
-          comments:   [],
-        })
-      }
-    } catch {
-      // Subreddit non disponibile, continua
-    }
-  }
-
-  return posts
-}
-
-// ─── Fetch commenti di un post ────────────────────────────────────────────────
-
-async function fetchComments(postId: string, subreddit: string): Promise<RedditComment[]> {
-  const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}.json?limit=50&sort=top`
-  try {
-    const data = await redditFetch(url) as Array<{ data: { children: Array<{ data: Record<string, unknown> }> } }>
-    if (!Array.isArray(data) || data.length < 2) return []
-
-    const comments: RedditComment[] = []
-    for (const child of data[1].data.children) {
-      const c = child.data
-      const score = Number(c.score ?? 0)
-      if (score < MIN_COMMENT_SCORE) continue
-      const body = String(c.body ?? '')
-      if (!body || body === '[deleted]' || body === '[removed]') continue
-
-      comments.push({
-        id:         String(c.id ?? ''),
-        body,
-        score,
-        author:     String(c.author ?? ''),
-        createdUtc: Number(c.created_utc ?? 0),
-        month:      utcToMonth(Number(c.created_utc ?? 0)),
-      })
-    }
-    return comments
-  } catch {
-    return []
-  }
-}
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
-
-function utcToMonth(utc: number): string {
-  const d = new Date(utc * 1000)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+function extractSubreddit(link: string): string {
+  const m = link.match(/reddit\.com\/r\/([^/]+)/)
+  return m ? m[1] : 'reddit'
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function fetchRedditData(keyword: string): Promise<RedditData> {
-  const cutoffUtc = Math.floor(Date.now() / 1000) - MONTHS_BACK * 30 * 24 * 60 * 60
+  const short = shortVariant(keyword)
+  const queries = [keyword.toLowerCase()]
+  if (short !== keyword.toLowerCase()) queries.push(short)
 
-  // 1. Trova subreddit rilevanti
-  const subreddits = await findRelevantSubreddits(keyword)
+  // Ricerche in parallelo: keyword completa + variante corta
+  const resultSets = await Promise.all(queries.map(q => searchRedditViaGoogle(q)))
 
-  // Fallback: cerca globalmente se nessun subreddit trovato
-  const searchTargets = subreddits.length > 0
-    ? subreddits
-    : ['all']
-
-  const allPosts: RedditPost[] = []
-
-  // 2. Fetch post da ogni subreddit
-  for (const subreddit of searchTargets) {
-    const posts = await fetchPostsFromSubreddit(subreddit, keyword, cutoffUtc)
-    allPosts.push(...posts)
-    if (allPosts.length >= 20) break
+  // Deduplicazione per URL
+  const seen = new Set<string>()
+  const allResults: GoogleResult[] = []
+  for (const results of resultSets) {
+    for (const r of results) {
+      if (r.link && !seen.has(r.link)) {
+        seen.add(r.link)
+        allResults.push(r)
+      }
+    }
   }
 
-  // 3. Fallback r/all se subreddit specifici trovati ma 0 post (topic generico o storico)
-  if (allPosts.length === 0 && searchTargets[0] !== 'all') {
-    const fallbackPosts = await fetchPostsFromSubreddit('all', keyword, cutoffUtc)
-    allPosts.push(...fallbackPosts)
+  console.log(`[reddit] "${keyword}" → queries: ${queries.join(', ')} → ${allResults.length} risultati Google`)
+
+  if (allResults.length === 0) {
+    return {
+      keyword, posts: [], totalComments: 0, subredditsUsed: [],
+      threadCount: 0, available: false, insufficientCorpus: true,
+    }
   }
 
-  // 3. Fetch commenti per i post più rilevanti
-  let totalComments = 0
-  for (const post of allPosts) {
-    if (totalComments >= TARGET_MAX_COMMENTS) break
-    const comments = await fetchComments(post.id, post.subreddit)
-    post.comments = comments
-    totalComments += comments.length
-  }
+  // Ogni risultato Google diventa un post sintetico con il snippet come corpo
+  // Il titolo + snippet = estratto della discussione Reddit indicizzata da Google
+  const posts: RedditPost[] = allResults.map((r, i) => ({
+    id: `g_${i}`,
+    title: r.title ?? '',
+    selftext: r.snippet ?? '',   // il corpus AI legge selftext
+    score: 5,
+    subreddit: r.link ? extractSubreddit(r.link) : 'reddit',
+    createdUtc: Math.floor(Date.now() / 1000),
+    month: new Date().toISOString().slice(0, 7),
+    comments: [],                // snippet già in selftext, commenti non necessari
+  }))
 
-  const subredditsUsed = [...new Set(allPosts.map(p => p.subreddit))]
+  const subredditsUsed = [...new Set(posts.map(p => p.subreddit))]
 
   return {
     keyword,
-    posts: allPosts,
-    totalComments,
+    posts,
+    totalComments: posts.length,  // ogni snippet = 1 unità di corpus
     subredditsUsed,
-    threadCount: allPosts.length,
-    available: allPosts.length > 0,
-    insufficientCorpus: totalComments < TARGET_MIN_COMMENTS,
+    threadCount: posts.length,
+    available: true,
+    insufficientCorpus: posts.length < MIN_RESULTS_FOR_ANALYSIS,
   }
 }

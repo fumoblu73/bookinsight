@@ -1,4 +1,4 @@
-import { AmazonData, TrendsData, RedditData, PainPoint } from './types'
+import { AmazonData, TrendsData, RedditData, PainPoint, AmazonReview } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -185,6 +185,18 @@ Rispondi SOLO con un oggetto JSON valido:
 // ─── Gap Analysis 5 passi (Sonnet) ────────────────────────────────────────────
 // §5: il cuore del report — 5 passi + Gap Inventory Table
 
+function reviewsBlock(amazon: AmazonData): string {
+  if (!amazon.topBookReviews?.length) return 'Non disponibili.'
+  return amazon.topBookReviews.map(br => {
+    const pos = br.reviews.filter((r: AmazonReview) => r.rating >= 4).slice(0, 3)
+    const neg = br.reviews.filter((r: AmazonReview) => r.rating <= 3).slice(0, 3)
+    const fmt = (r: AmazonReview) => `[${r.rating}★] "${r.title}" — ${r.body.slice(0, 200)}`
+    return `"${br.bookTitle.slice(0, 60)}" (${br.reviews.length} recensioni analizzate):
+  POSITIVE: ${pos.length ? pos.map(fmt).join(' | ') : 'nessuna'}
+  NEGATIVE: ${neg.length ? neg.map(fmt).join(' | ') : 'nessuna'}`
+  }).join('\n\n')
+}
+
 export function promptGapAnalysis(
   amazon: AmazonData,
   painPoints: PainPoint[],
@@ -193,21 +205,23 @@ export function promptGapAnalysis(
   const topPains = painPointsList(painPoints)
   const books = booksTable(amazon)
 
-  const reviewSample = amazon.topBooks
-    .slice(0, 3)
-    .map(b => `"${b.title}": ${b.reviewCount} rec. ${b.rating}/5`)
-    .join(', ')
-
   return `Sei un esperto di strategia editoriale KDP. Esegui una Gap Analysis completa per la nicchia "${amazon.keyword}" (mercato ${amazon.market}).
 
 TOP ${amazon.topBooks.length} COMPETITOR:
 ${books}
 
-TOP PAIN POINT (da Reddit/recensioni):
-${topPains || 'Nessun pain point estratto — basati sui dati competitor.'}
+RECENSIONI AMAZON TOP COMPETITOR (testo reale):
+${reviewsBlock(amazon)}
 
-CAMPIONE RECENSIONI: ${reviewSample}
-REDDIT DISPONIBILE: ${reddit.available ? 'sì' : 'no'} (${reddit.totalComments} commenti)
+TOP PAIN POINT (da Reddit/discussioni online):
+${topPains || 'Nessun pain point estratto — basati su competitor e recensioni.'}
+
+REDDIT/DISCUSSIONI ONLINE: ${reddit.available ? `sì (${reddit.threadCount} thread da ${reddit.subredditsUsed.join(', ')})` : 'non disponibile'}
+
+ISTRUZIONI:
+- Usa le recensioni positive per capire cosa apprezzano i lettori (aspetti da eguagliare o superare)
+- Usa le recensioni negative per identificare lacune reali (gap da colmare con il nuovo libro)
+- Integra i pain point Reddit come conferma o segnale aggiuntivo
 
 Esegui i 5 passi e rispondi SOLO con un oggetto JSON valido:
 {

@@ -1,4 +1,4 @@
-import { RawBook, FilteredBook, SubNiche, AmazonData, Market } from './types'
+import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, BookReviews } from './types'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -218,6 +218,29 @@ function defaultProductDetails(): ProductDetails {
   return { bsr: 0, pages: 0, publisher: '', publishedDate: '', selfPublished: false, format: '' }
 }
 
+// ─── Recensioni competitor ────────────────────────────────────────────────────
+
+async function fetchBookReviews(asin: string, market: Market): Promise<AmazonReview[]> {
+  const domain = MARKET_AMAZON_DOMAIN[market]
+  try {
+    const data = await serpApiFetch({
+      engine: 'amazon_reviews',
+      asin,
+      amazon_domain: domain,
+    }) as {
+      reviews?: Array<{ rating?: number; title?: string; body?: string }>
+    }
+    return (data.reviews ?? []).slice(0, 10).map(r => ({
+      rating: Number(r.rating ?? 0),
+      title:  String(r.title ?? '').slice(0, 100),
+      body:   String(r.body  ?? '').slice(0, 400),
+    })).filter(r => r.body.length > 20)
+  } catch (err) {
+    console.error(`[amazon] fetchBookReviews failed for ${asin}:`, err)
+    return []
+  }
+}
+
 // ─── Calcoli economici ────────────────────────────────────────────────────────
 
 export function calcRoyalty(price: number, pages: number, market: Market): number {
@@ -385,6 +408,17 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
   const subNiches = detectSubNiches(rawBooks, keyword)
   const competitorTarget = selectCompetitorTarget(topBooks, subNiches)
 
+  // Recensioni testuali dei top 2 competitor (in parallelo, non bloccano se falliscono)
+  const topBookReviews: BookReviews[] = (
+    await Promise.all(
+      topBooks.slice(0, 2).map(async b => ({
+        asin: b.asin,
+        bookTitle: b.title,
+        reviews: await fetchBookReviews(b.asin, market),
+      }))
+    )
+  ).filter(br => br.reviews.length > 0)
+
   return {
     market,
     keyword,
@@ -393,5 +427,6 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
     subNiches,
     competitorTarget,
     scrapedAt: new Date().toISOString(),
+    topBookReviews: topBookReviews.length > 0 ? topBookReviews : undefined,
   }
 }

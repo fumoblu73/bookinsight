@@ -35,6 +35,18 @@ export interface SubNiche {
   vulnerable: boolean
 }
 
+export interface AmazonReview {
+  rating: number
+  title: string
+  body: string
+}
+
+export interface BookReviews {
+  asin: string
+  bookTitle: string
+  reviews: AmazonReview[]
+}
+
 export interface AmazonData {
   market: Market
   keyword: string
@@ -43,6 +55,7 @@ export interface AmazonData {
   subNiches: SubNiche[]
   competitorTarget: FilteredBook
   scrapedAt: string
+  topBookReviews?: BookReviews[] // recensioni testuali top 2 competitor
 }
 
 // ─── Google Trends ────────────────────────────────────────────────────────────
