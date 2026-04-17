@@ -38,6 +38,14 @@ const KDP_PRINT_COST: Record<Market, { fixed: number; perPage: number }> = {
 }
 
 const VULNERABILITY_THRESHOLD = 100
+
+const BOOK_FORMATS = new Set([
+  'Paperback', 'Hardcover', 'Kindle Edition', 'Mass Market Paperback',
+  'Spiral-bound', 'Board book', 'Library Binding', 'Loose Leaf',
+  'Perfect Paperback', 'Illustrated', 'Pocket Book', 'Audio CD',
+  'Broché', 'Relié', 'Taschenbuch', 'Gebundene Ausgabe',
+  'Tapa blanda', 'Tapa dura', 'Copertina flessibile', 'Copertina rigida',
+])
 const MIN_AGE_DAYS = 30
 const MAX_BOOKS = 5
 const MAX_PRODUCT_CALLS = 8  // cap product calls per contenere i crediti SerpApi nel free tier
@@ -198,7 +206,7 @@ async function fetchProductDetails(asin: string, market: Market): Promise<Produc
       publisher.toLowerCase().includes('independently published') ||
       publisher.toLowerCase().includes('auto-pubblicato')
 
-    const format = (det.item_form ?? 'Paperback').trim() || 'Paperback'
+    const format = (det.item_form ?? '').trim()
 
     return { bsr, pages, publisher, publishedDate, selfPublished, format }
   } catch {
@@ -207,7 +215,7 @@ async function fetchProductDetails(asin: string, market: Market): Promise<Produc
 }
 
 function defaultProductDetails(): ProductDetails {
-  return { bsr: 0, pages: 0, publisher: '', publishedDate: '', selfPublished: false, format: 'Paperback' }
+  return { bsr: 0, pages: 0, publisher: '', publishedDate: '', selfPublished: false, format: '' }
 }
 
 // ─── Calcoli economici ────────────────────────────────────────────────────────
@@ -276,6 +284,7 @@ function applyFilters(books: RawBook[]): RawBook[] {
   return books.filter(b => {
     if (b.sponsored) return false
     if (b.reviewCount < 1) return false
+    if (b.format && !BOOK_FORMATS.has(b.format)) return false
     if (b.publishedDate) {
       const ageMs = now - new Date(b.publishedDate).getTime()
       if (ageMs / (1000 * 60 * 60 * 24) < MIN_AGE_DAYS) return false
