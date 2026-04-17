@@ -246,7 +246,7 @@ export default function ReportView({ report }: { report: FullReport }) {
       </div>
 
       {/* ── COPERTINA (solo stampa) ──────────────────────────────────────── */}
-      <div className="print-cover hidden print:flex flex-col justify-between min-h-screen print:min-h-0 print:h-screen print:overflow-hidden px-16 py-20 print:px-12 print:py-10 bg-white">
+      <div className="print-cover hidden print:flex flex-col justify-between min-h-screen print:min-h-0 print:h-screen print:overflow-hidden px-16 py-20 print:px-12 print:py-6 bg-white">
         {/* Logo */}
         <div>
           <p className="text-xs font-bold tracking-[0.3em] text-zinc-400 uppercase mb-1">BookInsight</p>
@@ -256,7 +256,7 @@ export default function ReportView({ report }: { report: FullReport }) {
         {/* Titolo */}
         <div className="flex-1 flex flex-col justify-center">
           <p className="text-xs font-semibold tracking-widest text-indigo-500 uppercase mb-4">Report di analisi</p>
-          <h1 className="text-5xl print:text-4xl font-black text-zinc-900 leading-tight mb-4">{report.keyword}</h1>
+          <h1 className="text-5xl print:text-3xl font-black text-zinc-900 leading-tight mb-3">{report.keyword}</h1>
           <div className="flex items-center gap-4 mt-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-600 bg-zinc-100 rounded-full px-4 py-1.5">
               Mercato {report.market}
@@ -266,13 +266,13 @@ export default function ReportView({ report }: { report: FullReport }) {
               <span className="text-sm text-zinc-400">CPC Amazon Ads: ${report.cpc.toFixed(2)}</span>
             )}
           </div>
-          {/* Punteggio compatto — solo stampa, dentro il blocco titolo per non sforare pagina 1 */}
-          <div className="hidden print:flex items-baseline gap-2 mt-8">
-            <span className={`text-7xl font-black leading-none ${scoreColor(report.profitabilityScore)}`}>
+          {/* Punteggio compatto — solo stampa, dentro il blocco titolo */}
+          <div className="hidden print:flex items-baseline gap-2 mt-5">
+            <span className={`text-6xl font-black leading-none ${scoreColor(report.profitabilityScore)}`}>
               {report.profitabilityScore}
             </span>
             <div className="flex flex-col">
-              <span className="text-2xl text-zinc-300 font-light">/100</span>
+              <span className="text-xl text-zinc-300 font-light">/100</span>
               <span className="text-xs text-zinc-400 mt-1">Profitability Score</span>
             </div>
           </div>
@@ -350,7 +350,7 @@ export default function ReportView({ report }: { report: FullReport }) {
         <div className="space-y-4">
           <SubCard title="Score" accent="zinc">
             <div className="flex gap-8 flex-wrap items-center print:break-inside-avoid">
-              <div className={`relative flex items-center justify-center w-32 h-32 rounded-full border-8 ${scoreBorder(report.profitabilityScore)} shrink-0 print:hidden`}>
+              <div className={`relative flex items-center justify-center w-32 h-32 rounded-full border-8 ${scoreBorder(report.profitabilityScore)} shrink-0`}>
                 <div className="text-center">
                   <span className={`text-4xl font-black leading-none ${scoreColor(report.profitabilityScore)}`}>
                     {report.profitabilityScore}
