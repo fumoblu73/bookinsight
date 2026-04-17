@@ -19,6 +19,15 @@ const MARKET_AMAZON_DOMAIN: Record<Market, string> = {
   ES: 'amazon.es',
 }
 
+const MARKET_BOOKS_CATEGORY: Record<Market, string> = {
+  US: '283155',
+  UK: '266239',
+  DE: '186606',
+  FR: '301130',
+  IT: '411663031',
+  ES: '599364031',
+}
+
 const KDP_PRINT_COST: Record<Market, { fixed: number; perPage: number }> = {
   US: { fixed: 1.00, perPage: 0.012 },
   UK: { fixed: 0.85, perPage: 0.010 },
@@ -70,7 +79,7 @@ async function fetchSerpData(keyword: string, market: Market): Promise<SerpBook[
     engine: 'amazon',
     k: keyword,
     amazon_domain: domain,
-    category_id: '283155', // Books department
+    category_id: MARKET_BOOKS_CATEGORY[market],
   }) as {
     organic_results?: Array<{
       asin?: string
