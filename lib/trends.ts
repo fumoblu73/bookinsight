@@ -2,6 +2,24 @@ import { TrendsData, TrendsDataPoint, RelatedQuery } from './types'
 
 const MONTHS = 60  // 5 anni
 
+// Parole generiche da escludere per ottenere la variante corta della keyword
+const GENERIC_WORDS = new Set([
+  'for', 'beginners', 'beginner', 'guide', 'book', 'complete', 'easy', 'simple',
+  'how', 'to', 'the', 'a', 'an', 'and', 'or', 'with', 'your', 'my',
+  'introduction', 'intro', 'basics', 'basic', 'advanced', 'ultimate', 'best',
+  'step', 'steps', 'tips', 'tricks', 'secrets', 'made', 'fast', 'quick',
+  'starter', 'dummies', 'everyone', 'anyone', 'all', 'top', 'great',
+  'over', 'under', 'learn', 'learning', 'master', 'mastering',
+])
+
+function shortKeyword(keyword: string): string {
+  const words = keyword.toLowerCase().split(/\s+/)
+  const core = words.filter(w => !GENERIC_WORDS.has(w))
+  if (core.length === 0) return keyword.toLowerCase()
+  // Use first 2 core words (most generic useful variant)
+  return core.slice(0, 2).join(' ')
+}
+
 // ─── SerpApi fetch (riuso stesso pattern di amazon.ts) ───────────────────────
 
 async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
@@ -44,11 +62,13 @@ export async function fetchTrendsData(keyword: string): Promise<TrendsData> {
   // SerpApi usa formato "YYYY-MM-DD YYYY-MM-DD"
   const dateRange = `${startDate.toISOString().slice(0, 10)} ${endDate.toISOString().slice(0, 10)}`
 
+  const trendsQuery = shortKeyword(keyword)
+
   try {
     // Due chiamate in parallelo: timeline + related queries
     const [timelineRaw, relatedRaw] = await Promise.all([
-      serpApiFetch({ engine: 'google_trends', q: keyword, date: dateRange, data_type: 'TIMESERIES' }),
-      serpApiFetch({ engine: 'google_trends', q: keyword, date: dateRange, data_type: 'RELATED_QUERIES' }),
+      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES' }),
+      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'RELATED_QUERIES' }),
     ])
 
     // ── Parse timeline ────────────────────────────────────────────────────────
@@ -105,7 +125,8 @@ export async function fetchTrendsData(keyword: string): Promise<TrendsData> {
       yoyGrowth,
       available: timeline.length > 0,
     }
-  } catch {
+  } catch (err) {
+    console.error(`[trends] fetchTrendsData failed for "${trendsQuery}" (original: "${keyword}"):`, err)
     return {
       keyword,
       timelineData:   [],
