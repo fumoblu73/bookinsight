@@ -101,6 +101,13 @@ export async function POST(req: NextRequest) {
       profitabilityScore: scoring.score,
       scoringBreakdown: scoring,
       competitorTarget: amazonData.competitorTarget,
+      topBooks: amazonData.topBooks,
+      redditMeta: {
+        available: redditData.available,
+        insufficientCorpus: redditData.insufficientCorpus,
+        threadCount: redditData.threadCount,
+        subredditsUsed: redditData.subredditsUsed,
+      },
       passo0,
       trends: trendsData,
       trendForecast,

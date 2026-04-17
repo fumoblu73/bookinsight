@@ -1,12 +1,51 @@
 import { RedditData, RedditPost, RedditComment } from './types'
 
 const USER_AGENT = 'BookInsight/1.0'
-const MIN_COMMENT_SCORE = 5
+const MIN_COMMENT_SCORE = 2
 const MAX_POSTS_PER_SUBREDDIT = 10
 const TARGET_MIN_COMMENTS = 20
 const TARGET_MAX_COMMENTS = 150
-const MONTHS_BACK = 12
+const MONTHS_BACK = 24
 const MIN_SUBREDDIT_SUBSCRIBERS = 1000
+
+// Parole generiche da rimuovere per ottenere il nucleo tematico della keyword
+const GENERIC_WORDS = new Set([
+  'for', 'beginners', 'beginner', 'guide', 'book', 'complete', 'easy', 'simple',
+  'how', 'to', 'the', 'a', 'an', 'and', 'or', 'with', 'your', 'my',
+  'introduction', 'intro', 'basics', 'basic', 'advanced', 'ultimate', 'best',
+  'step', 'steps', 'tips', 'tricks', 'secrets', 'made', 'fast', 'quick',
+  'starter', 'dummies', 'everyone', 'anyone', 'all', 'top', 'great',
+  'over', 'under', 'learn', 'learning', 'master', 'mastering',
+])
+
+/**
+ * Costruisce varianti di ricerca broad da una keyword KDP.
+ * Es. "stock option for beginners" → ["stock option for beginners", "stock option"]
+ * Es. "keto diet for women over 50" → ["keto diet for women over 50", "keto diet women", "keto diet"]
+ */
+function buildSearchVariants(keyword: string): string[] {
+  const words = keyword.toLowerCase().split(/\s+/)
+  const coreWords = words.filter(w => !GENERIC_WORDS.has(w))
+
+  const variants: string[] = []
+
+  // 1. Keyword completa (sempre presente)
+  variants.push(keyword.toLowerCase())
+
+  // 2. Solo le parole core (es. "stock option" da "stock option for beginners")
+  const corePhrase = coreWords.join(' ')
+  if (corePhrase && corePhrase !== keyword.toLowerCase()) {
+    variants.push(corePhrase)
+  }
+
+  // 3. Prime 2 parole core (se ci sono almeno 2 core words e differisce dai precedenti)
+  if (coreWords.length > 1) {
+    variants.push(coreWords.slice(0, 2).join(' '))
+  }
+
+  // Deduplica e limita a 3
+  return [...new Set(variants)].slice(0, 3)
+}
 
 // ─── Fetch con retry ──────────────────────────────────────────────────────────
 
@@ -24,7 +63,10 @@ async function redditFetch(url: string): Promise<unknown> {
 // ─── Ricerca subreddit rilevanti ──────────────────────────────────────────────
 
 async function findRelevantSubreddits(keyword: string): Promise<string[]> {
-  const url = `https://www.reddit.com/subreddits/search.json?q=${encodeURIComponent(keyword)}&limit=10`
+  // Usa l'ultimo variant (il più generico) per trovare subreddit tematici
+  const variants = buildSearchVariants(keyword)
+  const searchQuery = variants[variants.length - 1]
+  const url = `https://www.reddit.com/subreddits/search.json?q=${encodeURIComponent(searchQuery)}&limit=10`
   try {
     const data = await redditFetch(url) as {
       data: { children: Array<{ data: { display_name: string; subscribers: number; last_created_utc?: number } }> }
@@ -45,10 +87,7 @@ async function fetchPostsFromSubreddit(
   keyword: string,
   cutoffUtc: number
 ): Promise<RedditPost[]> {
-  const variants = [
-    keyword,
-    ...keyword.split(' ').map(w => w),
-  ].slice(0, 3)
+  const variants = buildSearchVariants(keyword)
 
   const posts: RedditPost[] = []
   const seenIds = new Set<string>()
@@ -144,6 +183,12 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     const posts = await fetchPostsFromSubreddit(subreddit, keyword, cutoffUtc)
     allPosts.push(...posts)
     if (allPosts.length >= 20) break
+  }
+
+  // 3. Fallback r/all se subreddit specifici trovati ma 0 post (topic generico o storico)
+  if (allPosts.length === 0 && searchTargets[0] !== 'all') {
+    const fallbackPosts = await fetchPostsFromSubreddit('all', keyword, cutoffUtc)
+    allPosts.push(...fallbackPosts)
   }
 
   // 3. Fetch commenti per i post più rilevanti

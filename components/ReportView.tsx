@@ -59,6 +59,8 @@ export interface FullReport {
   roiNarrative: { blocco_scenario: string; blocco_budget: string; blocco_timeline: string; blocco_verdetto: string }
   budget: number
   subNiches: { keyword: string; bsr: number; reviewCount: number; vulnerable: boolean }[]
+  topBooks: { asin: string; title: string; bsr: number; price: number; currency: string; reviewCount: number; rating: number; selfPublished: boolean; imageUrl?: string }[]
+  redditMeta?: { available: boolean; insufficientCorpus: boolean; threadCount: number; subredditsUsed: string[] }
   complianceCategory: string
   complianceRisk: 'alto' | 'medio' | 'basso'
 }
@@ -75,6 +77,16 @@ const TIPO_COLOR: Record<string, string> = {
 }
 function tipoStyle(tipo: string) {
   return TIPO_COLOR[tipo.toLowerCase()] ?? 'text-zinc-600 bg-zinc-50 border-zinc-200'
+}
+const AMAZON_DOMAIN: Record<string, string> = {
+  US: 'amazon.com', UK: 'amazon.co.uk', DE: 'amazon.de',
+  FR: 'amazon.fr',  IT: 'amazon.it',   ES: 'amazon.es',
+}
+function amazonProductUrl(asin: string, market: string) {
+  return `https://www.${AMAZON_DOMAIN[market] ?? 'amazon.com'}/dp/${asin}`
+}
+function coverUrl(asin: string, imageUrl?: string) {
+  return imageUrl || `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SX85_.jpg`
 }
 function scoreColor(s: number) {
   if (s >= 70) return 'text-emerald-600'
@@ -115,11 +127,11 @@ function fmt(n: number, dec = 2) {
   return n.toLocaleString('it-IT', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
 
-// Parsa la strategia lancio in punti numerati (es. "1) ... 2) ...")
+// Parsa la strategia lancio in punti numerati (es. "1) ...", "1. ...")
 function parseStrategiaLancio(text: string): string[] {
   return text
-    .split(/(?=\d+\)\s)/)
-    .map(p => p.replace(/^\d+\)\s+/, '').trim())
+    .split(/(?=\d+[).]\s+[A-Z])/)
+    .map(p => p.replace(/^\d+[).]\s+/, '').trim())
     .filter(Boolean)
 }
 
@@ -138,6 +150,50 @@ function Section({ num, title, children, breakBefore = true }: {
         {children}
       </div>
     </section>
+  )
+}
+
+// ─── SubCard ──────────────────────────────────────────────────────────────────
+
+type AccentKey = 'zinc' | 'indigo' | 'sky' | 'emerald' | 'rose' | 'amber' | 'violet'
+
+const ACCENT_CLASSES: Record<AccentKey, { header: string; label: string }> = {
+  zinc:    { header: 'bg-zinc-50 border-zinc-200',       label: 'text-zinc-500' },
+  indigo:  { header: 'bg-indigo-50 border-indigo-100',   label: 'text-indigo-600' },
+  sky:     { header: 'bg-sky-50 border-sky-100',         label: 'text-sky-600' },
+  emerald: { header: 'bg-emerald-50 border-emerald-100', label: 'text-emerald-700' },
+  rose:    { header: 'bg-rose-50 border-rose-100',       label: 'text-rose-600' },
+  amber:   { header: 'bg-amber-50 border-amber-100',     label: 'text-amber-700' },
+  violet:  { header: 'bg-violet-50 border-violet-100',   label: 'text-violet-600' },
+}
+
+function SubCard({ title, accent = 'zinc', children }: {
+  title: string; accent?: AccentKey; children: React.ReactNode
+}) {
+  const cls = ACCENT_CLASSES[accent]
+  return (
+    <div className="rounded-xl border border-zinc-200 overflow-hidden print:break-inside-avoid">
+      <div className={`px-4 py-2.5 border-b ${cls.header}`}>
+        <p className={`text-xs font-bold uppercase tracking-widest ${cls.label}`}>{title}</p>
+      </div>
+      <div className="px-4 py-4">{children}</div>
+    </div>
+  )
+}
+
+// ─── SectionNote ──────────────────────────────────────────────────────────────
+
+function SectionNote({ children }: { children: React.ReactNode }) {
+  return (
+    <details className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 overflow-hidden">
+      <summary className="px-4 py-3 cursor-pointer select-none text-xs font-semibold text-zinc-500 hover:bg-zinc-100 transition-colors flex items-center gap-2 list-none">
+        <span className="text-zinc-400">▸</span>
+        Come leggere questa sezione
+      </summary>
+      <div className="px-5 py-4 border-t border-zinc-200">
+        <p className="text-sm text-zinc-600 leading-relaxed">{children}</p>
+      </div>
+    </details>
   )
 }
 
@@ -179,8 +235,15 @@ export default function ReportView({ report }: { report: FullReport }) {
 
   const strategiaSteps = parseStrategiaLancio(report.seriesStrategy.strategia_lancio)
 
+  const footerText = `BookInsight · ${report.keyword} · ${report.market} · ${date} · Score ${report.profitabilityScore}/100`
+
   return (
     <div className="space-y-4 report-root">
+
+      {/* ── FOOTER DI PAGINA (solo stampa) ──────────────────────────────── */}
+      <div className="hidden print:block fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white px-8 py-1.5">
+        <p className="text-[8pt] text-zinc-400 text-center">{footerText}</p>
+      </div>
 
       {/* ── COPERTINA (solo stampa) ──────────────────────────────────────── */}
       <div className="print-cover hidden print:flex flex-col justify-between min-h-screen print:min-h-0 print:h-screen print:overflow-hidden px-16 py-20 print:px-12 print:py-10 bg-white">
@@ -203,10 +266,20 @@ export default function ReportView({ report }: { report: FullReport }) {
               <span className="text-sm text-zinc-400">CPC Amazon Ads: ${report.cpc.toFixed(2)}</span>
             )}
           </div>
+          {/* Punteggio compatto — solo stampa, dentro il blocco titolo per non sforare pagina 1 */}
+          <div className="hidden print:flex items-baseline gap-2 mt-8">
+            <span className={`text-7xl font-black leading-none ${scoreColor(report.profitabilityScore)}`}>
+              {report.profitabilityScore}
+            </span>
+            <div className="flex flex-col">
+              <span className="text-2xl text-zinc-300 font-light">/100</span>
+              <span className="text-xs text-zinc-400 mt-1">Profitability Score</span>
+            </div>
+          </div>
         </div>
 
-        {/* Score in basso */}
-        <div className="flex items-end justify-between">
+        {/* Score in basso — nascosto in stampa (già nel footer) */}
+        <div className="flex items-end justify-between print:hidden">
           <div>
             <p className="text-xs text-zinc-400 mb-1">Profitability Score</p>
             <div className="flex items-baseline gap-1">
@@ -255,52 +328,55 @@ export default function ReportView({ report }: { report: FullReport }) {
         </div>
       </div>
 
-      {/* ── §1 + §2 condividono la stessa pagina di stampa ──────────────── */}
-      <div className="print-break-before space-y-4">
+      {/* ── §1 Key Insights ─────────────────────────────────────────────── */}
+      <Section num="1" title="Key Insights">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {report.keyInsights.map((ins, i) => (
+            <div key={i} className={`p-4 rounded-xl border print:break-inside-avoid ${tipoStyle(ins.tipo)}`}>
+              <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5 mb-2 capitalize border border-current/20 bg-current/10">
+                {ins.tipo}
+              </span>
+              <p className="text-sm text-zinc-700 leading-relaxed">{ins.insight}</p>
+            </div>
+          ))}
+        </div>
+        <SectionNote>
+          Inizia sempre da qui. Queste 6 card ti danno una fotografia immediata della nicchia, prima ancora di guardare numeri o tabelle. Ogni card è classificata per tipo e colorata di conseguenza: le card verdi segnalano opportunità concrete da sfruttare, quelle rosse sono campanelli d&apos;allarme che meritano attenzione prima di procedere, quelle viola riguardano l&apos;andamento del mercato nel tempo, quelle blu descrivono la struttura competitiva della nicchia, quelle arancioni analizzano i libri e gli autori dominanti, quelle indaco ti danno un&apos;indicazione operativa su cosa fare concretamente. Se in questa sezione prevalgono segnali negativi, è il momento di fermarsi e valutare se vale davvero la pena approfondire l&apos;analisi. Se prevalgono segnali positivi, hai già una buona ragione per continuare con le sezioni successive.
+        </SectionNote>
+      </Section>
 
-        {/* §1 Key Insights */}
-        <Section num="1" title="Key Insights" breakBefore={false}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {report.keyInsights.map((ins, i) => (
-              <div key={i} className={`p-4 rounded-xl border print:break-inside-avoid ${tipoStyle(ins.tipo)}`}>
-                <span className="inline-block text-xs font-semibold rounded-full px-2 py-0.5 mb-2 capitalize border border-current/20 bg-current/10">
-                  {ins.tipo}
-                </span>
-                <p className="text-sm text-zinc-700 leading-relaxed">{ins.insight}</p>
+      {/* ── §2 Profitability Score ───────────────────────────────────────── */}
+      <Section num="2" title="Profitability Score">
+        <div className="space-y-4">
+          <SubCard title="Score" accent="zinc">
+            <div className="flex gap-8 flex-wrap items-center print:break-inside-avoid">
+              <div className={`relative flex items-center justify-center w-32 h-32 rounded-full border-8 ${scoreBorder(report.profitabilityScore)} shrink-0 print:hidden`}>
+                <div className="text-center">
+                  <span className={`text-4xl font-black leading-none ${scoreColor(report.profitabilityScore)}`}>
+                    {report.profitabilityScore}
+                  </span>
+                  <span className="block text-xs text-zinc-400 font-medium">/100</span>
+                </div>
               </div>
-            ))}
-          </div>
-        </Section>
-
-        {/* §2 Profitability Score */}
-        <Section num="2" title="Profitability Score" breakBefore={false}>
-          <div className="flex gap-8 flex-wrap items-center print:break-inside-avoid">
-            <div className={`relative flex items-center justify-center w-32 h-32 rounded-full border-8 ${scoreBorder(report.profitabilityScore)} shrink-0`}>
-              <div className="text-center">
-                <span className={`text-4xl font-black leading-none ${scoreColor(report.profitabilityScore)}`}>
-                  {report.profitabilityScore}
-                </span>
-                <span className="block text-xs text-zinc-400 font-medium">/100</span>
+              <div className="flex-1 min-w-56 space-y-2.5">
+                <ScoreBar label="Domanda (30%)" value={sb.demandScore} />
+                <ScoreBar label="Royalty (25%)" value={sb.royaltyScore} />
+                <ScoreBar label="Competizione (20%)" value={sb.competitionScore} />
+                <ScoreBar label="Trend (15%)" value={sb.trendScore} />
+                <ScoreBar label="Compliance (10%)" value={sb.complianceScore} />
               </div>
             </div>
-            <div className="flex-1 min-w-56 space-y-2.5">
-              <ScoreBar label="Domanda (30%)" value={sb.demandScore} />
-              <ScoreBar label="Royalty (25%)" value={sb.royaltyScore} />
-              <ScoreBar label="Competizione (20%)" value={sb.competitionScore} />
-              <ScoreBar label="Trend (15%)" value={sb.trendScore} />
-              <ScoreBar label="Compliance (10%)" value={sb.complianceScore} />
+            <div className="flex flex-wrap gap-5 mt-5 pt-4 border-t border-zinc-100 text-sm">
+              <span className="text-zinc-500">BSR medio: <strong className="text-zinc-800">{sb.avgBsr.toLocaleString('it-IT')}</strong></span>
+              <span className="text-zinc-500">Royalty media: <strong className="text-zinc-800">${fmt(sb.avgRoyalty)}</strong></span>
+              <span className="text-zinc-500">Difficoltà: <strong className={difficultyColor(sb.entryDifficulty)}>{sb.entryDifficulty}</strong></span>
+              <span className="text-zinc-500">Trend: <strong className={trendColor(sb.trendSignal)}>{sb.trendSignal}</strong></span>
+              <span className="text-zinc-500">Compliance: <strong className="text-zinc-800">{report.complianceCategory}</strong> <span className="text-zinc-400">({report.complianceRisk})</span></span>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-5 mt-5 pt-4 border-t border-zinc-100 text-sm">
-            <span className="text-zinc-500">BSR medio: <strong className="text-zinc-800">{sb.avgBsr.toLocaleString('it-IT')}</strong></span>
-            <span className="text-zinc-500">Royalty media: <strong className="text-zinc-800">${fmt(sb.avgRoyalty)}</strong></span>
-            <span className="text-zinc-500">Difficoltà: <strong className={difficultyColor(sb.entryDifficulty)}>{sb.entryDifficulty}</strong></span>
-            <span className="text-zinc-500">Trend: <strong className={trendColor(sb.trendSignal)}>{sb.trendSignal}</strong></span>
-            <span className="text-zinc-500">Compliance: <strong className="text-zinc-800">{report.complianceCategory}</strong> <span className="text-zinc-400">({report.complianceRisk})</span></span>
-          </div>
+          </SubCard>
+
           {report.subNiches.length > 0 && (
-            <div className="mt-4">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-2">Sub-nicchie rilevate</p>
+            <SubCard title="Sub-nicchie rilevate" accent="emerald">
               <div className="flex flex-wrap gap-2">
                 {report.subNiches.map((s, i) => (
                   <span key={i} className={`text-xs px-3 py-1 rounded-full border font-medium ${s.vulnerable ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-zinc-100 border-zinc-200 text-zinc-600'}`}>
@@ -309,62 +385,133 @@ export default function ReportView({ report }: { report: FullReport }) {
                   </span>
                 ))}
               </div>
-            </div>
+            </SubCard>
           )}
-        </Section>
-
-      </div>
-
-      {/* §3 Top Competitor */}
-      <Section num="3" title="Top Competitor & Posizionamento">
-        <div className="grid sm:grid-cols-2 gap-5">
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 print:break-inside-avoid">
-            <p className="text-xs font-bold text-zinc-400 tracking-widest uppercase mb-2">Target Competitor</p>
-            <p className="font-bold text-zinc-900 text-sm leading-snug mb-4">{report.competitorTarget.title}</p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              {[
-                ['ASIN', <a key="a" href={`https://www.amazon.com/dp/${report.competitorTarget.asin}`} target="_blank" rel="noreferrer" className="text-indigo-600 underline underline-offset-2">{report.competitorTarget.asin}</a>],
-                ['BSR', report.competitorTarget.bsr.toLocaleString('it-IT')],
-                ['Prezzo', `${report.competitorTarget.currency}${report.competitorTarget.price}`],
-                ['Recensioni', report.competitorTarget.reviewCount.toLocaleString('it-IT')],
-                ['Rating', `${report.competitorTarget.rating}/5`],
-                ['Pagine', report.competitorTarget.pages],
-              ].map(([k, v]) => (
-                <div key={String(k)}>
-                  <span className="text-zinc-400 mr-1">{k}:</span>
-                  <span className="font-medium text-zinc-700">{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            {[
-              { label: 'Angolo', value: report.passo0.angolo, color: 'bg-indigo-50 border-indigo-100' },
-              { label: 'Target Reader', value: report.passo0.target_reader, color: 'bg-sky-50 border-sky-100' },
-              { label: 'USP', value: report.passo0.usp, color: 'bg-violet-50 border-violet-100' },
-            ].map(({ label, value, color }) => (
-              <div key={label} className={`p-3 rounded-xl border ${color} print:break-inside-avoid`}>
-                <p className="text-xs font-bold text-zinc-400 tracking-widest uppercase mb-0.5">{label}</p>
-                <p className="text-sm text-zinc-800 leading-snug">{value}</p>
-              </div>
-            ))}
-            {report.passo0.punti_forza.length > 0 && (
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 print:break-inside-avoid">
-                <p className="text-xs font-bold text-emerald-600 tracking-widest uppercase mb-1.5">Punti di forza</p>
-                <ul className="space-y-1">
-                  {report.passo0.punti_forza.slice(0, 3).map((p, i) => (
-                    <li key={i} className="text-xs text-emerald-700 flex gap-1.5 leading-relaxed">
-                      <span className="shrink-0 font-bold">+</span>{p}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
         </div>
+        <SectionNote>
+          Il punteggio da 0 a 100 misura quanto sia conveniente, in questo momento, pubblicare un libro in questa nicchia. Non è un valore assoluto, ma un indicatore comparativo che tiene conto di cinque aspetti fondamentali del mercato. Punteggio verde (70 o più): la nicchia è sana, la domanda c&apos;è, i margini sono accettabili e la concorrenza è gestibile — un buon punto di partenza. Punteggio giallo (40–69): l&apos;opportunità esiste ma richiede una proposta editoriale molto differenziata per emergere; non è da escludere, ma va affrontata con più cura nel posizionamento. Punteggio rosso (sotto 40): la nicchia presenta troppe criticità per giustificare un investimento in questa forma; meglio cercare una variante della keyword o un mercato diverso. Le cinque barre ti mostrano da dove viene il punteggio: la Domanda misura quanto le persone cercano e comprano in questa nicchia; la Royalty indica quanto guadagni mediamente per ogni copia venduta; la Competizione riflette quanto è difficile entrare nel mercato; il Trend dice se la domanda sta crescendo o calando; la Compliance segnala se la tematica comporta rischi legali o etici (es. salute, finanza, contenuti sensibili). Le sub-nicchie in verde sono aree più specifiche con meno concorrenza: spesso rappresentano il punto di ingresso ideale per chi parte da zero.
+        </SectionNote>
       </Section>
 
-      {/* §4 Trend Analysis */}
+      {/* ── §3 Top Competitor & Posizionamento ──────────────────────────── */}
+      <Section num="3" title="Top Competitor & Posizionamento">
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <SubCard title="Competitor target" accent="indigo">
+              <p className="font-bold text-zinc-900 text-sm leading-snug mb-4">{report.competitorTarget.title}</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                {[
+                  ['ASIN', <a key="a" href={`https://www.amazon.com/dp/${report.competitorTarget.asin}`} target="_blank" rel="noreferrer" className="text-indigo-600 underline underline-offset-2">{report.competitorTarget.asin}</a>],
+                  ['BSR', report.competitorTarget.bsr.toLocaleString('it-IT')],
+                  ['Prezzo', `${report.competitorTarget.currency}${report.competitorTarget.price}`],
+                  ['Recensioni', report.competitorTarget.reviewCount.toLocaleString('it-IT')],
+                  ['Rating', `${report.competitorTarget.rating}/5`],
+                  ['Pagine', report.competitorTarget.pages],
+                ].map(([k, v]) => (
+                  <div key={String(k)}>
+                    <span className="text-zinc-400 mr-1">{k}:</span>
+                    <span className="font-medium text-zinc-700">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </SubCard>
+
+            <SubCard title="Posizionamento" accent="sky">
+              <div className="space-y-2">
+                {[
+                  { label: 'Angolo', value: report.passo0.angolo },
+                  { label: 'Target Reader', value: report.passo0.target_reader },
+                  { label: 'USP', value: report.passo0.usp },
+                ].map(({ label, value }) => (
+                  <div key={label} className="print:break-inside-avoid">
+                    <p className="text-xs font-bold text-zinc-400 tracking-widest uppercase mb-0.5">{label}</p>
+                    <p className="text-sm text-zinc-800 leading-snug">{value}</p>
+                  </div>
+                ))}
+                {report.passo0.punti_forza.length > 0 && (
+                  <div className="pt-2 print:break-inside-avoid">
+                    <p className="text-xs font-bold text-emerald-600 tracking-widest uppercase mb-1.5">Punti di forza</p>
+                    <ul className="space-y-1">
+                      {report.passo0.punti_forza.slice(0, 3).map((p, i) => (
+                        <li key={i} className="text-xs text-emerald-700 flex gap-1.5 leading-relaxed">
+                          <span className="shrink-0 font-bold">+</span>{p}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </SubCard>
+          </div>
+
+          {report.topBooks?.length > 0 && (
+            <SubCard title="Top 5 competitor analizzati" accent="zinc">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-zinc-200">
+                      <th className="text-left py-2 px-2 pl-0 font-semibold text-zinc-500 tracking-wide">#</th>
+                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide">Cover</th>
+                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide">Titolo</th>
+                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">BSR</th>
+                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">Prezzo</th>
+                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">Recensioni</th>
+                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">Rating</th>
+                      <th className="text-left py-2 px-2 pr-0 font-semibold text-zinc-500 tracking-wide">Link</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.topBooks.slice(0, 5).map((b, i) => (
+                      <tr key={b.asin} className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors align-top">
+                        <td className="py-2.5 px-2 pl-0 font-bold text-zinc-400">{i + 1}</td>
+                        <td className="py-2.5 px-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={coverUrl(b.asin, b.imageUrl)}
+                            alt=""
+                            width={36}
+                            height={52}
+                            className="rounded object-cover bg-zinc-100 border border-zinc-200"
+                            style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
+                            onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
+                          />
+                        </td>
+                        <td className="py-2.5 px-2 max-w-[200px]">
+                          <p className="font-medium text-zinc-800 leading-snug line-clamp-2">{b.title}</p>
+                          {b.selfPublished && (
+                            <span className="inline-block mt-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              Self Publisher
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.bsr.toLocaleString('it-IT')}</td>
+                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.currency}{b.price.toFixed(2)}</td>
+                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.reviewCount.toLocaleString('it-IT')}</td>
+                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.rating.toFixed(1)}</td>
+                        <td className="py-2.5 px-2 pr-0">
+                          <a
+                            href={amazonProductUrl(b.asin, report.market)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-600 hover:text-indigo-800 underline underline-offset-2 whitespace-nowrap font-mono"
+                          >
+                            {b.asin}
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SubCard>
+          )}
+        </div>
+        <SectionNote>
+          Questa sezione risponde alla domanda: chi stai per sfidare, e dove ha lasciato spazio? Tra i primi cinque libri più venduti nella nicchia, l&apos;analisi individua quello più vulnerabile — non necessariamente il più famoso, ma quello con un buon volume di vendite (BSR basso) e ancora poche recensioni, il che significa che non ha ancora consolidato la sua reputazione presso i lettori. Per entrare in una nicchia non è necessario fare il libro più completo o più lungo: basta farne uno meglio focalizzato su un problema specifico, rivolto a un sotto-segmento di lettori preciso, o con una promessa editoriale più chiara. L&apos;Angolo è la promessa principale del libro rivale — cosa promette al lettore in copertina. Il Target Reader è il pubblico a cui si rivolge. L&apos;USP è il vantaggio che lo distingue dagli altri nella stessa nicchia. Leggendo questi tre elementi capisci esattamente dove c&apos;è spazio per un posizionamento alternativo. I Punti di forza ti dicono cosa dovrai almeno eguagliare per essere preso sul serio. La tabella dei Top 5 ti mostra il panorama completo della concorrenza: clicca sul codice ASIN per aprire la pagina Amazon e leggere direttamente le recensioni dei lettori — soprattutto quelle a 1 e 2 stelle, che sono la fonte più ricca di informazioni su cosa manca ai libri esistenti.
+        </SectionNote>
+      </Section>
+
+      {/* ── §4 Trend Analysis ────────────────────────────────────────────── */}
       <Section num="4" title="Trend Analysis">
         {!report.trends.available ? (
           <div className="flex items-center gap-3 text-sm text-zinc-400 italic py-2">
@@ -373,27 +520,31 @@ export default function ReportView({ report }: { report: FullReport }) {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center gap-4 flex-wrap print:break-inside-avoid">
-              <span className={`text-3xl font-black ${trendColor(report.trendForecast?.classificazione ?? sb.trendSignal)}`}>
-                {report.trendForecast?.classificazione ?? sb.trendSignal}
-              </span>
-              <span className={`text-lg font-bold ${report.trends.yoyGrowth >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                {report.trends.yoyGrowth > 0 ? '+' : ''}{report.trends.yoyGrowth}% YoY
-              </span>
-              {report.trendForecast?.stagionalita && (
-                <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200 font-medium">
-                  Stagionale: {report.trendForecast.stagionalita}
-                </span>
-              )}
-            </div>
-            {report.trendForecast?.narrativa && (
-              <p className="text-sm text-zinc-600 leading-relaxed border-l-2 border-indigo-200 pl-4">
-                {report.trendForecast.narrativa}
-              </p>
-            )}
+            <SubCard title="Andamento" accent="violet">
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <span className={`text-3xl font-black ${trendColor(report.trendForecast?.classificazione ?? sb.trendSignal)}`}>
+                    {report.trendForecast?.classificazione ?? sb.trendSignal}
+                  </span>
+                  <span className={`text-lg font-bold ${report.trends.yoyGrowth >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {report.trends.yoyGrowth > 0 ? '+' : ''}{report.trends.yoyGrowth}% YoY
+                  </span>
+                  {report.trendForecast?.stagionalita && (
+                    <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200 font-medium">
+                      Stagionale: {report.trendForecast.stagionalita}
+                    </span>
+                  )}
+                </div>
+                {report.trendForecast?.narrativa && (
+                  <p className="text-sm text-zinc-600 leading-relaxed border-l-2 border-indigo-200 pl-4">
+                    {report.trendForecast.narrativa}
+                  </p>
+                )}
+              </div>
+            </SubCard>
+
             {report.trends.relatedQueries.length > 0 && (
-              <div className="print:break-inside-avoid">
-                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Query correlate</p>
+              <SubCard title="Query correlate" accent="violet">
                 <div className="flex flex-wrap gap-2">
                   {report.trends.relatedQueries.slice(0, 8).map((q, i) => (
                     <span key={i} className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-600">
@@ -404,19 +555,20 @@ export default function ReportView({ report }: { report: FullReport }) {
                     </span>
                   ))}
                 </div>
-              </div>
+              </SubCard>
             )}
           </div>
         )}
+        <SectionNote>
+          Prima di investire mesi di lavoro in un libro, è fondamentale sapere se la domanda in quella nicchia sta crescendo o calando. Il dato YoY (anno su anno) confronta l&apos;interesse degli ultimi 12 mesi con quello dei 12 mesi precedenti: un valore positivo indica un mercato in espansione, uno negativo un mercato in contrazione. Una nicchia in crescita è più attrattiva perché significa che nuovi lettori si avvicinano ogni mese all&apos;argomento. Una nicchia stabile è comunque valida se ha una domanda solida. Una nicchia in calo non è automaticamente da evitare — potrebbe avere ancora un pubblico fedele — ma richiede una proposta molto più mirata. La stagionalità è un&apos;informazione pratica importante: se la tua nicchia ha picchi di interesse ricorrenti in certi periodi dell&apos;anno (es. diete e fitness a gennaio, viaggi in primavera, regali a dicembre), pianifica il lancio almeno 6–8 settimane prima del picco, così da accumulare le prime recensioni prima che la domanda salga al massimo. Le query correlate sono ricerche adiacenti in crescita: se alcune di queste descrivono meglio il tuo angolo editoriale rispetto alla keyword principale, potresti includerle nel titolo, nel sottotitolo o nelle parole chiave di pubblicazione KDP per catturare traffico aggiuntivo.
+        </SectionNote>
       </Section>
 
-      {/* §5 Gap Analysis & Pain Points — 1 colonna sequenziale */}
+      {/* ── §5 Gap Analysis & Pain Points ────────────────────────────────── */}
       <Section num="5" title="Gap Analysis & Pain Points">
-        <div className="space-y-6">
+        <div className="space-y-4">
 
-          {/* 1. Pain Points */}
-          <div className="print:break-inside-avoid">
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Top Pain Points</p>
+          <SubCard title="Pain Points" accent="rose">
             {report.painPoints.length > 0 ? (
               <ul className="space-y-2">
                 {report.painPoints.slice(0, 5).map((pp, i) => (
@@ -432,17 +584,24 @@ export default function ReportView({ report }: { report: FullReport }) {
                 ))}
               </ul>
             ) : (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                <p className="text-sm text-zinc-400 italic">
-                  Nessun dato Reddit disponibile — pain points inferiti dal contesto Amazon nella Gap Analysis sottostante.
+              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-1">
+                <p className="text-xs font-semibold text-amber-700">
+                  {!report.redditMeta?.available
+                    ? 'Nessun post Reddit trovato per questa keyword nel periodo analizzato.'
+                    : report.redditMeta?.insufficientCorpus
+                    ? `Dati Reddit insufficienti — trovati ${report.redditMeta.threadCount} thread ma troppo pochi commenti qualificati.`
+                    : 'Pain points non estratti dal corpus Reddit.'}
+                </p>
+                <p className="text-xs text-amber-600">
+                  {!report.redditMeta?.available
+                    ? 'Possibile causa: la nicchia è discussa principalmente su forum specializzati, non su Reddit, oppure i post rilevanti risalgono a oltre 12 mesi fa.'
+                    : 'I pain points nella Gap Analysis sottostante sono inferiti dalle recensioni Amazon.'}
                 </p>
               </div>
             )}
-          </div>
+          </SubCard>
 
-          {/* 2. Problemi non risolti */}
-          <div className="print:break-inside-avoid">
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Problemi non risolti dai competitor</p>
+          <SubCard title="Problemi non risolti dai competitor" accent="zinc">
             <ul className="space-y-1.5">
               {report.gapAnalysis.passo1_problemi_non_risolti.items.map((item, i) => (
                 <li key={i} className="text-sm text-zinc-700 flex gap-2 leading-relaxed">
@@ -450,11 +609,9 @@ export default function ReportView({ report }: { report: FullReport }) {
                 </li>
               ))}
             </ul>
-          </div>
+          </SubCard>
 
-          {/* 3. Angoli non coperti */}
-          <div className="print:break-inside-avoid">
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Angoli non coperti</p>
+          <SubCard title="Angoli non coperti" accent="indigo">
             <ul className="space-y-1.5">
               {report.gapAnalysis.passo2_angoli_mancanti.items.map((item, i) => (
                 <li key={i} className="text-sm text-zinc-700 flex gap-2 leading-relaxed">
@@ -462,31 +619,27 @@ export default function ReportView({ report }: { report: FullReport }) {
                 </li>
               ))}
             </ul>
-          </div>
+          </SubCard>
 
-          {/* 4. Libro proposto */}
-          <div className="rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-800 text-white p-5 print:break-inside-avoid">
-            <p className="text-xs font-bold opacity-60 mb-2 uppercase tracking-widest">Libro proposto</p>
-            <p className="font-black text-xl leading-snug">{report.gapAnalysis.passo5_tesi_libro.titolo_proposto}</p>
-            <p className="text-sm opacity-75 mt-1.5 leading-relaxed">{report.gapAnalysis.passo5_tesi_libro.sottotitolo}</p>
-            <p className="text-sm mt-3 italic opacity-80 border-l border-white/30 pl-3">{report.gapAnalysis.passo5_tesi_libro.hook}</p>
+          <SubCard title="Libro proposto" accent="sky">
+            <p className="font-black text-xl leading-snug text-zinc-900">{report.gapAnalysis.passo5_tesi_libro.titolo_proposto}</p>
+            <p className="text-sm text-zinc-600 mt-1.5 leading-relaxed">{report.gapAnalysis.passo5_tesi_libro.sottotitolo}</p>
+            <p className="text-sm mt-3 italic text-zinc-500 border-l-2 border-sky-300 pl-3">{report.gapAnalysis.passo5_tesi_libro.hook}</p>
             {report.gapAnalysis.passo5_tesi_libro.differenziatori.length > 0 && (
               <ul className="mt-4 space-y-1.5">
                 {report.gapAnalysis.passo5_tesi_libro.differenziatori.map((d, i) => (
-                  <li key={i} className="text-xs opacity-80 flex gap-2 leading-relaxed">
-                    <span className="shrink-0 opacity-50 font-bold">·</span>{d}
+                  <li key={i} className="text-xs text-zinc-600 flex gap-2 leading-relaxed">
+                    <span className="shrink-0 text-sky-400 font-bold">·</span>{d}
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </SubCard>
 
-          {/* 5. Gap Inventory */}
-          <div className="print:break-inside-avoid">
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Gap Inventory</p>
+          <SubCard title="Gap Inventory" accent="amber">
             <div className="space-y-2">
               {report.gapAnalysis.gap_inventory_table.slice(0, 5).map((g, i) => (
-                <div key={i} className="flex items-start gap-2.5">
+                <div key={i} className="flex items-start gap-2.5 print:break-inside-avoid">
                   <span className={`shrink-0 mt-0.5 text-xs px-2 py-0.5 rounded-full font-semibold ${prioritaCls(g.priorita)}`}>
                     {g.priorita}
                   </span>
@@ -497,148 +650,128 @@ export default function ReportView({ report }: { report: FullReport }) {
                 </div>
               ))}
             </div>
-          </div>
+          </SubCard>
 
         </div>
+        <SectionNote>
+          Questa è la sezione più importante del report: ti dice cosa scrivere e perché i lettori sceglieranno il tuo libro al posto degli altri. I Pain Points sono problemi reali espressi dai lettori in prima persona, raccolti da discussioni online e recensioni Amazon. Per ogni problema viene indicato un punteggio che riflette tre cose: quanto spesso viene citato, quanto è frustrante per chi lo vive, e quanto è concreto e risolvibile con un libro. I problemi con il simbolo ⚠ sono segnali critici: sono così intensi e diffusi che non affrontarli nel tuo libro sarebbe un&apos;opportunità sprecata. I Problemi non risolti dai competitor sono le lacune concrete dei libri esistenti — cose che i lettori cercano e non trovano. Gli Angoli non coperti sono approcci editoriali completamente inesplorati nella nicchia: potrebbe essere un formato diverso, un tono più pratico, o un sotto-segmento di pubblico completamente ignorato dai concorrenti. Il Libro proposto è la sintesi operativa di tutta l&apos;analisi: titolo, sottotitolo, hook e differenziatori sono già redatti dall&apos;AI come punto di partenza concreto su cui lavorare. La Gap Inventory classifica ogni opportunità per priorità — Alta, Media, Bassa — con un&apos;indicazione su come sfruttarla: parti sempre dalle priorità Alta quando costruisci la scaletta del libro.
+        </SectionNote>
       </Section>
 
-      {/* §6 Series Strategy */}
+      {/* ── §6 Series Strategy ───────────────────────────────────────────── */}
       <Section num="6" title="Series Strategy">
-        {/* Verdetto */}
-        <div className="flex items-start gap-4 mb-5 p-4 rounded-xl border border-zinc-100 bg-zinc-50 print:break-inside-avoid">
-          <span className={`text-lg font-black px-5 py-2 rounded-xl shrink-0 ${verdettoCls(report.seriesStrategy.verdetto)}`}>
-            {report.seriesStrategy.verdetto}
-          </span>
-          <p className="text-sm text-zinc-600 leading-relaxed pt-0.5">{report.seriesStrategy.motivazione_verdetto}</p>
-        </div>
-        {/* 3 volumi */}
-        <div className="grid sm:grid-cols-3 gap-3 mb-4">
-          {[
-            { n: '1', data: report.seriesStrategy.libro_1, sub: `${report.seriesStrategy.libro_1.pagine_target}p · ${report.seriesStrategy.libro_1.tempo_scrittura_settimane} sett.` },
-            { n: '2', data: report.seriesStrategy.libro_2, sub: report.seriesStrategy.libro_2.timing },
-            { n: '3', data: report.seriesStrategy.libro_3, sub: report.seriesStrategy.libro_3.condizione },
-          ].map(({ n, data, sub }) => (
-            <div key={n} className="p-4 rounded-xl border border-zinc-200 bg-white print:break-inside-avoid">
-              <p className="text-xs font-bold text-zinc-300 mb-1">Vol. {n}</p>
-              <p className="font-bold text-zinc-900 text-sm leading-snug mb-1.5">{data.titolo}</p>
-              <p className="text-xs text-zinc-500 leading-relaxed mb-2">{data.focus}</p>
-              <p className="text-xs text-zinc-400 italic">{sub}</p>
+        <div className="space-y-4">
+
+          <SubCard title="Verdetto" accent="zinc">
+            <div className="flex items-start gap-4">
+              <span className={`text-lg font-black px-5 py-2 rounded-xl shrink-0 ${verdettoCls(report.seriesStrategy.verdetto)}`}>
+                {report.seriesStrategy.verdetto}
+              </span>
+              <p className="text-sm text-zinc-600 leading-relaxed pt-0.5">{report.seriesStrategy.motivazione_verdetto}</p>
             </div>
-          ))}
-        </div>
-        {/* Strategia lancio — punti numerati */}
-        <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4 print:break-inside-avoid">
-          <p className="font-bold text-indigo-700 text-sm mb-3">Strategia lancio</p>
-          {strategiaSteps.length > 1 ? (
-            <ol className="space-y-2.5">
-              {strategiaSteps.map((step, i) => (
-                <li key={i} className="flex gap-2.5 text-sm text-zinc-700 leading-relaxed">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-200 text-indigo-700 text-xs font-bold flex items-center justify-center mt-0.5">
-                    {i + 1}
-                  </span>
-                  <span>{step}</span>
-                </li>
+          </SubCard>
+
+          <SubCard title="Libreria a tre volumi" accent="zinc">
+            <div className="grid sm:grid-cols-3 gap-3">
+              {[
+                { n: '1', data: report.seriesStrategy.libro_1, sub: `${report.seriesStrategy.libro_1.pagine_target}p · ${report.seriesStrategy.libro_1.tempo_scrittura_settimane} sett.` },
+                { n: '2', data: report.seriesStrategy.libro_2, sub: report.seriesStrategy.libro_2.timing },
+                { n: '3', data: report.seriesStrategy.libro_3, sub: report.seriesStrategy.libro_3.condizione },
+              ].map(({ n, data, sub }) => (
+                <div key={n} className="p-4 rounded-xl border border-zinc-200 bg-white print:break-inside-avoid">
+                  <p className="text-xs font-bold text-zinc-300 mb-1">Vol. {n}</p>
+                  <p className="font-bold text-zinc-900 text-sm leading-snug mb-1.5">{data.titolo}</p>
+                  <p className="text-xs text-zinc-500 leading-relaxed mb-2">{data.focus}</p>
+                  <p className="text-xs text-zinc-400 italic">{sub}</p>
+                </div>
               ))}
-            </ol>
-          ) : (
-            <p className="text-sm text-zinc-700 leading-relaxed">{report.seriesStrategy.strategia_lancio}</p>
-          )}
+            </div>
+          </SubCard>
+
+          <SubCard title="Strategia lancio" accent="indigo">
+            {strategiaSteps.length > 1 ? (
+              <ol className="space-y-2.5">
+                {strategiaSteps.map((step, i) => (
+                  <li key={i} className="flex gap-2.5 text-sm text-zinc-700 leading-relaxed">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-200 text-indigo-700 text-xs font-bold flex items-center justify-center mt-0.5">
+                      {i + 1}
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-sm text-zinc-700 leading-relaxed">{report.seriesStrategy.strategia_lancio}</p>
+            )}
+          </SubCard>
+
         </div>
+        <SectionNote>
+          Pubblicare un solo libro va bene per iniziare, ma costruire un catalogo di titoli correlati è quello che trasforma un progetto occasionale in un&apos;attività editoriale sostenibile nel tempo. Questa sezione ti propone una strategia a tre volumi pensata per massimizzare il valore del tuo lavoro. Il Vol.1 è il libro da scrivere adesso: ha il posizionamento più chiaro, si basa direttamente sull&apos;analisi dei competitor e dei gap, e ha il rischio più basso perché risponde a una domanda già dimostrata. Il Vol.2 è un prodotto complementare da pianificare dopo il lancio del primo: di solito si rivolge agli stessi lettori con qualcosa di diverso — un workbook, un planner, una guida pratica — e ha il vantaggio di non dover conquistare un nuovo pubblico da zero. Il Vol.3 è uno spin-off su una nicchia adiacente da considerare solo dopo aver validato che il tuo brand funziona: evita di bruciare risorse su un terzo titolo prima di aver capito cosa ha funzionato con il primo. Il verdetto INVEST / PARTIAL / PASS ti dice in modo sintetico se la nicchia vale il tuo investimento complessivo di tempo e denaro. INVEST significa che le proiezioni giustificano pienamente il lavoro richiesto. PARTIAL significa che l&apos;opportunità c&apos;è ma con budget ridotto o una proposta ancora più mirata. PASS significa che è meglio cercare un&apos;altra nicchia. La Strategia lancio ti guida passo dopo passo nelle prime settimane dopo la pubblicazione, dalla raccolta delle prime recensioni alla gestione delle campagne pubblicitarie.
+        </SectionNote>
       </Section>
 
-      {/* §7 Investment & ROI */}
+      {/* ── §7 Investment & ROI ──────────────────────────────────────────── */}
       <Section num="7" title="Investment & ROI">
-        {/* KPI row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <KpiCard label="Vendite/giorno"  value={`${roi.avgDailySalesMin}–${roi.avgDailySalesMax}`} />
-          <KpiCard label="Ricavo mensile"  value={`$${fmt(roi.avgMonthlyRevenueMin, 0)}–$${fmt(roi.avgMonthlyRevenueMax, 0)}`} />
-          <KpiCard label="Break-even"      value={`${roi.breakEvenMonths} mesi`} sub={roi.bepSignal} subColor={bepColor(roi.bepSignal)} />
-          <KpiCard label="ROI 12 mesi"     value={`$${fmt(roi.roiCluster12mMin, 0)}–$${fmt(roi.roiCluster12mMax, 0)}`} />
-        </div>
-        {/* Budget row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 text-center">
-          {[
-            { label: 'Budget totale',   value: `$${fmt(report.budget, 0)}` },
-            { label: 'Ads consigliati', value: `$${fmt(roi.suggestedAdsMonthly, 0)}/mese` },
-            { label: 'Buffer cashflow', value: `$${fmt(roi.cashflowBuffer, 0)}` },
-            ...(report.cpc
-              ? [{ label: 'Click stimati/mese', value: `~${Math.round(roi.suggestedAdsMonthly / report.cpc).toLocaleString('it-IT')}` }]
-              : [{ label: 'Verdetto', value: report.roi.investVerdict }]
-            ),
-          ].map(({ label, value }) => (
-            <div key={label} className="p-3 rounded-xl border border-zinc-100 bg-zinc-50 text-center print:break-inside-avoid">
-              <p className="text-xs text-zinc-400 mb-1">{label}</p>
-              <p className={`text-base font-bold ${label === 'Verdetto' ? (report.roi.investVerdict === 'INVEST' ? 'text-emerald-600' : report.roi.investVerdict === 'PARTIAL' ? 'text-amber-500' : 'text-rose-500') : 'text-zinc-800'}`}>
-                {value}
-              </p>
-            </div>
-          ))}
-        </div>
-        {/* CPC info se presente */}
-        {report.cpc && (
-          <div className="mb-4 flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2">
-            <span className="font-semibold">CPC Amazon Ads: ${report.cpc.toFixed(2)}</span>
-            <span className="text-zinc-400">·</span>
-            <span>Con il budget ads di ${fmt(roi.suggestedAdsMonthly, 0)}/mese puoi acquistare circa <strong>~{Math.round(roi.suggestedAdsMonthly / report.cpc).toLocaleString('it-IT')} click/mese</strong></span>
-          </div>
-        )}
-        {/* 4 blocchi narrativa — 1 colonna in stampa */}
-        <div className="grid sm:grid-cols-2 print:grid-cols-1 gap-3">
-          {[
-            { label: 'Scenario',  text: report.roiNarrative.blocco_scenario },
-            { label: 'Budget',    text: report.roiNarrative.blocco_budget },
-            { label: 'Timeline',  text: report.roiNarrative.blocco_timeline },
-            { label: 'Verdetto',  text: report.roiNarrative.blocco_verdetto },
-          ].map(({ label, text }) => (
-            <div key={label} className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 print:break-inside-avoid">
-              <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1.5">{label}</p>
-              <p className="text-sm text-zinc-700 leading-relaxed">{text}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
+        <div className="space-y-4">
 
-      {/* §8 Come leggere questo report */}
-      <Section num="8" title="Come leggere questo report">
-        <div className="space-y-0 divide-y divide-zinc-100">
-          {[
-            {
-              sec: '§1 — Key Insights',
-              desc: 'Sintesi delle 6 osservazioni più rilevanti sulla nicchia, classificate per tipo (Mercato, Trend, Rischio, Opportunità, Competitor, Suggerimento). Leggilo per primo: offre un quadro immediato prima di entrare nel dettaglio.',
-            },
-            {
-              sec: '§2 — Profitability Score',
-              desc: 'Punteggio 0–100 calcolato su 5 dimensioni: Domanda (30%), Royalty (25%), Competizione (20%), Trend (15%), Compliance (10%). Verde ≥70 = nicchia attrattiva, Giallo 40–69 = selettiva, Rosso <40 = sconsigliata. L\'Entry Difficulty si basa sul leader di nicchia (posizione #1), non sul competitor target.',
-            },
-            {
-              sec: '§3 — Top Competitor & Posizionamento',
-              desc: 'Analisi del competitor più vulnerabile tra i top 5 Amazon per BSR e numero di recensioni. L\'AI ne estrae l\'Angolo editoriale, il Target Reader e l\'USP per aiutarti a capire come differenziarti. I punti di forza indicano cosa dovrai eguagliare o superare.',
-            },
-            {
-              sec: '§4 — Trend Analysis',
-              desc: 'Andamento della domanda su Google Trends negli ultimi 5 anni con crescita YoY (anno su anno). "Stagionale" indica picchi ricorrenti in determinati mesi: pianifica il lancio di conseguenza. Le query correlate sono sub-nicchie e termini in espansione da considerare nel titolo o sottotitolo.',
-            },
-            {
-              sec: '§5 — Gap Analysis & Pain Points',
-              desc: 'Il cuore strategico del report. I Pain Points provengono da Reddit e recensioni Amazon: sono i problemi reali espressi dai lettori. "Problemi non risolti" e "Angoli non coperti" identificano cosa manca ai libri esistenti. Il Libro proposto è la sintesi operativa con titolo, sottotitolo, hook e differenziatori chiave. La Gap Inventory classifica per priorità (ALTA/MEDIA/BASSA) ogni opportunità.',
-            },
-            {
-              sec: '§6 — Series Strategy',
-              desc: 'Strategia a 3 volumi: Vol.1 è il libro da scrivere subito, Vol.2 è l\'espansione naturale da pianificare dopo il lancio, Vol.3 è uno spin-off su nicchia adiacente da attivare al raggiungimento di soglie di vendita specifiche. Il verdetto INVEST/PARTIAL/PASS si basa sul ROI proiettato: INVEST = ROI 12m ≥2× budget. Il piano lancio include pricing, ARC team, Amazon Ads e contenuto organico.',
-            },
-            {
-              sec: '§7 — Investment & ROI',
-              desc: 'Analisi finanziaria con stime di vendite giornaliere, ricavi mensili, break-even e ROI a 12 mesi. I valori sono calcolati con la formula BSR→vendite calibrata su dati storici KDP, con moltiplicatori per mercato (US/UK/DE/IT/ES). Buffer cashflow = 2 mesi di budget ads: è la riserva raccomandata prima di scalare le campagne. BEP Verde = break-even ≤3 mesi, Giallo = 3–6 mesi, Rosso = >6 mesi.',
-            },
-          ].map(({ sec, desc }) => (
-            <div key={sec} className="flex gap-4 py-3.5 print:break-inside-avoid">
-              <div className="shrink-0 w-48 pt-0.5">
-                <span className="text-xs font-bold text-indigo-700">{sec}</span>
-              </div>
-              <p className="text-sm text-zinc-600 leading-relaxed">{desc}</p>
+          <SubCard title="Proiezioni" accent="zinc">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <KpiCard label="Vendite/giorno"  value={`${roi.avgDailySalesMin}–${roi.avgDailySalesMax}`} />
+              <KpiCard label="Ricavo mensile"  value={`$${fmt(roi.avgMonthlyRevenueMin, 0)}–$${fmt(roi.avgMonthlyRevenueMax, 0)}`} />
+              <KpiCard label="Break-even"      value={`${roi.breakEvenMonths} mesi`} sub={roi.bepSignal} subColor={bepColor(roi.bepSignal)} />
+              <KpiCard label="ROI 12 mesi"     value={`$${fmt(roi.roiCluster12mMin, 0)}–$${fmt(roi.roiCluster12mMax, 0)}`} />
             </div>
-          ))}
+          </SubCard>
+
+          <SubCard title="Budget" accent="zinc">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Budget totale',   value: `$${fmt(report.budget, 0)}` },
+                { label: 'Ads consigliati', value: `$${fmt(roi.suggestedAdsMonthly, 0)}/mese` },
+                { label: 'Buffer cashflow', value: `$${fmt(roi.cashflowBuffer, 0)}` },
+                ...(report.cpc
+                  ? [{ label: 'Click stimati/mese', value: `~${Math.round(roi.suggestedAdsMonthly / report.cpc).toLocaleString('it-IT')}` }]
+                  : [{ label: 'Verdetto', value: report.roi.investVerdict }]
+                ),
+              ].map(({ label, value }) => (
+                <div key={label} className="p-3 rounded-xl border border-zinc-100 bg-zinc-50 text-center print:break-inside-avoid">
+                  <p className="text-xs text-zinc-400 mb-1">{label}</p>
+                  <p className={`text-base font-bold ${label === 'Verdetto' ? (report.roi.investVerdict === 'INVEST' ? 'text-emerald-600' : report.roi.investVerdict === 'PARTIAL' ? 'text-amber-500' : 'text-rose-500') : 'text-zinc-800'}`}>
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {report.cpc && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2">
+                <span className="font-semibold">CPC Amazon Ads: ${report.cpc.toFixed(2)}</span>
+                <span className="text-zinc-400">·</span>
+                <span>Con il budget ads di ${fmt(roi.suggestedAdsMonthly, 0)}/mese puoi acquistare circa <strong>~{Math.round(roi.suggestedAdsMonthly / report.cpc).toLocaleString('it-IT')} click/mese</strong></span>
+              </div>
+            )}
+          </SubCard>
+
+          <SubCard title="Narrativa" accent="zinc">
+            <div className="grid sm:grid-cols-2 print:grid-cols-1 gap-3">
+              {[
+                { label: 'Scenario',  text: report.roiNarrative.blocco_scenario },
+                { label: 'Budget',    text: report.roiNarrative.blocco_budget },
+                { label: 'Timeline',  text: report.roiNarrative.blocco_timeline },
+                { label: 'Verdetto',  text: report.roiNarrative.blocco_verdetto },
+              ].map(({ label, text }) => (
+                <div key={label} className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 print:break-inside-avoid">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1.5">{label}</p>
+                  <p className="text-sm text-zinc-700 leading-relaxed">{text}</p>
+                </div>
+              ))}
+            </div>
+          </SubCard>
+
         </div>
+        <SectionNote>
+          Questa sezione traduce tutta l&apos;analisi qualitativa in numeri concreti. Le stime di vendita (copie al giorno, ricavo mensile) partono dal BSR dei competitor: un BSR basso indica un libro che vende molte copie al giorno, uno alto poche copie. Vengono mostrate fasce min-max perché le vendite reali dipendono da molte variabili — considera il valore minimo come scenario prudente e il massimo come scenario ottimistico. Il Break-even indica dopo quanti mesi recupereresti l&apos;investimento iniziale con le sole vendite organiche, senza pubblicità. Verde (entro 3 mesi) è un ottimo segnale: la nicchia ha domanda sufficiente a rientrare rapidamente. Giallo (3–6 mesi) è nella norma per molte nicchie. Rosso (oltre 6 mesi) non significa necessariamente che non valga la pena, ma che ci vorrà più tempo e forse più pubblicità per vedere i ritorni. Il budget indicato è una stima realistica dei costi di avvio: scrittura (se la esternalizzi), grafica della copertina, revisione del testo e un periodo iniziale di pubblicità. Il budget pubblicitario consigliato è il minimo per rendere visibile il libro su Amazon nei primi mesi, quando ancora non ha abbastanza recensioni per emergere organicamente. Usa queste cifre come riferimento, non come garanzia: le vendite reali dipendono dalla qualità del libro, dalla copertina, dalle recensioni che riesci a raccogliere nelle prime settimane, e dalla costanza della tua campagna pubblicitaria.
+        </SectionNote>
       </Section>
 
     </div>

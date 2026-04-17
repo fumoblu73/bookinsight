@@ -31,6 +31,11 @@ body {
   h2, h3 { break-after: avoid; }
   .rounded-2xl, .rounded-xl { border-radius: 8pt; }
 
+  /* Istruzioni sezione: espandi <details> in stampa, nascondi il toggle */
+  details { display: block; }
+  details > summary { display: none; }
+  details > *:not(summary) { display: block; }
+
   /* Print margins */
   @page { margin: 18mm 20mm; }
 }

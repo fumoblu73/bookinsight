@@ -18,6 +18,7 @@ export interface RawBook {
   selfPublished: boolean
   sponsored: boolean
   format?: string
+  imageUrl?: string   // thumbnail da SerpApi
 }
 
 export interface FilteredBook extends RawBook {

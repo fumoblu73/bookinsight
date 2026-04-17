@@ -31,6 +31,7 @@ const KDP_PRINT_COST: Record<Market, { fixed: number; perPage: number }> = {
 const VULNERABILITY_THRESHOLD = 100
 const MIN_AGE_DAYS = 30
 const MAX_BOOKS = 5
+const MAX_PRODUCT_CALLS = 8  // cap product calls per contenere i crediti SerpApi nel free tier
 
 // ─── SerpApi fetch ────────────────────────────────────────────────────────────
 
@@ -307,13 +308,17 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
     throw new Error(`Nessun risultato per "${keyword}" su ${market}. Prova una keyword più generica.`)
   }
 
-  // Step 2: dettagli prodotto per i top 15 — tutti in parallelo (~4s vs ~12s in batch sequenziali)
-  const top15 = serpResults.slice(0, 15)
-  const allDetails = await Promise.all(
-    top15.map(s => fetchProductDetails(s.asin, market))
+  // Step 2: pre-filtro SERP — elimina sponsored e senza recensioni prima delle product call
+  // Riduce le chiamate product da 15 a ~7-8, contenendo i crediti SerpApi nel free tier
+  const serpCandidates = serpResults
+    .filter(s => !s.sponsored && s.reviewCount >= 1)
+    .slice(0, MAX_PRODUCT_CALLS)
+
+  const productDetails = await Promise.all(
+    serpCandidates.map(s => fetchProductDetails(s.asin, market))
   )
-  const rawBooks: RawBook[] = top15.map((s, i) => {
-    const d = allDetails[i]
+  const rawBooks: RawBook[] = serpCandidates.map((s, i) => {
+    const d = productDetails[i]
     return {
       asin:          s.asin,
       title:         s.title,
@@ -329,6 +334,7 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
       selfPublished: d.selfPublished,
       sponsored:     s.sponsored,
       format:        d.format,
+      imageUrl:      s.imageUrl,
     }
   })
 

@@ -24,6 +24,34 @@ const SYSTEM_SONNET = `Sei un esperto analista di mercato KDP (Kindle Direct Pub
 
 const SYSTEM_HAIKU = `Sei un assistente di estrazione dati per analisi KDP. Il tuo compito è leggere testi e strutturare informazioni in JSON valido. Rispondi sempre con JSON puro, senza testo aggiuntivo.`
 
+// ─── Retry con backoff esponenziale per errori transitori ────────────────────
+
+const RETRYABLE_STATUSES = new Set([429, 500, 503, 529])
+const MAX_RETRIES = 3
+
+async function callWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastError = err
+      const status = (err as { status?: number }).status
+      if (!RETRYABLE_STATUSES.has(status ?? 0)) throw err
+      if (attempt === MAX_RETRIES) {
+        throw new Error(
+          status === 529
+            ? 'Il servizio AI è momentaneamente sovraccarico. Riprova tra qualche secondo.'
+            : `Errore API AI (${status}) dopo ${MAX_RETRIES} tentativi.`
+        )
+      }
+      const delayMs = Math.pow(2, attempt + 1) * 1000  // 2s, 4s, 8s
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+    }
+  }
+  throw lastError
+}
+
 // ─── Helper: parse JSON robusto ───────────────────────────────────────────────
 
 function parseJSON<T>(raw: string): T {
@@ -43,7 +71,7 @@ function parseJSON<T>(raw: string): T {
 export async function callSonnet<T>(userPrompt: string): Promise<T> {
   const client = getClient()
 
-  const response = await client.messages.create({
+  const response = await callWithRetry(() => client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4096,
     system: [
@@ -56,7 +84,7 @@ export async function callSonnet<T>(userPrompt: string): Promise<T> {
     messages: [
       { role: 'user', content: userPrompt },
     ],
-  })
+  }))
 
   const block = response.content.find(b => b.type === 'text')
   if (!block || block.type !== 'text') {
@@ -71,7 +99,7 @@ export async function callSonnet<T>(userPrompt: string): Promise<T> {
 export async function callHaiku<T>(userPrompt: string): Promise<T> {
   const client = getClient()
 
-  const response = await client.messages.create({
+  const response = await callWithRetry(() => client.messages.create({
     model: MODEL_HAIKU,
     max_tokens: 3072,
     system: [
@@ -84,7 +112,7 @@ export async function callHaiku<T>(userPrompt: string): Promise<T> {
     messages: [
       { role: 'user', content: userPrompt },
     ],
-  })
+  }))
 
   const block = response.content.find(b => b.type === 'text')
   if (!block || block.type !== 'text') {
