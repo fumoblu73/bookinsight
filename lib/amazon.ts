@@ -331,6 +331,93 @@ function selectCompetitorTarget(books: FilteredBook[], subNiches: SubNiche[]): F
   return pos35.sort((a, b) => a.reviewCount - b.reviewCount)[0]
 }
 
+// ─── Single product fetch ─────────────────────────────────────────────────────
+
+export async function fetchSingleProduct(asin: string, market: Market): Promise<FilteredBook | null> {
+  const domain = MARKET_AMAZON_DOMAIN[market]
+  try {
+    const data = await serpApiFetch({
+      engine: 'amazon_product',
+      asin,
+      amazon_domain: domain,
+    }) as {
+      product_results?: {
+        title?: string
+        extracted_price?: number
+        price?: { value?: number }
+        rating?: number
+        reviews?: number | string
+      }
+      product_details?: SerpProductDetails
+      error?: string
+    }
+
+    if (data.error) return null
+
+    const pr = data.product_results ?? {}
+    const det = data.product_details ?? {}
+
+    const title = pr.title ?? ''
+    if (!title) return null
+
+    const price = pr.extracted_price ?? (pr.price as { value?: number })?.value ?? 0
+    const reviewCount = typeof pr.reviews === 'number'
+      ? pr.reviews
+      : parseInt(String(pr.reviews ?? '0').replace(/[^0-9]/g, '')) || 0
+    const rating = pr.rating ?? 0
+
+    const printLength = det.print_length ?? ''
+    const pages = parseInt(printLength.replace(/[^0-9]/g, '')) || 200
+    const pagesEstimated = !det.print_length
+
+    const publisher = (det.publisher ?? '').substring(0, 60)
+    const publishedDate = (det.publication_date ?? '').substring(0, 20)
+    const selfPublished =
+      publisher.toLowerCase().includes('independently published') ||
+      publisher.toLowerCase().includes('auto-pubblicato')
+    const format = (det.item_form ?? '').trim()
+
+    let bsr = 0
+    const ranks = det.best_sellers_rank ?? []
+    if (ranks.length > 0) {
+      const nums = ranks
+        .map(r => {
+          if (typeof r.extracted_rank === 'number') return r.extracted_rank
+          const raw = String(r.rank ?? '').replace(/[^0-9]/g, '')
+          return raw ? parseInt(raw) : 0
+        })
+        .filter(n => n > 0)
+      if (nums.length > 0) bsr = Math.max(...nums)
+    }
+
+    const royalty = calcRoyalty(price || 9.99, pages, market)
+    const sales = bsrToSales(bsr || 50000, market)
+
+    return {
+      asin,
+      title,
+      bsr,
+      bsrTimestamp: new Date().toISOString(),
+      price,
+      currency: MARKET_CURRENCY[market],
+      reviewCount,
+      rating,
+      publishedDate: publishedDate || undefined,
+      pages,
+      publisher: publisher || undefined,
+      selfPublished,
+      sponsored: false,
+      format: format || undefined,
+      pagesEstimated,
+      royalty,
+      estimatedDailySalesMin: sales.min,
+      estimatedDailySalesMax: sales.max,
+    }
+  } catch {
+    return null
+  }
+}
+
 // ─── Links ───────────────────────────────────────────────────────────────────
 
 export function keepaLink(asin: string, market: Market): string {

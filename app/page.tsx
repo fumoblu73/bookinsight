@@ -1,31 +1,32 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import ReportView from '@/components/ReportView'
 import type { FullReport } from '@/components/ReportView'
-
-import type { Market } from '@/lib/types'
+import type { AmazonData, FilteredBook, Market } from '@/lib/types'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
   | 'idle'
-  | 'loading_amazon'    // fetch /api/amazon in corso
-  | 'loading_signals'   // fetch /api/trends + /api/reddit in corso
-  | 'loading_passo0'    // server: passo0 + pain points (stream event: passo0)
-  | 'loading_insights'  // server: insights + trend + gap (stream event: insights)
-  | 'loading_strategy'  // server: strategy + ROI (stream event: strategy)
+  | 'loading_amazon'        // fetch /api/amazon in corso
+  | 'awaiting_validation'   // Amazon done, utente sceglie competitor target
+  | 'loading_signals'       // attesa trends+reddit (già avviati in background)
+  | 'loading_passo0'        // server: passo0 + pain points (stream event: passo0)
+  | 'loading_insights'      // server: insights + trend + gap (stream event: insights)
+  | 'loading_strategy'      // server: strategy + ROI (stream event: strategy)
   | 'done'
   | 'error'
 
 const STAGE_LABELS: Record<Stage, string> = {
-  idle:              '',
-  loading_amazon:    'Raccolta dati Amazon…',
-  loading_signals:   'Raccolta segnali (trend + Reddit)…',
-  loading_passo0:    'Analisi competitor e pain points…',
-  loading_insights:  'Analisi insight, trend e gap…',
-  loading_strategy:  'Strategia di serie e ROI…',
-  done:  'Report completato',
-  error: 'Errore',
+  idle:                 '',
+  loading_amazon:       'Raccolta dati Amazon…',
+  awaiting_validation:  'Scegli il competitor target',
+  loading_signals:      'Raccolta segnali (trend + Reddit)…',
+  loading_passo0:       'Analisi competitor e pain points…',
+  loading_insights:     'Analisi insight, trend e gap…',
+  loading_strategy:     'Strategia di serie e ROI…',
+  done:                 'Report completato',
+  error:                'Errore',
 }
 
 const SERVER_STAGE_MAP: Record<string, Stage> = {
@@ -58,55 +59,129 @@ async function postJSON(url: string, body: unknown) {
 
 export default function HomePage() {
   const [keyword, setKeyword] = useState('')
-  const [market, setMarket] = useState<Market>('US')
-  const [cpc, setCpc] = useState('')
-  const [stage, setStage] = useState<Stage>('idle')
-  const [report, setReport] = useState<FullReport | null>(null)
+  const [market, setMarket]   = useState<Market>('US')
+  const [cpc, setCpc]         = useState('')
+  const [stage, setStage]     = useState<Stage>('idle')
+  const [report, setReport]   = useState<FullReport | null>(null)
   const [reportId, setReportId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError]     = useState<string | null>(null)
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+  // Validation phase state
+  const [amazonDataState, setAmazonDataState] = useState<AmazonData | null>(null)
+  const [selectedTargetAsin, setSelectedTargetAsin] = useState<string>('')
+  const [customAsinInput, setCustomAsinInput]   = useState('')
+  const [customAsinProduct, setCustomAsinProduct] = useState<FilteredBook | null>(null)
+  const [customAsinError, setCustomAsinError]   = useState<string | null>(null)
+  const [customAsinLoading, setCustomAsinLoading] = useState(false)
+
+  // Background signals promise (started during phase 1, awaited in phase 2)
+  const signalsRef = useRef<Promise<[unknown, unknown]> | null>(null)
+  const kwRef      = useRef<string>('')
+  const cpcRef     = useRef<number | undefined>(undefined)
+
+  // ── Phase 1: fetch Amazon, start signals in background ───────────────────────
+  const handlePhase1 = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if (!keyword.trim()) return
 
-    const kw = keyword.trim()
+    const kw       = keyword.trim()
     const cpcValue = cpc.trim() ? parseFloat(cpc.trim().replace(',', '.')) : undefined
+
     setReport(null)
     setReportId(null)
     setError(null)
+    setAmazonDataState(null)
+    setSelectedTargetAsin('')
+    setCustomAsinInput('')
+    setCustomAsinProduct(null)
+    setCustomAsinError(null)
     setStage('loading_amazon')
 
     try {
-      // ── Amazon ────────────────────────────────────────────────────────────
-      const amazonData = await postJSON('/api/amazon', { keyword: kw, market })
+      const amazon = await postJSON('/api/amazon', { keyword: kw, market }) as AmazonData
 
-      // ── Segnali: Trends + Reddit in parallelo ─────────────────────────────
-      setStage('loading_signals')
-      const [trendsData, redditData] = await Promise.all([
+      kwRef.current  = kw
+      cpcRef.current = cpcValue
+
+      // Fire-and-forget signals fetch — runs during validation pause
+      signalsRef.current = Promise.all([
         fetch('/api/trends', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keyword: kw, market }),
-        }).then(r => r.ok ? r.json() : { available: false, yoyGrowth: 0, relatedQueries: [] }),
+        }).then(r => r.ok ? r.json() : { available: false, yoyGrowth: 0, relatedQueries: [], timelineData: [], keyword: kw }),
         fetch('/api/reddit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keyword: kw }),
-        }).then(r => r.ok ? r.json() : { posts: [] }),
-      ])
+        }).then(r => r.ok ? r.json() : { posts: [], totalComments: 0, subredditsUsed: [], threadCount: 0, available: false, insufficientCorpus: true, keyword: kw }),
+      ]) as Promise<[unknown, unknown]>
 
-      // ── AI pipeline (streaming) ───────────────────────────────────────────
-      // Il server emette un evento JSON per ogni step completato:
-      //   {type:'progress', stage:'passo0'}   → passo0+painPoints done
-      //   {type:'progress', stage:'insights'} → insights+gap done
-      //   {type:'progress', stage:'strategy'} → strategy in corso
-      //   {type:'done', report:{...}}          → report completo
+      setAmazonDataState(amazon)
+      setSelectedTargetAsin(amazon.competitorTarget.asin)
+      setStage('awaiting_validation')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setStage('error')
+    }
+  }, [keyword, market, cpc])
+
+  // ── Fetch custom ASIN ─────────────────────────────────────────────────────────
+  const handleFetchCustomAsin = useCallback(async () => {
+    const asin = customAsinInput.trim().toUpperCase()
+    if (asin.length !== 10) {
+      setCustomAsinError('ASIN deve essere di 10 caratteri')
+      return
+    }
+    setCustomAsinLoading(true)
+    setCustomAsinError(null)
+    setCustomAsinProduct(null)
+    try {
+      const res = await fetch('/api/amazon/product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asin, market }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Prodotto non trovato')
+      const product = json as FilteredBook
+      setCustomAsinProduct(product)
+      setSelectedTargetAsin(asin)
+    } catch (err) {
+      setCustomAsinError(err instanceof Error ? err.message : 'Errore nel recupero del prodotto')
+    } finally {
+      setCustomAsinLoading(false)
+    }
+  }, [customAsinInput, market])
+
+  // ── Phase 2: await signals, run AI pipeline ───────────────────────────────────
+  const handlePhase2 = useCallback(async () => {
+    if (!amazonDataState || !signalsRef.current) return
+
+    const kw       = kwRef.current
+    const cpcValue = cpcRef.current
+
+    // Apply selected competitor target
+    let finalAmazonData: AmazonData = { ...amazonDataState }
+    if (selectedTargetAsin !== amazonDataState.competitorTarget.asin) {
+      const newTarget =
+        customAsinProduct?.asin === selectedTargetAsin
+          ? customAsinProduct
+          : amazonDataState.topBooks.find(b => b.asin === selectedTargetAsin)
+      if (newTarget) finalAmazonData = { ...finalAmazonData, competitorTarget: newTarget }
+    }
+
+    setStage('loading_signals')
+
+    try {
+      const [trendsData, redditData] = await signalsRef.current
+
       setStage('loading_passo0')
 
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: kw, market, amazonData, trendsData, redditData, cpc: cpcValue }),
+        body: JSON.stringify({ keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, cpc: cpcValue }),
       })
       if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
       if (!res.body) throw new Error('Stream non supportato dal browser')
@@ -142,9 +217,9 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : String(err))
       setStage('error')
     }
-  }, [keyword, market])
+  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market])
 
-  const isLoading = stage !== 'idle' && stage !== 'done' && stage !== 'error'
+  const isLoading = !['idle', 'awaiting_validation', 'done', 'error'].includes(stage)
 
   return (
     <div className="min-h-screen bg-zinc-50 print:bg-white">
@@ -162,7 +237,7 @@ export default function HomePage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="no-print">
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
+          <form onSubmit={handlePhase1} className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
             <h2 className="text-lg font-semibold text-zinc-800 mb-4">Analizza una nicchia KDP</h2>
             <div className="flex flex-col sm:flex-row gap-3">
               <input
@@ -170,13 +245,13 @@ export default function HomePage() {
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
                 placeholder="es. stoicism for beginners"
-                disabled={isLoading}
+                disabled={isLoading || stage === 'awaiting_validation'}
                 className="flex-1 rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:bg-zinc-50"
               />
               <select
                 value={market}
                 onChange={e => setMarket(e.target.value as Market)}
-                disabled={isLoading}
+                disabled={isLoading || stage === 'awaiting_validation'}
                 className="rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 bg-white"
               >
                 {MARKETS.map(m => (
@@ -185,7 +260,7 @@ export default function HomePage() {
               </select>
               <button
                 type="submit"
-                disabled={isLoading || !keyword.trim()}
+                disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation'}
                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isLoading ? 'Analisi…' : 'Analizza'}
@@ -201,7 +276,7 @@ export default function HomePage() {
                   value={cpc}
                   onChange={e => setCpc(e.target.value)}
                   placeholder="es. 0.85"
-                  disabled={isLoading}
+                  disabled={isLoading || stage === 'awaiting_validation'}
                   className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
                 />
                 <span className="text-xs text-zinc-400">$/€ per click · stima i click/mese acquistabili con il budget ads in §7</span>
@@ -238,7 +313,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {isLoading && (
+            {(isLoading || stage === 'awaiting_validation') && (
               <div className="mt-4">
                 <PipelineProgress stage={stage} />
               </div>
@@ -250,6 +325,23 @@ export default function HomePage() {
               </div>
             )}
           </form>
+
+          {/* ── Validation panel ──────────────────────────────────────────────── */}
+          {stage === 'awaiting_validation' && amazonDataState && (
+            <ValidationPanel
+              amazonData={amazonDataState}
+              market={market}
+              selectedTargetAsin={selectedTargetAsin}
+              onSelectTarget={setSelectedTargetAsin}
+              customAsinInput={customAsinInput}
+              onCustomAsinChange={v => setCustomAsinInput(v)}
+              onFetchCustomAsin={handleFetchCustomAsin}
+              customAsinLoading={customAsinLoading}
+              customAsinProduct={customAsinProduct}
+              customAsinError={customAsinError}
+              onProceed={handlePhase2}
+            />
+          )}
         </div>
 
         {report && <ReportView report={report} />}
@@ -265,14 +357,171 @@ export default function HomePage() {
   )
 }
 
+// ─── Validation Panel ─────────────────────────────────────────────────────────
+
+const KEEPA_MARKET: Record<string, string> = { US: '1', UK: '2', DE: '3', FR: '4', IT: '8', ES: '9' }
+function coverUrl(asin: string, imageUrl?: string) {
+  return imageUrl || `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SX85_.jpg`
+}
+
+function ValidationPanel({
+  amazonData, market, selectedTargetAsin, onSelectTarget,
+  customAsinInput, onCustomAsinChange, onFetchCustomAsin,
+  customAsinLoading, customAsinProduct, customAsinError, onProceed,
+}: {
+  amazonData: AmazonData
+  market: string
+  selectedTargetAsin: string
+  onSelectTarget: (asin: string) => void
+  customAsinInput: string
+  onCustomAsinChange: (v: string) => void
+  onFetchCustomAsin: () => void
+  customAsinLoading: boolean
+  customAsinProduct: FilteredBook | null
+  customAsinError: string | null
+  onProceed: () => void
+}) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 className="text-base font-semibold text-zinc-800">Verifica competitor target</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            L&apos;algoritmo ha suggerito un competitor di riferimento. Confermalo o scegli un altro — poi avvia l&apos;analisi.
+          </p>
+        </div>
+        <button
+          onClick={onProceed}
+          className="shrink-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-sm font-medium transition-colors"
+        >
+          Avvia analisi →
+        </button>
+      </div>
+
+      {/* Book cards with radio */}
+      <div className="space-y-2 mb-5">
+        {amazonData.topBooks.map(b => {
+          const isSelected = selectedTargetAsin === b.asin
+          const isDefault  = b.asin === amazonData.competitorTarget.asin
+          return (
+            <label
+              key={b.asin}
+              className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${isSelected ? 'border-indigo-300 bg-indigo-50' : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50'}`}
+            >
+              <input
+                type="radio"
+                name="target"
+                value={b.asin}
+                checked={isSelected}
+                onChange={() => onSelectTarget(b.asin)}
+                className="shrink-0 accent-indigo-600"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={coverUrl(b.asin, b.imageUrl)}
+                alt=""
+                width={28}
+                height={40}
+                className="rounded shrink-0 object-cover bg-zinc-100 border border-zinc-200"
+                onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-zinc-800 leading-snug line-clamp-1">{b.title}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  BSR {b.bsr.toLocaleString('it-IT')} · {b.reviewCount.toLocaleString('it-IT')} rec.
+                  {' '}· ★{b.rating.toFixed(1)}
+                  {b.selfPublished && <span className="ml-2 text-emerald-600 font-medium">SP</span>}
+                </p>
+              </div>
+              <div className="shrink-0 flex items-center gap-1.5">
+                {isDefault && !isSelected && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium">Suggerito</span>
+                )}
+                {isSelected && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-semibold">Target</span>
+                )}
+                <a
+                  href={`https://keepa.com/#!product/${KEEPA_MARKET[market] ?? '1'}-${b.asin}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="text-[10px] px-2 py-1 rounded-lg border border-zinc-200 text-zinc-500 hover:bg-zinc-100 whitespace-nowrap transition-colors"
+                >
+                  Keepa →
+                </a>
+              </div>
+            </label>
+          )
+        })}
+      </div>
+
+      {/* Custom ASIN */}
+      <div className="border-t border-zinc-100 pt-4">
+        <p className="text-xs font-medium text-zinc-500 mb-2">
+          Oppure inserisci un ASIN personalizzato da usare come competitor target:
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={customAsinInput}
+            onChange={e => onCustomAsinChange(e.target.value.toUpperCase())}
+            placeholder="es. B08XXXXXXXXXX"
+            maxLength={10}
+            className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase"
+          />
+          <button
+            onClick={onFetchCustomAsin}
+            disabled={customAsinLoading || customAsinInput.trim().length !== 10}
+            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {customAsinLoading ? '…' : 'Cerca'}
+          </button>
+        </div>
+
+        {customAsinError && (
+          <p className="text-xs text-rose-600 mt-1.5">{customAsinError}</p>
+        )}
+
+        {customAsinProduct && (
+          <label
+            className={`flex items-center gap-3 p-3 mt-2 rounded-xl border cursor-pointer transition-colors ${selectedTargetAsin === customAsinProduct.asin ? 'border-indigo-300 bg-indigo-50' : 'border-zinc-200 hover:border-zinc-300'}`}
+          >
+            <input
+              type="radio"
+              name="target"
+              value={customAsinProduct.asin}
+              checked={selectedTargetAsin === customAsinProduct.asin}
+              onChange={() => onSelectTarget(customAsinProduct.asin)}
+              className="shrink-0 accent-indigo-600"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-zinc-800 leading-snug">{customAsinProduct.title}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {customAsinProduct.asin}
+                {customAsinProduct.bsr > 0 && ` · BSR ${customAsinProduct.bsr.toLocaleString('it-IT')}`}
+                {customAsinProduct.reviewCount > 0 && ` · ${customAsinProduct.reviewCount.toLocaleString('it-IT')} rec.`}
+                {customAsinProduct.rating > 0 && ` · ★${customAsinProduct.rating.toFixed(1)}`}
+              </p>
+            </div>
+            {selectedTargetAsin === customAsinProduct.asin && (
+              <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-semibold">Target</span>
+            )}
+          </label>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Pipeline Progress ─────────────────────────────────────────────────────────
 
 const STEPS: { key: Stage; label: string }[] = [
-  { key: 'loading_amazon',   label: 'Amazon' },
-  { key: 'loading_signals',  label: 'Segnali' },
-  { key: 'loading_passo0',   label: 'Competitor' },
-  { key: 'loading_insights', label: 'Insight & Gap' },
-  { key: 'loading_strategy', label: 'Strategia' },
+  { key: 'loading_amazon',      label: 'Amazon' },
+  { key: 'awaiting_validation', label: 'Validazione' },
+  { key: 'loading_signals',     label: 'Segnali' },
+  { key: 'loading_passo0',      label: 'Competitor' },
+  { key: 'loading_insights',    label: 'Insight & Gap' },
+  { key: 'loading_strategy',    label: 'Strategia' },
 ]
 
 function PipelineProgress({ stage }: { stage: Stage }) {
@@ -282,16 +531,17 @@ function PipelineProgress({ stage }: { stage: Stage }) {
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-1.5">
         {STEPS.map((step, i) => {
-          const isDone    = activeIdx > i
-          const isActive  = activeIdx === i
-          const isPending = activeIdx < i
+          const isDone       = activeIdx > i
+          const isActive     = activeIdx === i
+          const isPending    = activeIdx < i
+          const isValidation = step.key === 'awaiting_validation'
 
           return (
             <div key={step.key} className="flex items-center gap-1.5">
               <div className={[
                 'w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
                 isDone    ? 'bg-green-500 text-white' : '',
-                isActive  ? 'bg-indigo-600 text-white animate-pulse' : '',
+                isActive  ? `bg-indigo-600 text-white ${isValidation ? '' : 'animate-pulse'}` : '',
                 isPending ? 'bg-zinc-200 text-zinc-400' : '',
               ].join(' ')}>
                 {isDone ? '✓' : i + 1}

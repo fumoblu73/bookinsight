@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import type { Market } from '@/lib/types'
+import type { Market, FilteredBook, RawBook } from '@/lib/types'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,10 @@ export interface FullReport {
   redditMeta?: { available: boolean; insufficientCorpus: boolean; threadCount: number; subredditsUsed: string[] }
   complianceCategory: string
   complianceRisk: 'alto' | 'medio' | 'basso'
+  amazon?: {
+    topBooks: FilteredBook[]
+    rawTop15: RawBook[]
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -88,6 +92,10 @@ function amazonProductUrl(asin: string, market: string) {
 }
 function coverUrl(asin: string, imageUrl?: string) {
   return imageUrl || `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SX85_.jpg`
+}
+const KEEPA_MARKET: Record<string, string> = { US: '1', UK: '2', DE: '3', FR: '4', IT: '8', ES: '9' }
+function keepaUrl(asin: string, market: string) {
+  return `https://keepa.com/#!product/${KEEPA_MARKET[market] ?? '1'}-${asin}`
 }
 function scoreColor(s: number) {
   if (s >= 70) return 'text-emerald-600'
@@ -224,6 +232,37 @@ function KpiCard({ label, value, sub, subColor = '' }: { label: string; value: s
       <span className="text-lg font-bold text-zinc-900 leading-none">{value}</span>
       {sub && <span className={`text-xs font-semibold mt-0.5 ${subColor}`}>{sub}</span>}
     </div>
+  )
+}
+
+// ─── ExcludedBooks ────────────────────────────────────────────────────────────
+
+function excludeReason(b: RawBook): string {
+  if (b.sponsored) return 'Sponsorizzato'
+  if (!b.format && !b.publisher && !b.publishedDate) return 'Non è un libro'
+  return 'Non nei top 5 per BSR'
+}
+
+function ExcludedBooks({ rawTop15, topBooks }: { rawTop15: RawBook[]; topBooks: { asin: string }[] }) {
+  const topAsins = new Set(topBooks.map(b => b.asin))
+  const excluded = rawTop15.filter(b => !topAsins.has(b.asin))
+  if (!excluded.length) return null
+  return (
+    <details className="no-print rounded-xl border border-zinc-200 overflow-hidden">
+      <summary className="px-4 py-3 cursor-pointer select-none text-xs font-semibold text-zinc-500 hover:bg-zinc-100 transition-colors flex items-center gap-2 list-none">
+        <span className="text-zinc-400">▸</span>
+        {excluded.length} prodotti esclusi dall&apos;analisi
+      </summary>
+      <div className="px-4 py-3 border-t border-zinc-100 space-y-1.5">
+        {excluded.map(b => (
+          <div key={b.asin} className="flex items-center gap-3 text-xs">
+            <span className="font-mono text-zinc-400 shrink-0">{b.asin}</span>
+            <span className="flex-1 min-w-0 truncate text-zinc-600">{b.title}</span>
+            <span className="shrink-0 px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium">{excludeReason(b)}</span>
+          </div>
+        ))}
+      </div>
+    </details>
   )
 }
 
@@ -461,66 +500,59 @@ export default function ReportView({ report }: { report: FullReport }) {
             </SubCard>
           </div>
 
-          {report.topBooks?.length > 0 && (
+          {(report.amazon?.topBooks ?? report.topBooks)?.length > 0 && (
             <SubCard title="Top 5 competitor analizzati" accent="zinc">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-zinc-200">
-                      <th className="text-left py-2 px-2 pl-0 font-semibold text-zinc-500 tracking-wide">#</th>
-                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide">Cover</th>
-                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide">Titolo</th>
-                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">BSR</th>
-                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">Prezzo</th>
-                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">Recensioni</th>
-                      <th className="text-left py-2 px-2 font-semibold text-zinc-500 tracking-wide whitespace-nowrap">Rating</th>
-                      <th className="text-left py-2 px-2 pr-0 font-semibold text-zinc-500 tracking-wide">Link</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.topBooks.slice(0, 5).map((b, i) => (
-                      <tr key={b.asin} className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors align-top">
-                        <td className="py-2.5 px-2 pl-0 font-bold text-zinc-400">{i + 1}</td>
-                        <td className="py-2.5 px-2">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={coverUrl(b.asin, b.imageUrl)}
-                            alt=""
-                            width={36}
-                            height={52}
-                            className="rounded object-cover bg-zinc-100 border border-zinc-200"
-                            style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
-                            onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
-                          />
-                        </td>
-                        <td className="py-2.5 px-2 max-w-[200px]">
-                          <p className="font-medium text-zinc-800 leading-snug line-clamp-2">{b.title}</p>
-                          {b.selfPublished && (
-                            <span className="inline-block mt-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
-                              Self Publisher
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.bsr.toLocaleString('it-IT')}</td>
-                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.currency}{b.price.toFixed(2)}</td>
-                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.reviewCount.toLocaleString('it-IT')}</td>
-                        <td className="py-2.5 px-2 text-zinc-600 whitespace-nowrap">{b.rating.toFixed(1)}</td>
-                        <td className="py-2.5 px-2 pr-0">
-                          <a
-                            href={amazonProductUrl(b.asin, report.market)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-indigo-600 hover:text-indigo-800 underline underline-offset-2 whitespace-nowrap font-mono"
-                          >
-                            {b.asin}
+              <div className="space-y-2">
+                {(report.amazon?.topBooks ?? report.topBooks).slice(0, 5).map((b, i) => {
+                  const isTarget = b.asin === report.competitorTarget.asin
+                  const full = report.amazon?.topBooks ? b as FilteredBook : null
+                  return (
+                    <div key={b.asin} className="rounded-xl border border-zinc-200 p-3 flex gap-3 print:break-inside-avoid hover:bg-zinc-50 transition-colors">
+                      <div className="shrink-0 pt-0.5">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={coverUrl(b.asin, b.imageUrl)}
+                          alt=""
+                          width={32}
+                          height={46}
+                          className="rounded object-cover bg-zinc-100 border border-zinc-200"
+                          style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
+                          onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                          <span className="text-[10px] font-bold text-zinc-300">#{i + 1}</span>
+                          {isTarget && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold">Target</span>}
+                          {b.selfPublished && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold">Self Publisher</span>}
+                        </div>
+                        <p className="text-sm font-semibold text-zinc-800 leading-snug line-clamp-2 mb-1.5">{b.title}</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-zinc-500 mb-2">
+                          <span>BSR <strong className="text-zinc-700">{b.bsr.toLocaleString('it-IT')}</strong></span>
+                          <span>{b.currency}<strong className="text-zinc-700">{b.price.toFixed(2)}</strong></span>
+                          <span>★ <strong className="text-zinc-700">{b.rating.toFixed(1)}</strong></span>
+                          <span><strong className="text-zinc-700">{b.reviewCount.toLocaleString('it-IT')}</strong> rec.</span>
+                          {full && <span className="text-emerald-600 font-medium">~{full.estimatedDailySalesMin}–{full.estimatedDailySalesMax} cop/g</span>}
+                          {full && <span className="text-indigo-600 font-medium">${full.royalty.toFixed(2)}/copia</span>}
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          <a href={amazonProductUrl(b.asin, report.market)} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-colors font-medium whitespace-nowrap">
+                            Amazon →
                           </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          <a href={keepaUrl(b.asin, report.market)} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-colors font-medium whitespace-nowrap">
+                            Keepa →
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </SubCard>
+          )}
+
+          {report.amazon?.rawTop15 && (
+            <ExcludedBooks rawTop15={report.amazon.rawTop15} topBooks={report.amazon.topBooks} />
           )}
         </div>
         <SectionNote>
@@ -739,6 +771,22 @@ export default function ReportView({ report }: { report: FullReport }) {
               <KpiCard label="Break-even"      value={`${roi.breakEvenMonths} mesi`} sub={roi.bepSignal} subColor={bepColor(roi.bepSignal)} />
               <KpiCard label="ROI 12 mesi"     value={`$${fmt(roi.roiCluster12mMin, 0)}–$${fmt(roi.roiCluster12mMax, 0)}`} />
             </div>
+            {(() => {
+              const target = report.amazon?.topBooks.find(b => b.asin === report.competitorTarget.asin)
+              if (!target) return null
+              const benchRevMin = Math.round(target.estimatedDailySalesMin * target.royalty * 30)
+              const benchRevMax = Math.round(target.estimatedDailySalesMax * target.royalty * 30)
+              return (
+                <div className="mt-3 pt-3 border-t border-zinc-100">
+                  <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-widest mb-2">Benchmark — competitor target</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <KpiCard label="Vendite/g (target)" value={`${target.estimatedDailySalesMin}–${target.estimatedDailySalesMax}`} />
+                    <KpiCard label="Ricavo/mese (target)" value={`$${fmt(benchRevMin, 0)}–$${fmt(benchRevMax, 0)}`} />
+                    <KpiCard label="Royalty/copia (target)" value={`$${fmt(target.royalty)}`} />
+                  </div>
+                </div>
+              )
+            })()}
           </SubCard>
 
           <SubCard title="Budget" accent="zinc">
