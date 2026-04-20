@@ -359,7 +359,6 @@ export default function HomePage() {
 
 // ─── Validation Panel ─────────────────────────────────────────────────────────
 
-const KEEPA_MARKET: Record<string, string> = { US: '1', UK: '2', DE: '3', FR: '4', IT: '8', ES: '9' }
 function coverUrl(asin: string, imageUrl?: string) {
   return imageUrl || `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SX85_.jpg`
 }
@@ -440,15 +439,6 @@ function ValidationPanel({
                 {isSelected && (
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-semibold">Target</span>
                 )}
-                <a
-                  href={`https://keepa.com/#!product/${KEEPA_MARKET[market] ?? '1'}-${b.asin}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  className="text-[10px] px-2 py-1 rounded-lg border border-zinc-200 text-zinc-500 hover:bg-zinc-100 whitespace-nowrap transition-colors"
-                >
-                  Keepa →
-                </a>
               </div>
             </label>
           )

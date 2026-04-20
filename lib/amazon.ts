@@ -2,10 +2,6 @@ import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, Book
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
-const MARKET_KEEPA_CODE: Record<Market, number> = {
-  US: 1, UK: 3, DE: 4, FR: 5, IT: 8, ES: 9,
-}
-
 const MARKET_CURRENCY: Record<Market, string> = {
   US: 'USD', UK: 'GBP', DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EUR',
 }
@@ -419,10 +415,6 @@ export async function fetchSingleProduct(asin: string, market: Market): Promise<
 }
 
 // ─── Links ───────────────────────────────────────────────────────────────────
-
-export function keepaLink(asin: string, market: Market): string {
-  return `https://keepa.com/#!product/${MARKET_KEEPA_CODE[market]}-${asin}`
-}
 
 export function helium10Link(asin: string): string {
   return `https://www.helium10.com/tools/xray/?asin=${asin}`

@@ -93,10 +93,6 @@ function amazonProductUrl(asin: string, market: string) {
 function coverUrl(asin: string, imageUrl?: string) {
   return imageUrl || `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SX85_.jpg`
 }
-const KEEPA_MARKET: Record<string, string> = { US: '1', UK: '2', DE: '3', FR: '4', IT: '8', ES: '9' }
-function keepaUrl(asin: string, market: string) {
-  return `https://keepa.com/#!product/${KEEPA_MARKET[market] ?? '1'}-${asin}`
-}
 function scoreColor(s: number) {
   if (s >= 70) return 'text-emerald-600'
   if (s >= 40) return 'text-amber-500'
@@ -538,9 +534,6 @@ export default function ReportView({ report }: { report: FullReport }) {
                         <div className="flex gap-2 flex-wrap">
                           <a href={amazonProductUrl(b.asin, report.market)} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-colors font-medium whitespace-nowrap">
                             Amazon →
-                          </a>
-                          <a href={keepaUrl(b.asin, report.market)} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-colors font-medium whitespace-nowrap">
-                            Keepa →
                           </a>
                         </div>
                       </div>
