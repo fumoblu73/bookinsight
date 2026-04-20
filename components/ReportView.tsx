@@ -535,9 +535,6 @@ export default function ReportView({ report }: { report: FullReport }) {
                           <a href={amazonProductUrl(b.asin, report.market)} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-colors font-medium whitespace-nowrap">
                             Amazon →
                           </a>
-                          <a href={`https://www.helium10.com/tools/xray/?asin=${b.asin}`} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-colors font-medium whitespace-nowrap">
-                            Helium10 →
-                          </a>
                         </div>
                       </div>
                     </div>

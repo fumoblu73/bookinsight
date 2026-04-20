@@ -439,15 +439,6 @@ function ValidationPanel({
                 {isSelected && (
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-semibold">Target</span>
                 )}
-                <a
-                  href={`https://www.helium10.com/tools/xray/?asin=${b.asin}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  className="text-[10px] px-2 py-1 rounded-lg border border-zinc-200 text-zinc-500 hover:bg-zinc-100 whitespace-nowrap transition-colors"
-                >
-                  Helium10 →
-                </a>
               </div>
             </label>
           )
