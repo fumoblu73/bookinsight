@@ -152,7 +152,7 @@ export function promptKeyInsights(
 DATI DISPONIBILI:
 - Profitability Score: ${scoring.score}/100
 - BSR medio top ${amazon.topBooks.length}: ${scoring.avgBsr.toLocaleString()}
-- Royalty media: ${amazon.topBooks[0]?.currency ?? '$'}${scoring.avgRoyalty.toFixed(2)}
+- Prezzo medio: ${amazon.topBooks[0]?.currency ?? '$'}${scoring.avgPrice.toFixed(2)} (${scoring.minPrice.toFixed(2)}–${scoring.maxPrice.toFixed(2)}) · Pagine medie: ${scoring.avgPages} (${scoring.minPages}–${scoring.maxPages})
 - Entry Difficulty: ${scoring.entryDifficulty}
 - Trend: ${trendSummary}
 - Reddit: ${reddit.available ? `${reddit.totalComments} commenti` : 'non disponibile'}
@@ -307,7 +307,7 @@ DATI DI MERCATO:
 - Profitability Score: ${scoring.score}/100
 - Entry Difficulty: ${scoring.entryDifficulty}
 - Trend: ${scoring.trendSignal}
-- Royalty media: $${scoring.avgRoyalty.toFixed(2)}
+- Prezzo medio: $${scoring.avgPrice.toFixed(2)} (${scoring.minPrice.toFixed(2)}–${scoring.maxPrice.toFixed(2)}) · Pagine medie: ${scoring.avgPages} (${scoring.minPages}–${scoring.maxPages})
 - Vendite stimate/giorno: ${roi.avgDailySalesMin}-${roi.avgDailySalesMax}
 - Break-even: ${roi.breakEvenMonths} mesi (${roi.bepSignal})
 - ROI proiettato 12m: $${roi.roiCluster12mMin.toFixed(0)}-$${roi.roiCluster12mMax.toFixed(0)}

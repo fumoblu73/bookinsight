@@ -13,11 +13,11 @@ export interface FullReport {
   cpc?: number
   profitabilityScore: number
   scoringBreakdown: {
-    demandScore: number; royaltyScore: number; competitionScore: number
+    demandScore: number; priceScore: number; competitionScore: number
     trendScore: number; complianceScore: number
     entryDifficulty: 'FACILE' | 'MEDIO' | 'DIFFICILE'
     trendSignal: 'CRESCITA' | 'STABILE' | 'DECLINO' | 'N/A'
-    avgRoyalty: number; avgBsr: number
+    avgBsr: number; avgPrice: number; minPrice: number; maxPrice: number; avgPages: number; minPages: number; maxPages: number
   }
   keyInsights: { insight: string; tipo: string }[]
   competitorTarget: {
@@ -420,7 +420,7 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
               <div className="flex-1 min-w-56 space-y-2.5">
                 <ScoreBar label="Domanda (30%)" value={sb.demandScore} />
-                <ScoreBar label="Royalty (25%)" value={sb.royaltyScore} />
+                <ScoreBar label="Prezzo (25%)" value={sb.priceScore} />
                 <ScoreBar label="Competizione (20%)" value={sb.competitionScore} />
                 <ScoreBar label="Trend (15%)" value={sb.trendScore} />
                 <ScoreBar label="Compliance (10%)" value={sb.complianceScore} />
@@ -428,7 +428,8 @@ export default function ReportView({ report }: { report: FullReport }) {
             </div>
             <div className="flex flex-wrap gap-5 mt-5 pt-4 border-t border-zinc-100 text-sm">
               <span className="text-zinc-500">BSR medio: <strong className="text-zinc-800">{sb.avgBsr.toLocaleString('it-IT')}</strong></span>
-              <span className="text-zinc-500">Royalty media: <strong className="text-zinc-800">${fmt(sb.avgRoyalty)}</strong></span>
+              <span className="text-zinc-500">Prezzo medio: <strong className="text-zinc-800">{fmt(sb.avgPrice)} ({fmt(sb.minPrice)}–{fmt(sb.maxPrice)})</strong></span>
+              <span className="text-zinc-500">Pagine medie: <strong className="text-zinc-800">{sb.avgPages} ({sb.minPages}–{sb.maxPages})</strong></span>
               <span className="text-zinc-500">Difficoltà: <strong className={difficultyColor(sb.entryDifficulty)}>{sb.entryDifficulty}</strong></span>
               <span className="text-zinc-500">Trend: <strong className={trendColor(sb.trendSignal)}>{sb.trendSignal}</strong></span>
               <span className="text-zinc-500">Compliance: <strong className="text-zinc-800">{report.complianceCategory}</strong> <span className="text-zinc-400">({report.complianceRisk})</span></span>
@@ -588,7 +589,7 @@ export default function ReportView({ report }: { report: FullReport }) {
                           <span>★ <strong className="text-zinc-700">{b.rating.toFixed(1)}</strong></span>
                           <span><strong className="text-zinc-700">{b.reviewCount.toLocaleString('it-IT')}</strong> rec.</span>
                           {full && <span className="text-emerald-600 font-medium">~{full.estimatedDailySalesMin}–{full.estimatedDailySalesMax} cop/g</span>}
-                          {full && <span className="text-indigo-600 font-medium">${full.royalty.toFixed(2)}/copia</span>}
+                          {full && (full.pages ?? 0) > 0 && <span className="text-zinc-500">{full.pages} pag.</span>}
                         </div>
                         <div className="flex gap-2 flex-wrap">
                           <a href={amazonProductUrl(b.asin, report.market)} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 transition-colors font-medium whitespace-nowrap">
@@ -845,15 +846,13 @@ export default function ReportView({ report }: { report: FullReport }) {
             {(() => {
               const target = report.amazon?.topBooks.find(b => b.asin === report.competitorTarget.asin)
               if (!target) return null
-              const benchRevMin = Math.round(target.estimatedDailySalesMin * target.royalty * 30)
-              const benchRevMax = Math.round(target.estimatedDailySalesMax * target.royalty * 30)
               return (
                 <div className="mt-3 pt-3 border-t border-zinc-100">
                   <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-widest mb-2">Benchmark — competitor target</p>
                   <div className="grid grid-cols-3 gap-3">
                     <KpiCard label="Vendite/g (target)" value={`${target.estimatedDailySalesMin}–${target.estimatedDailySalesMax}`} />
-                    <KpiCard label="Ricavo/mese (target)" value={`$${fmt(benchRevMin, 0)}–$${fmt(benchRevMax, 0)}`} />
-                    <KpiCard label="Royalty/copia (target)" value={`$${fmt(target.royalty)}`} />
+                    <KpiCard label="Prezzo (target)" value={`${target.currency}${fmt(target.price)}`} />
+                    <KpiCard label="Pagine (target)" value={(target.pages ?? 0) > 0 ? `${target.pages}` : 'N/D'} />
                   </div>
                 </div>
               )

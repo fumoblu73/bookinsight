@@ -74,7 +74,7 @@ export function calcTrendSignal(trends: TrendsData): TrendSignal {
 //
 // Componenti (tutti 0-10, pesati):
 //   A. Domanda       (30%) — BSR medio top 5
-//   B. Royalty       (25%) — royalty media top 5
+//   B. Prezzo        (25%) — prezzo medio top 5 (proxy royalty)
 //   C. Competizione  (20%) — invertito da Entry Difficulty
 //   D. Trend         (15%) — TrendSignal
 //   E. Compliance    (10%) — compliance multiplier
@@ -82,14 +82,19 @@ export function calcTrendSignal(trends: TrendsData): TrendSignal {
 export interface ProfitabilityBreakdown {
   score: number            // 0-100 intero finale
   demandScore: number      // 0-10
-  royaltyScore: number     // 0-10
+  priceScore: number       // 0-10
   competitionScore: number // 0-10
   trendScore: number       // 0-10
   complianceScore: number  // 0-10
   entryDifficulty: DifficultyLevel
   trendSignal: TrendSignal
-  avgRoyalty: number       // € media royalty top 5
   avgBsr: number           // BSR medio top 5
+  avgPrice: number         // prezzo medio top 5
+  minPrice: number
+  maxPrice: number
+  avgPages: number         // pagine medie top 5
+  minPages: number
+  maxPages: number
 }
 
 export function calcProfitabilityScore(
@@ -116,18 +121,23 @@ export function calcProfitabilityScore(
   else if (avgBsr < 150_000) demandScore = 2
   else                        demandScore = 1
 
-  // ── B. Royalty media ──────────────────────────────────────────────────────
-  const avgRoyalty = Math.round(
-    (topBooks.reduce((s, b) => s + calcRoyalty(b.price, b.pages ?? 200, market), 0) / topBooks.length) * 100
-  ) / 100
-  let royaltyScore: number
-  if (avgRoyalty >= 8)       royaltyScore = 10
-  else if (avgRoyalty >= 6)  royaltyScore = 9
-  else if (avgRoyalty >= 4)  royaltyScore = 7
-  else if (avgRoyalty >= 3)  royaltyScore = 5
-  else if (avgRoyalty >= 2)  royaltyScore = 3
-  else if (avgRoyalty >= 1)  royaltyScore = 2
-  else                        royaltyScore = 1
+  // ── B. Prezzo medio (proxy royalty) ──────────────────────────────────────
+  const prices = topBooks.map(b => b.price)
+  const avgPrice = Math.round((prices.reduce((s, p) => s + p, 0) / prices.length) * 100) / 100
+  const minPrice = Math.min(...prices)
+  const maxPrice = Math.max(...prices)
+  const pagesArr = topBooks.map(b => b.pages ?? 200)
+  const avgPages = Math.round(pagesArr.reduce((s, p) => s + p, 0) / pagesArr.length)
+  const minPages = Math.min(...pagesArr)
+  const maxPages = Math.max(...pagesArr)
+  let priceScore: number
+  if (avgPrice >= 25)      priceScore = 10
+  else if (avgPrice >= 20) priceScore = 9
+  else if (avgPrice >= 16) priceScore = 7
+  else if (avgPrice >= 12) priceScore = 5
+  else if (avgPrice >= 9)  priceScore = 3
+  else if (avgPrice >= 6)  priceScore = 2
+  else                      priceScore = 1
 
   // ── C. Competizione (Entry Difficulty invertita) ──────────────────────────
   const leader = topBooks[0]
@@ -154,25 +164,30 @@ export function calcProfitabilityScore(
 
   // ── Score finale pesato ───────────────────────────────────────────────────
   const raw =
-    demandScore     * 0.30 +
-    royaltyScore    * 0.25 +
+    demandScore      * 0.30 +
+    priceScore       * 0.25 +
     competitionScore * 0.20 +
-    trendScore      * 0.15 +
-    complianceScore * 0.10
+    trendScore       * 0.15 +
+    complianceScore  * 0.10
 
   const score = Math.round(raw * 10)  // scala 0-100
 
   return {
     score,
     demandScore,
-    royaltyScore,
+    priceScore,
     competitionScore,
     trendScore,
     complianceScore,
     entryDifficulty,
     trendSignal,
-    avgRoyalty,
     avgBsr,
+    avgPrice,
+    minPrice,
+    maxPrice,
+    avgPages,
+    minPages,
+    maxPages,
   }
 }
 
