@@ -112,6 +112,30 @@ export interface RedditData {
   insufficientCorpus: boolean   // true se < 20 commenti
 }
 
+// ─── YouTube ──────────────────────────────────────────────────────────────────
+
+export interface YouTubeComment {
+  id: string
+  text: string
+  likeCount: number
+  publishedAt: string  // ISO date
+}
+
+export interface YouTubeVideo {
+  id: string
+  title: string
+  viewCount: number
+  comments: YouTubeComment[]
+}
+
+export interface YouTubeData {
+  keyword: string
+  videos: YouTubeVideo[]
+  totalComments: number
+  available: boolean
+  insufficientCorpus: boolean  // true se < 10 commenti filtrati
+}
+
 // ─── Pain Point (output Haiku) ────────────────────────────────────────────────
 
 export interface PainPoint {
@@ -121,7 +145,7 @@ export interface PainPoint {
   S: number
   score: number          // calcolato nel codice: F*0.2 + I*0.4 + S*0.4
   evidence: string
-  fonte: 'reddit' | 'recensione_negativa' | 'recensione_positiva'
+  fonte: 'reddit' | 'recensione_negativa' | 'recensione_positiva' | 'youtube'
   tipo?: 'gap_esecuzione' | 'job_confermato'
   linguaggio?: string    // solo per job_confermato
   criticalSignal?: boolean  // override: Intensità >= 9

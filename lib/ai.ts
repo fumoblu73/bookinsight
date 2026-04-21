@@ -138,6 +138,7 @@ import {
   AmazonData,
   TrendsData,
   RedditData,
+  YouTubeData,
   PainPoint,
 } from './types'
 
@@ -177,11 +178,12 @@ interface RawPainPoint {
 export async function runPainPointsReddit(
   keyword: string,
   reddit: RedditData,
+  youtube?: YouTubeData,
 ): Promise<PainPoint[]> {
-  if (!reddit.available || reddit.insufficientCorpus) return []
+  if ((!reddit.available || reddit.insufficientCorpus) && (!youtube?.available || youtube.insufficientCorpus)) return []
 
   const raw = await callHaiku<RawPainPoint[]>(
-    promptPainPointsReddit(keyword, reddit)
+    promptPainPointsReddit(keyword, reddit, youtube)
   )
 
   // Normalizza i campi opzionali e calcola score

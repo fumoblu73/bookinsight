@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 import ReportView from '@/components/ReportView'
 import type { FullReport } from '@/components/ReportView'
-import type { AmazonData, FilteredBook, Market } from '@/lib/types'
+import type { AmazonData, FilteredBook, Market, YouTubeData } from '@/lib/types'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
@@ -75,7 +75,7 @@ export default function HomePage() {
   const [customAsinLoading, setCustomAsinLoading] = useState(false)
 
   // Background signals promise (started during phase 1, awaited in phase 2)
-  const signalsRef = useRef<Promise<[unknown, unknown]> | null>(null)
+  const signalsRef = useRef<Promise<[unknown, unknown, unknown]> | null>(null)
   const kwRef      = useRef<string>('')
   const cpcRef     = useRef<number | undefined>(undefined)
 
@@ -115,7 +115,12 @@ export default function HomePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keyword: kw }),
         }).then(r => r.ok ? r.json() : { posts: [], totalComments: 0, subredditsUsed: [], threadCount: 0, available: false, insufficientCorpus: true, keyword: kw }),
-      ]) as Promise<[unknown, unknown]>
+        fetch('/api/youtube', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw }),
+        }).then(r => r.ok ? r.json() : { videos: [], totalComments: 0, available: false, insufficientCorpus: true, keyword: kw }),
+      ]) as Promise<[unknown, unknown, unknown]>
 
       setAmazonDataState(amazon)
       setSelectedTargetAsin(amazon.competitorTarget.asin)
@@ -174,14 +179,14 @@ export default function HomePage() {
     setStage('loading_signals')
 
     try {
-      const [trendsData, redditData] = await signalsRef.current
+      const [trendsData, redditData, youtubeData] = await signalsRef.current
 
       setStage('loading_passo0')
 
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, cpc: cpcValue }),
+        body: JSON.stringify({ keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, youtubeData, cpc: cpcValue }),
       })
       if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
       if (!res.body) throw new Error('Stream non supportato dal browser')

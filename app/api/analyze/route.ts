@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { AmazonData, TrendsData, RedditData, Market, LogEntry, AnalysisLog } from '@/lib/types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, Market, LogEntry, AnalysisLog } from '@/lib/types'
 import { calcProfitabilityScore, calcRoiEstimate, calcCompetitiveDynamism } from '@/lib/scoring'
 import { detectComplianceCategory, getComplianceRisk } from '@/lib/compliance'
 import {
@@ -44,12 +44,13 @@ function makeStream(fn: (push: (e: StreamEvent) => void) => Promise<void>) {
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { keyword, market, amazonData, trendsData, redditData, cpc } = await req.json() as {
+  const { keyword, market, amazonData, trendsData, redditData, youtubeData, cpc } = await req.json() as {
     keyword: string
     market: Market
     amazonData: AmazonData
     trendsData: TrendsData
     redditData: RedditData
+    youtubeData?: YouTubeData
     cpc?: number
   }
 
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
     push({ type: 'progress', stage: 'passo0' })
     const [passo0, painPoints] = await Promise.all([
       runPasso0(amazonData),
-      runPainPointsReddit(keyword, redditData),
+      runPainPointsReddit(keyword, redditData, youtubeData),
     ])
 
     logEntries.push({

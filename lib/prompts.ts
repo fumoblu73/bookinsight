@@ -1,4 +1,4 @@
-import { AmazonData, TrendsData, RedditData, PainPoint, AmazonReview } from './types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -60,6 +60,7 @@ Rispondi SOLO con un oggetto JSON valido (nessun testo prima o dopo), con questa
 export function promptPainPointsReddit(
   keyword: string,
   reddit: RedditData,
+  youtube?: YouTubeData,
 ): string {
   const corpus = reddit.posts
     .slice(0, 20)
@@ -72,11 +73,37 @@ export function promptPainPointsReddit(
     })
     .join('\n\n---\n\n')
 
-  return `Sei un ricercatore di mercato specializzato in libri non-fiction. Analizza le discussioni Reddit sulla keyword "${keyword}" ed estrai i pain point reali degli utenti.
+  const ytCorpus = youtube?.available && youtube.videos.length > 0
+    ? youtube.videos.map(v => {
+        const comments = v.comments
+          .slice(0, 10)
+          .map(c => `  [${c.likeCount} likes] ${c.text.substring(0, 300)}`)
+          .join('\n')
+        return `VIDEO YouTube (${v.viewCount.toLocaleString()} views): "${v.title}"\n${comments}`
+      }).join('\n\n---\n\n')
+    : null
 
-CORPUS REDDIT (${reddit.totalComments} commenti totali da ${reddit.subredditsUsed.join(', ')}):
-${corpus}
+  const redditSection = reddit.available && !reddit.insufficientCorpus
+    ? `CORPUS REDDIT (${reddit.totalComments} commenti totali da ${reddit.subredditsUsed.join(', ')}):\n${corpus}\n`
+    : ''
 
+  const ytSection = ytCorpus
+    ? `CORPUS YOUTUBE (${youtube!.totalComments} commenti da ${youtube!.videos.length} video tutorial):
+${ytCorpus}
+
+NOTA: i commenti YouTube provengono da spettatori di video tutorial — tendono a esprimere bisogni pratici molto espliciti ("vorrei un libro che coprisse X"). Trattali come segnale di domanda latente, distinto ma complementare alle discussioni Reddit.
+`
+    : ''
+
+  const fonteInstr = ytCorpus && reddit.available && !reddit.insufficientCorpus
+    ? '- fonte: "reddit" se estratto da Reddit, "youtube" se estratto da YouTube'
+    : ytCorpus
+    ? '- fonte: sempre "youtube"'
+    : '- fonte: sempre "reddit"'
+
+  return `Sei un ricercatore di mercato specializzato in libri non-fiction. Analizza le discussioni sulla keyword "${keyword}" ed estrai i pain point reali degli utenti.
+
+${redditSection}${ytSection}
 ISTRUZIONI:
 - Identifica 5-12 pain point distinti e concreti espressi dagli utenti
 - Per ogni pain point assegna:
@@ -84,7 +111,7 @@ ISTRUZIONI:
   - I (Intensità emotiva): quanto è forte il disagio espresso, scala 1-10
   - S (Specificità/Solvibilità con un libro): quanto può essere risolto con contenuto scritto, scala 1-10
 - evidence: citazione breve o parafrase dal corpus (max 80 caratteri)
-- fonte: sempre "reddit"
+- ${fonteInstr}
 - tipo: "gap_esecuzione" se è un problema pratico non risolto dai libri esistenti, "job_confermato" se è un bisogno già servito ma migliorabile
 
 Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
@@ -95,7 +122,7 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
     "I": numero,
     "S": numero,
     "evidence": "citazione o parafrasi",
-    "fonte": "reddit",
+    "fonte": "reddit | youtube",
     "tipo": "gap_esecuzione | job_confermato",
     "linguaggio": "frase verbatim dell'utente se tipo=job_confermato, altrimenti null"
   }
