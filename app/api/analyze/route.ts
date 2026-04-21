@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { AmazonData, TrendsData, RedditData, Market, LogEntry, AnalysisLog } from '@/lib/types'
-import { calcProfitabilityScore, calcRoiEstimate } from '@/lib/scoring'
+import { calcProfitabilityScore, calcRoiEstimate, calcCompetitiveDynamism } from '@/lib/scoring'
 import { detectComplianceCategory, getComplianceRisk } from '@/lib/compliance'
 import {
   runPasso0, runPainPointsReddit,
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
     const scoring = calcProfitabilityScore(amazonData.topBooks, trendsData, complianceRisk, market)
     const budget  = DEFAULT_BUDGET[market]
     const roi     = calcRoiEstimate(amazonData.topBooks, budget, market)
+    const competitiveDynamism = calcCompetitiveDynamism(amazonData.rawTop15, amazonData.scrapedAt)
     const reportId = await saveReport({ keyword, market, status: 'partial_gap' })
 
     const startedAt = new Date().toISOString()
@@ -236,6 +237,7 @@ export async function POST(req: NextRequest) {
       roiNarrative,
       budget,
       amazon: amazonData,
+      competitiveDynamism,
       complianceCategory,
       complianceRisk,
       subNiches: amazonData.subNiches,

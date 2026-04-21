@@ -260,3 +260,49 @@ export function calcRoiEstimate(
     investVerdict,
   }
 }
+
+// ─── Dinamismo Competitivo ─────────────────────────────────────────────────────
+
+export type DynamismSignal = 'APERTO' | 'DINAMICO' | 'CONSOLIDATO' | 'N/A'
+
+export interface CompetitiveDynamism {
+  signal: DynamismSignal
+  recent: number      // libri 60gg–12m
+  mid: number         // libri 1–3 anni
+  consolidated: number // libri >3 anni
+  excluded: number    // libri <60gg (honeymoon)
+  total: number       // totale validi (esclusi <60gg)
+}
+
+export function calcCompetitiveDynamism(
+  rawTop15: { publishedDate?: string }[],
+  scrapedAt: string,
+): CompetitiveDynamism {
+  const now = new Date(scrapedAt)
+  let recent = 0, mid = 0, consolidated = 0, excluded = 0
+
+  for (const book of rawTop15) {
+    if (!book.publishedDate) continue
+    const pub = new Date(book.publishedDate)
+    if (isNaN(pub.getTime())) continue
+    const diffDays   = (now.getTime() - pub.getTime()) / (1000 * 60 * 60 * 24)
+    const diffMonths = diffDays / 30.44
+    const diffYears  = diffDays / 365.25
+
+    if (diffDays < 60)      excluded++
+    else if (diffMonths <= 12) recent++
+    else if (diffYears <= 3)   mid++
+    else                       consolidated++
+  }
+
+  const total = recent + mid + consolidated
+  let signal: DynamismSignal = 'N/A'
+  if (total >= 5) {
+    const ratio = recent / total
+    if (ratio > 0.33)      signal = 'APERTO'
+    else if (ratio >= 0.20) signal = 'DINAMICO'
+    else                    signal = 'CONSOLIDATO'
+  }
+
+  return { signal, recent, mid, consolidated, excluded, total }
+}

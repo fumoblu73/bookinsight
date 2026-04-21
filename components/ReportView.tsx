@@ -68,6 +68,14 @@ export interface FullReport {
     topBooks: FilteredBook[]
     rawTop15: RawBook[]
   }
+  competitiveDynamism?: {
+    signal: 'APERTO' | 'DINAMICO' | 'CONSOLIDATO' | 'N/A'
+    recent: number
+    mid: number
+    consolidated: number
+    excluded: number
+    total: number
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -439,6 +447,57 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
             </SubCard>
           )}
+          {report.competitiveDynamism && report.competitiveDynamism.signal !== 'N/A' && (() => {
+            const d = report.competitiveDynamism!
+            const signalColor =
+              d.signal === 'APERTO'      ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
+              d.signal === 'DINAMICO'    ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                                           'text-zinc-600 bg-zinc-50 border-zinc-200'
+            const signalLabel =
+              d.signal === 'APERTO'      ? 'Mercato aperto ai nuovi entranti' :
+              d.signal === 'DINAMICO'    ? 'Mercato con dinamismo moderato' :
+                                           'Mercato consolidato, inerzia alta'
+            const signalDesc =
+              d.signal === 'APERTO'      ? "L'algoritmo Amazon sta premiando i nuovi titoli. Finestra favorevole per l'entrata — i nuovi libri riescono a rankare organicamente in questa nicchia." :
+              d.signal === 'DINAMICO'    ? "Presenza significativa di nuovi entranti. Entrata fattibile con differenziazione solida e budget ads adeguato." :
+                                           "La top è dominata da titoli affermati da anni. Difficile emergere senza un angolo molto distinto o un budget ads consistente."
+            const barMax = Math.max(d.recent, d.mid, d.consolidated, 1)
+            const Bar = ({ val, color }: { val: number; color: string }) => (
+              <div className="flex items-center gap-2">
+                <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.round((val / barMax) * 120)}px`, minWidth: '4px' }} />
+                <span className="text-xs text-zinc-500 tabular-nums">{val}</span>
+              </div>
+            )
+            return (
+              <SubCard title="Dinamismo competitivo" accent="zinc">
+                <div className="flex items-start gap-6 flex-wrap">
+                  <div className="space-y-2 min-w-40">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-xs text-zinc-400 w-28">Recenti (2–12m)</span>
+                      <Bar val={d.recent} color="bg-emerald-400" />
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-xs text-zinc-400 w-28">Medi (1–3 anni)</span>
+                      <Bar val={d.mid} color="bg-amber-300" />
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-xs text-zinc-400 w-28">Consolidati (3+a)</span>
+                      <Bar val={d.consolidated} color="bg-zinc-300" />
+                    </div>
+                    {d.excluded > 0 && (
+                      <p className="text-xs text-zinc-300 mt-1">{d.excluded} esclusi (honeymoon &lt;60gg)</p>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-48">
+                    <span className={`inline-block text-xs font-semibold px-2 py-1 rounded-full border mb-2 ${signalColor}`}>
+                      {d.signal} — {signalLabel}
+                    </span>
+                    <p className="text-xs text-zinc-500 leading-relaxed">{signalDesc}</p>
+                  </div>
+                </div>
+              </SubCard>
+            )
+          })()}
         </div>
         <SectionNote>
           Il punteggio da 0 a 100 misura quanto sia conveniente, in questo momento, pubblicare un libro in questa nicchia. Non è un valore assoluto, ma un indicatore comparativo che tiene conto di cinque aspetti fondamentali del mercato. Punteggio verde (70 o più): la nicchia è sana, la domanda c&apos;è, i margini sono accettabili e la concorrenza è gestibile — un buon punto di partenza. Punteggio giallo (40–69): l&apos;opportunità esiste ma richiede una proposta editoriale molto differenziata per emergere; non è da escludere, ma va affrontata con più cura nel posizionamento. Punteggio rosso (sotto 40): la nicchia presenta troppe criticità per giustificare un investimento in questa forma; meglio cercare una variante della keyword o un mercato diverso. Le cinque barre ti mostrano da dove viene il punteggio: la Domanda misura quanto le persone cercano e comprano in questa nicchia; la Royalty indica quanto guadagni mediamente per ogni copia venduta; la Competizione riflette quanto è difficile entrare nel mercato; il Trend dice se la domanda sta crescendo o calando; la Compliance segnala se la tematica comporta rischi legali o etici (es. salute, finanza, contenuti sensibili). Le sub-nicchie in verde sono aree più specifiche con meno concorrenza: spesso rappresentano il punto di ingresso ideale per chi parte da zero.
@@ -756,6 +815,25 @@ export default function ReportView({ report }: { report: FullReport }) {
       {/* ── §7 Investment & ROI ──────────────────────────────────────────── */}
       <Section num="7" title="Investment & ROI">
         <div className="space-y-4">
+
+          {/* Benchmark ROI — libro su cui sono basati i calcoli */}
+          <div className="px-4 py-3 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center gap-3 flex-wrap print:break-inside-avoid">
+            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest shrink-0">Benchmark ROI</span>
+            <a
+              href={amazonProductUrl(report.competitorTarget.asin, report.market)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-zinc-700 hover:text-indigo-600 underline underline-offset-2 transition-colors flex-1 min-w-0 truncate"
+            >
+              {report.competitorTarget.title}
+            </a>
+            <div className="flex gap-4 text-xs text-zinc-400 shrink-0 flex-wrap">
+              <span>BSR {report.competitorTarget.bsr.toLocaleString('it-IT')}</span>
+              <span>{report.competitorTarget.currency}{report.competitorTarget.price}</span>
+              <span>{report.competitorTarget.reviewCount} rec.</span>
+              <span className="font-mono text-zinc-300">{report.competitorTarget.asin}</span>
+            </div>
+          </div>
 
           <SubCard title="Proiezioni" accent="zinc">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

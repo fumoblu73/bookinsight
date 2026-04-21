@@ -243,10 +243,11 @@ Esegui i 5 passi e rispondi SOLO con un oggetto JSON valido:
     "dimensione": "stima relativa: piccolo | medio | grande"
   },
   "passo5_tesi_libro": {
-    "titolo_proposto": "Titolo concreto per il libro ottimale",
-    "sottotitolo": "Sottotitolo con keyword e beneficio",
+    "titolo_proposto": "Titolo che include obbligatoriamente la keyword \\"${amazon.keyword}\\" come hook di curiosità. Max 60 caratteri.",
+    "sottotitolo": "Sottotitolo che segue questa struttura in sequenza: 1) ripete la keyword principale per SEO Amazon 2) promette un outcome chiaro e desiderabile (before/after del lettore) 3) identifica il target specifico con identity language (es. 'for busy moms', 'even if you have no experience') 4) opzionale: aggiunge urgenza o quantificatore (solo se onesto e supportabile). Titolo + sottotitolo devono essere max 196 caratteri totali.",
     "hook": "Una frase che cattura l'attenzione del target (max 20 parole)",
-    "differenziatori": ["diff 1", "diff 2", "diff 3"]
+    "differenziatori": ["diff 1", "diff 2", "diff 3"],
+    "seo_note": "Verifica: il titolo contiene la keyword principale? Il totale titolo+sottotitolo è sotto 196 caratteri? Nessuno dei seguenti termini è presente: 'bestselling', '#1', 'free', nomi di altri autori o titoli, marchi registrati, solo punteggiatura, HTML tags."
   },
   "gap_inventory_table": [
     {
