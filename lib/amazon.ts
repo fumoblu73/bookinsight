@@ -220,16 +220,24 @@ async function fetchBookReviews(asin: string, market: Market): Promise<AmazonRev
   const domain = MARKET_AMAZON_DOMAIN[market]
   try {
     const data = await serpApiFetch({
-      engine: 'amazon_reviews',
+      engine: 'amazon_product',
       asin,
       amazon_domain: domain,
     }) as {
-      reviews?: Array<{ rating?: number; title?: string; body?: string }>
+      reviews_information?: {
+        authors_reviews?: Array<{ rating?: number; title?: string; text?: string }>
+        other_countries_reviews?: Array<{ rating?: number; title?: string; text?: string }>
+      }
     }
-    return (data.reviews ?? []).slice(0, 10).map(r => ({
+    const ri = data.reviews_information ?? {}
+    const raw = [
+      ...(ri.authors_reviews ?? []),
+      ...(ri.other_countries_reviews ?? []),
+    ]
+    return raw.slice(0, 10).map(r => ({
       rating: Number(r.rating ?? 0),
       title:  String(r.title ?? '').slice(0, 100),
-      body:   String(r.body  ?? '').slice(0, 400),
+      body:   String(r.text  ?? '').slice(0, 400),
     })).filter(r => r.body.length > 20)
   } catch (err) {
     console.error(`[amazon] fetchBookReviews failed for ${asin}:`, err)
