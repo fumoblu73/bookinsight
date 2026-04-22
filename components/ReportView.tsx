@@ -76,6 +76,20 @@ export interface FullReport {
     excluded: number
     total: number
   }
+  voice_data?: {
+    reddit: {
+      posts: Array<{ title: string; selftext: string; subreddit: string; score: number; comments: Array<{ body: string; score: number }> }>
+      available: boolean
+      totalComments: number
+      subredditsUsed: string[]
+    }
+    youtube: {
+      videos: Array<{ title: string; viewCount: number; comments: Array<{ text: string; likeCount: number }> }>
+      available: boolean
+      totalComments: number
+    } | null
+    reviews: Array<{ asin: string; bookTitle: string; reviews: Array<{ rating: number; title: string; body: string }> }>
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

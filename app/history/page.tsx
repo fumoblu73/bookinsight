@@ -98,6 +98,13 @@ export default async function HistoryPage() {
                       </div>
                     </div>
                   </Link>
+                  <a
+                    href={`/api/export/${r.id}`}
+                    download
+                    className="shrink-0 text-xs text-indigo-600 hover:text-indigo-800 font-medium px-3 py-4 hover:bg-indigo-50 transition-colors border-l border-zinc-100"
+                  >
+                    ↓ Export
+                  </a>
                   <Link
                     href={`/log/${r.id}`}
                     className="shrink-0 text-xs text-zinc-400 hover:text-indigo-600 font-medium px-4 py-4 hover:bg-indigo-50 transition-colors rounded-r-xl border-l border-zinc-100"

@@ -242,6 +242,30 @@ export async function POST(req: NextRequest) {
       complianceCategory,
       complianceRisk,
       subNiches: amazonData.subNiches,
+      voice_data: {
+        reddit: {
+          posts: redditData.posts.map(p => ({
+            title: p.title,
+            selftext: p.selftext ?? '',
+            subreddit: p.subreddit,
+            score: p.score,
+            comments: p.comments.map(c => ({ body: c.body, score: c.score })),
+          })),
+          available: redditData.available,
+          totalComments: redditData.totalComments,
+          subredditsUsed: redditData.subredditsUsed,
+        },
+        youtube: youtubeData?.available ? {
+          videos: (youtubeData.videos ?? []).map(v => ({
+            title: v.title,
+            viewCount: v.viewCount,
+            comments: v.comments.map(c => ({ text: c.text, likeCount: c.likeCount })),
+          })),
+          available: youtubeData.available,
+          totalComments: youtubeData.totalComments,
+        } : null,
+        reviews: amazonData.topBookReviews ?? [],
+      },
     }
 
     await updateReport(reportId, {

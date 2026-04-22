@@ -33,6 +33,9 @@ export default async function ReportPage({ params }: Props) {
             <Link href="/history" className="text-sm text-zinc-500 hover:text-zinc-800">
               Storico
             </Link>
+            <a href={`/api/export/${id}`} download className="text-sm font-medium px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors">
+              ↓ Esporta per BookWrAIter
+            </a>
             <Link href="/" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
               Nuova analisi
             </Link>
