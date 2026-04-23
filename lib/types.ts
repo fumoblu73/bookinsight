@@ -100,6 +100,7 @@ export interface RedditPost {
   createdUtc: number
   month: string
   comments: RedditComment[]
+  link?: string   // URL originale Google result
 }
 
 export interface RedditData {

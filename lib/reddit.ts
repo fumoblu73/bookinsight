@@ -84,19 +84,24 @@ interface RedditJsonComment {
 
 async function fetchRedditPost(link: string): Promise<{ selftext: string; comments: RedditComment[]; createdUtc: number } | null> {
   const id = extractPostId(link)
-  if (!id) return null
+  if (!id) {
+    console.log(`[reddit-comments] SKIP no-id link:${link}`)
+    return null
+  }
 
   try {
     const res = await fetch(`https://www.reddit.com/comments/${id}.json?limit=5`, {
       headers: { 'User-Agent': 'BookInsight/1.0' },
       signal: AbortSignal.timeout(5000),
     })
+    console.log(`[reddit-comments] id:${id} status:${res.status}`)
     if (!res.ok) return null
 
     const data = await res.json() as [
       { data: { children: Array<{ data: RedditJsonPost }> } },
       { data: { children: RedditJsonComment[] } },
     ]
+    console.log(`[reddit-comments] children:${data[1]?.data?.children?.length ?? 'undefined'}`)
 
     const postData = data[0]?.data?.children?.[0]?.data
     const selftext  = (postData?.selftext ?? '').trim()
@@ -123,7 +128,7 @@ async function fetchRedditPost(link: string): Promise<{ selftext: string; commen
 
     return { selftext, comments, createdUtc }
   } catch (err) {
-    console.error(`[reddit] fetchRedditPost failed for ${id}:`, err)
+    console.log(`[reddit-comments] FAILED id:${id} error:${err}`)
     return null
   }
 }
@@ -170,6 +175,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       createdUtc: Math.floor(Date.now() / 1000),
       month: new Date().toISOString().slice(0, 7),
       comments: [],
+      link: r.link ?? '',
     }
 
     if (r.link) {
