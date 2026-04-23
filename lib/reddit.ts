@@ -64,16 +64,57 @@ function extractPostId(link: string): string | null {
   return m ? m[1] : null
 }
 
-// ─── SerpApi Reddit engine — commenti di un thread ────────────────────────────
+// ─── Reddit OAuth API ─────────────────────────────────────────────────────────
 
-interface SerpApiRedditComment {
-  body?: string
-  score?: number
-  author?: string
-  link?: string
+async function getRedditAccessToken(): Promise<string | null> {
+  const clientId     = process.env.REDDIT_CLIENT_ID
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET
+  if (!clientId || !clientSecret) return null
+
+  try {
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+    const res = await fetch('https://www.reddit.com/api/v1/access_token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'User-Agent': 'BookInsight/1.0 by bookinsight-bot',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials',
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) {
+      console.log(`[reddit-auth] token fetch failed: ${res.status}`)
+      return null
+    }
+    const data = await res.json() as { access_token?: string }
+    return data.access_token ?? null
+  } catch (err) {
+    console.log(`[reddit-auth] FAILED: ${err}`)
+    return null
+  }
 }
 
-async function fetchCommentsViaSerpApi(link: string): Promise<{ selftext: string; comments: RedditComment[] } | null> {
+interface RedditJsonPost {
+  selftext?: string
+  created_utc?: number
+}
+
+interface RedditJsonComment {
+  kind: string
+  data: {
+    id?: string
+    body?: string
+    score?: number
+    author?: string
+    created_utc?: number
+  }
+}
+
+async function fetchCommentsViaOAuth(
+  link: string,
+  accessToken: string,
+): Promise<{ selftext: string; comments: RedditComment[]; createdUtc: number } | null> {
   const id = extractPostId(link)
   if (!id) {
     console.log(`[reddit-comments] SKIP no-id link:${link}`)
@@ -81,39 +122,46 @@ async function fetchCommentsViaSerpApi(link: string): Promise<{ selftext: string
   }
 
   try {
-    const data = await serpApiFetch({
-      engine: 'reddit',
-      type: 'comments',
-      url: link,
-    }) as {
-      post_info?: { selftext?: string; title?: string }
-      comments?: SerpApiRedditComment[]
-      error?: string
-    }
+    const res = await fetch(`https://oauth.reddit.com/comments/${id}.json?limit=5`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'User-Agent': 'BookInsight/1.0 by bookinsight-bot',
+      },
+      signal: AbortSignal.timeout(5000),
+    })
+    console.log(`[reddit-comments] id:${id} status:${res.status}`)
+    if (!res.ok) return null
 
-    if (data.error) {
-      console.log(`[reddit-comments] id:${id} serpapi-error:${data.error}`)
-      return null
-    }
+    const data = await res.json() as [
+      { data: { children: Array<{ data: RedditJsonPost }> } },
+      { data: { children: RedditJsonComment[] } },
+    ]
+    console.log(`[reddit-comments] children:${data[1]?.data?.children?.length ?? 'undefined'}`)
 
-    const selftext = (data.post_info?.selftext ?? '').trim()
-    const rawComments = data.comments ?? []
+    const postData  = data[0]?.data?.children?.[0]?.data
+    const selftext  = (postData?.selftext ?? '').trim()
+    const createdUtc = postData?.created_utc ?? Math.floor(Date.now() / 1000)
 
-    console.log(`[reddit-comments] id:${id} selftext:${selftext.length} comments:${rawComments.length}`)
-
-    const comments: RedditComment[] = rawComments
-      .filter(c => c.body && c.body !== '[deleted]' && c.body !== '[removed]' && c.body.length > 20)
+    const commentChildren = data[1]?.data?.children ?? []
+    const comments: RedditComment[] = commentChildren
+      .filter(c =>
+        c.kind === 't1' &&
+        c.data.body &&
+        c.data.body !== '[deleted]' &&
+        c.data.body !== '[removed]' &&
+        c.data.body.length > 20
+      )
       .slice(0, 5)
-      .map((c, i) => ({
-        id: `c_${id}_${i}`,
-        body: c.body ?? '',
-        score: c.score ?? 0,
-        author: c.author ?? '',
-        createdUtc: Math.floor(Date.now() / 1000),
-        month: new Date().toISOString().slice(0, 7),
+      .map(c => ({
+        id: c.data.id ?? '',
+        body: c.data.body ?? '',
+        score: c.data.score ?? 0,
+        author: c.data.author ?? '',
+        createdUtc: c.data.created_utc ?? createdUtc,
+        month: new Date((c.data.created_utc ?? createdUtc) * 1000).toISOString().slice(0, 7),
       }))
 
-    return { selftext, comments }
+    return { selftext, comments, createdUtc }
   } catch (err) {
     console.log(`[reddit-comments] FAILED id:${id} error:${err}`)
     return null
@@ -149,7 +197,13 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
   }
 
-  // Fetch sequenziale con sleep(500) — SerpApi ha rate limit
+  // Ottieni access token OAuth una volta sola per questa invocazione
+  const accessToken = await getRedditAccessToken()
+  if (!accessToken) {
+    console.log('[reddit] OAuth token non disponibile — solo snippet Google (aggiungi REDDIT_CLIENT_ID e REDDIT_CLIENT_SECRET)')
+  }
+
+  // Fetch sequenziale con sleep(500)
   const posts: RedditPost[] = []
   for (let i = 0; i < allResults.length; i++) {
     const r = allResults[i]
@@ -165,13 +219,15 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       link: r.link ?? '',
     }
 
-    if (r.link) {
-      const full = await fetchCommentsViaSerpApi(r.link)
+    if (r.link && accessToken) {
+      const full = await fetchCommentsViaOAuth(r.link, accessToken)
       if (full) {
         posts.push({
           ...base,
           selftext: full.selftext || base.selftext,
           comments: full.comments,
+          createdUtc: full.createdUtc,
+          month: new Date(full.createdUtc * 1000).toISOString().slice(0, 7),
         })
       } else {
         posts.push(base)
