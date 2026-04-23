@@ -59,30 +59,21 @@ function extractSubreddit(link: string): string {
   return m ? m[1] : 'reddit'
 }
 
-// ─── Reddit public JSON API ───────────────────────────────────────────────────
-
 function extractPostId(link: string): string | null {
   const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
   return m ? m[1] : null
 }
 
-interface RedditJsonPost {
-  selftext?: string
-  created_utc?: number
+// ─── SerpApi Reddit engine — commenti di un thread ────────────────────────────
+
+interface SerpApiRedditComment {
+  body?: string
+  score?: number
+  author?: string
+  link?: string
 }
 
-interface RedditJsonComment {
-  kind: string
-  data: {
-    id?: string
-    body?: string
-    score?: number
-    author?: string
-    created_utc?: number
-  }
-}
-
-async function fetchRedditPost(link: string): Promise<{ selftext: string; comments: RedditComment[]; createdUtc: number } | null> {
+async function fetchCommentsViaSerpApi(link: string): Promise<{ selftext: string; comments: RedditComment[] } | null> {
   const id = extractPostId(link)
   if (!id) {
     console.log(`[reddit-comments] SKIP no-id link:${link}`)
@@ -90,43 +81,39 @@ async function fetchRedditPost(link: string): Promise<{ selftext: string; commen
   }
 
   try {
-    const res = await fetch(`https://www.reddit.com/comments/${id}.json?limit=5`, {
-      headers: { 'User-Agent': 'BookInsight/1.0' },
-      signal: AbortSignal.timeout(5000),
-    })
-    console.log(`[reddit-comments] id:${id} status:${res.status}`)
-    if (!res.ok) return null
+    const data = await serpApiFetch({
+      engine: 'reddit',
+      type: 'comments',
+      url: link,
+    }) as {
+      post_info?: { selftext?: string; title?: string }
+      comments?: SerpApiRedditComment[]
+      error?: string
+    }
 
-    const data = await res.json() as [
-      { data: { children: Array<{ data: RedditJsonPost }> } },
-      { data: { children: RedditJsonComment[] } },
-    ]
-    console.log(`[reddit-comments] children:${data[1]?.data?.children?.length ?? 'undefined'}`)
+    if (data.error) {
+      console.log(`[reddit-comments] id:${id} serpapi-error:${data.error}`)
+      return null
+    }
 
-    const postData = data[0]?.data?.children?.[0]?.data
-    const selftext  = (postData?.selftext ?? '').trim()
-    const createdUtc = postData?.created_utc ?? Math.floor(Date.now() / 1000)
+    const selftext = (data.post_info?.selftext ?? '').trim()
+    const rawComments = data.comments ?? []
 
-    const commentChildren = data[1]?.data?.children ?? []
-    const comments: RedditComment[] = commentChildren
-      .filter(c =>
-        c.kind === 't1' &&
-        c.data.body &&
-        c.data.body !== '[deleted]' &&
-        c.data.body !== '[removed]' &&
-        c.data.body.length > 20
-      )
+    console.log(`[reddit-comments] id:${id} selftext:${selftext.length} comments:${rawComments.length}`)
+
+    const comments: RedditComment[] = rawComments
+      .filter(c => c.body && c.body !== '[deleted]' && c.body !== '[removed]' && c.body.length > 20)
       .slice(0, 5)
-      .map(c => ({
-        id: c.data.id ?? '',
-        body: c.data.body ?? '',
-        score: c.data.score ?? 0,
-        author: c.data.author ?? '',
-        createdUtc: c.data.created_utc ?? createdUtc,
-        month: new Date((c.data.created_utc ?? createdUtc) * 1000).toISOString().slice(0, 7),
+      .map((c, i) => ({
+        id: `c_${id}_${i}`,
+        body: c.body ?? '',
+        score: c.score ?? 0,
+        author: c.author ?? '',
+        createdUtc: Math.floor(Date.now() / 1000),
+        month: new Date().toISOString().slice(0, 7),
       }))
 
-    return { selftext, comments, createdUtc }
+    return { selftext, comments }
   } catch (err) {
     console.log(`[reddit-comments] FAILED id:${id} error:${err}`)
     return null
@@ -162,7 +149,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
   }
 
-  // Fetch sequenziale con sleep(500) tra una chiamata e l'altra per evitare rate limit Reddit
+  // Fetch sequenziale con sleep(500) — SerpApi ha rate limit
   const posts: RedditPost[] = []
   for (let i = 0; i < allResults.length; i++) {
     const r = allResults[i]
@@ -179,14 +166,12 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
 
     if (r.link) {
-      const full = await fetchRedditPost(r.link)
+      const full = await fetchCommentsViaSerpApi(r.link)
       if (full) {
         posts.push({
           ...base,
           selftext: full.selftext || base.selftext,
           comments: full.comments,
-          createdUtc: full.createdUtc,
-          month: new Date(full.createdUtc * 1000).toISOString().slice(0, 7),
         })
       } else {
         posts.push(base)
