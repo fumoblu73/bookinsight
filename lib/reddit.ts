@@ -101,25 +101,25 @@ async function fetchCommentsViaApify(
 
     return items
       .filter(item => {
-        const type = item.type as string | undefined
-        const body = String(item.body ?? item.text ?? item.content ?? '')
-        return type === 'comment' &&
+        const dataType = item.dataType as string | undefined
+        const body = String(item.body ?? '')
+        return dataType === 'comment' &&
           body.length > 20 &&
           body !== '[deleted]' &&
           body !== '[removed]'
       })
       .slice(0, 5)
       .map((item, i) => {
-        const body   = String(item.body ?? item.text ?? item.content ?? '')
-        const isoDate = item.createdAt as string | undefined
+        const body     = String(item.body ?? '')
+        const isoDate  = item.createdAt as string | undefined
         const createdUtc = isoDate ? Math.floor(new Date(isoDate).getTime() / 1000) : now
         return {
-          id:         String(item.id ?? `apify_${postId}_${i}`),
+          id:       String(item.id ?? `apify_${postId}_${i}`),
           body,
-          score:      Number(item.score ?? 0),
-          author:     String(item.author ?? ''),
+          score:    Number(item.upVotes ?? 0),
+          author:   String(item.username ?? ''),
           createdUtc,
-          month:      new Date(createdUtc * 1000).toISOString().slice(0, 7),
+          month:    new Date(createdUtc * 1000).toISOString().slice(0, 7),
         }
       })
   } catch (err) {
