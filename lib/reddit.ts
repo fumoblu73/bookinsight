@@ -73,7 +73,7 @@ async function fetchCommentsViaApify(
   const postId = extractPostId(postUrl) ?? 'unknown'
   try {
     const res = await fetch(
-      `https://api.apify.com/v2/acts/trudax~reddit-scraper/run-sync-get-dataset-items?token=${token}&timeout=25`,
+      `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/run-sync-get-dataset-items?token=${token}&timeout=25`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
