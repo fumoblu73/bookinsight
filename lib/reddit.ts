@@ -18,6 +18,8 @@ function shortVariant(keyword: string): string {
   return core.slice(0, 2).join(' ')
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
 // ─── SerpApi fetch ────────────────────────────────────────────────────────────
 
 async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
@@ -60,7 +62,7 @@ function extractSubreddit(link: string): string {
 // ─── Reddit public JSON API ───────────────────────────────────────────────────
 
 function extractPostId(link: string): string | null {
-  const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)/)
+  const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
   return m ? m[1] : null
 }
 
@@ -85,9 +87,9 @@ async function fetchRedditPost(link: string): Promise<{ selftext: string; commen
   if (!id) return null
 
   try {
-    const res = await fetch(`https://www.reddit.com/comments/${id}.json?limit=10&raw_json=1`, {
-      headers: { 'User-Agent': 'BookInsight/1.0 research-bot' },
-      signal: AbortSignal.timeout(8000),
+    const res = await fetch(`https://www.reddit.com/comments/${id}.json?limit=5`, {
+      headers: { 'User-Agent': 'BookInsight/1.0' },
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) return null
 
@@ -112,7 +114,7 @@ async function fetchRedditPost(link: string): Promise<{ selftext: string; commen
       .slice(0, 5)
       .map(c => ({
         id: c.data.id ?? '',
-        body: (c.data.body ?? '').slice(0, 600),
+        body: c.data.body ?? '',
         score: c.data.score ?? 0,
         author: c.data.author ?? '',
         createdUtc: c.data.created_utc ?? createdUtc,
@@ -155,34 +157,40 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
   }
 
-  // Fetch parallelo dei thread completi via Reddit JSON API
-  const posts: RedditPost[] = await Promise.all(
-    allResults.map(async (r, i) => {
-      const base: RedditPost = {
-        id: `g_${i}`,
-        title: r.title ?? '',
-        selftext: r.snippet ?? '',
-        score: 5,
-        subreddit: r.link ? extractSubreddit(r.link) : 'reddit',
-        createdUtc: Math.floor(Date.now() / 1000),
-        month: new Date().toISOString().slice(0, 7),
-        comments: [],
-      }
+  // Fetch sequenziale con sleep(500) tra una chiamata e l'altra per evitare rate limit Reddit
+  const posts: RedditPost[] = []
+  for (let i = 0; i < allResults.length; i++) {
+    const r = allResults[i]
+    const base: RedditPost = {
+      id: `g_${i}`,
+      title: r.title ?? '',
+      selftext: r.snippet ?? '',
+      score: 5,
+      subreddit: r.link ? extractSubreddit(r.link) : 'reddit',
+      createdUtc: Math.floor(Date.now() / 1000),
+      month: new Date().toISOString().slice(0, 7),
+      comments: [],
+    }
 
-      if (!r.link) return base
-
+    if (r.link) {
       const full = await fetchRedditPost(r.link)
-      if (!full) return base
-
-      return {
-        ...base,
-        selftext: full.selftext || base.selftext,
-        comments: full.comments,
-        createdUtc: full.createdUtc,
-        month: new Date(full.createdUtc * 1000).toISOString().slice(0, 7),
+      if (full) {
+        posts.push({
+          ...base,
+          selftext: full.selftext || base.selftext,
+          comments: full.comments,
+          createdUtc: full.createdUtc,
+          month: new Date(full.createdUtc * 1000).toISOString().slice(0, 7),
+        })
+      } else {
+        posts.push(base)
       }
-    })
-  )
+    } else {
+      posts.push(base)
+    }
+
+    if (i < allResults.length - 1) await sleep(500)
+  }
 
   const subredditsUsed = [...new Set(posts.map(p => p.subreddit))]
   const totalComments = posts.reduce((acc, p) => acc + p.comments.length, 0)
