@@ -194,6 +194,8 @@ export interface LogEntry {
   status: 'ok' | 'warn' | 'error'
   summary: string
   details: Record<string, unknown>
+  durationMs?: number   // tempo di esecuzione dello step
+  error?: string        // messaggio di errore se status === 'error'
 }
 
 export interface AnalysisLog {

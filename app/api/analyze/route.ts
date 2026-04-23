@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     const startedAt = new Date().toISOString()
     const logEntries: LogEntry[] = []
 
-    // ── Log entry: Amazon ─────────────────────────────────────────────────────
+    // ── Log entry: Amazon SERP ────────────────────────────────────────────────
     logEntries.push({
       step: 'amazon', label: 'Amazon SERP',
       status: 'ok',
@@ -83,9 +83,11 @@ export async function POST(req: NextRequest) {
         market,
         candidatesAfterPreFilter: amazonData.rawTop15.length,
         topBooksCount: amazonData.topBooks.length,
+        filteredOut: amazonData.rawTop15.length - amazonData.topBooks.length,
         subNiches: amazonData.subNiches.map(s => s.keyword),
         topBooks: amazonData.topBooks.map(b => ({
           asin: b.asin, title: b.title, bsr: b.bsr,
+          price: b.price, pages: b.pages ?? 0,
           reviewCount: b.reviewCount, format: b.format ?? '',
         })),
         rawBooks: amazonData.rawTop15.map(b => ({
@@ -95,10 +97,34 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // ── Log entry: Recensioni Amazon ──────────────────────────────────────────
+    const reviewsList = amazonData.topBookReviews ?? []
+    const totalReviews = reviewsList.reduce((acc, br) => acc + br.reviews.length, 0)
+    const emptyASINs = reviewsList.filter(br => br.reviews.length === 0).map(br => br.asin)
+    logEntries.push({
+      step: 'reviews', label: 'Recensioni Amazon',
+      status: totalReviews === 0 ? 'warn' : 'ok',
+      summary: totalReviews === 0
+        ? `Nessuna recensione raccolta (${reviewsList.length} ASIN tentati)`
+        : `${totalReviews} recensioni · ${reviewsList.length} libri`,
+      details: {
+        booksAttempted: reviewsList.length,
+        totalReviews,
+        emptyASINs,
+        perBook: reviewsList.map(br => ({
+          asin: br.asin,
+          title: br.bookTitle.slice(0, 60),
+          reviewCount: br.reviews.length,
+        })),
+      },
+    })
+
     // ── Log entry: Reddit ─────────────────────────────────────────────────────
     const postsBySubreddit = redditData.posts.reduce<Record<string, number>>((acc, p) => {
       acc[p.subreddit] = (acc[p.subreddit] ?? 0) + 1; return acc
     }, {})
+    const selftextNonEmpty = redditData.posts.filter(p => (p.selftext ?? '').length > 20).length
+    const postsWithComments = redditData.posts.filter(p => p.comments.length > 0).length
     logEntries.push({
       step: 'reddit', label: 'Reddit',
       status: !redditData.available ? 'error' : redditData.insufficientCorpus ? 'warn' : 'ok',
@@ -110,16 +136,44 @@ export async function POST(req: NextRequest) {
         insufficientCorpus: redditData.insufficientCorpus,
         threadCount: redditData.threadCount,
         totalComments: redditData.totalComments,
+        selftextNonEmpty,
+        postsWithComments,
         subredditsUsed: redditData.subredditsUsed,
         postsBySubreddit,
         posts: redditData.posts.map(p => ({
           id: p.id, title: p.title.slice(0, 80), subreddit: p.subreddit,
-          score: p.score, commentsLoaded: p.comments.length, month: p.month,
+          score: p.score, selftextLen: (p.selftext ?? '').length,
+          commentsLoaded: p.comments.length, month: p.month,
         })),
       },
     })
 
-    // ── Log entry: Trends ─────────────────────────────────────────────────────
+    // ── Log entry: YouTube ────────────────────────────────────────────────────
+    const ytApiKeyPresent = !!process.env.YOUTUBE_API_KEY
+    const ytAvailable = youtubeData?.available ?? false
+    logEntries.push({
+      step: 'youtube', label: 'YouTube',
+      status: !ytApiKeyPresent ? 'warn' : !ytAvailable ? 'warn' : 'ok',
+      summary: !ytApiKeyPresent
+        ? 'YOUTUBE_API_KEY non configurata — dati non disponibili'
+        : ytAvailable
+          ? `${youtubeData?.videos?.length ?? 0} video · ${youtubeData?.totalComments ?? 0} commenti`
+          : 'Dati non disponibili (nessun video o corpus insufficiente)',
+      details: {
+        apiKeyPresent: ytApiKeyPresent,
+        available: ytAvailable,
+        insufficientCorpus: youtubeData?.insufficientCorpus ?? true,
+        videoCount: youtubeData?.videos?.length ?? 0,
+        totalComments: youtubeData?.totalComments ?? 0,
+        videos: (youtubeData?.videos ?? []).map(v => ({
+          title: v.title.slice(0, 80),
+          viewCount: v.viewCount,
+          commentCount: v.comments.length,
+        })),
+      },
+    })
+
+    // ── Log entry: Google Trends ──────────────────────────────────────────────
     logEntries.push({
       step: 'trends', label: 'Google Trends',
       status: trendsData.available ? 'ok' : 'warn',
@@ -136,74 +190,133 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // ── Log entry: Scoring ────────────────────────────────────────────────────
+    logEntries.push({
+      step: 'scoring', label: 'Scoring redditività',
+      status: 'ok',
+      summary: `Score ${scoring.score}/100 · difficoltà ${scoring.entryDifficulty} · trend ${scoring.trendSignal}`,
+      details: {
+        score: scoring.score,
+        entryDifficulty: scoring.entryDifficulty,
+        trendSignal: scoring.trendSignal,
+        components: {
+          domanda: `${scoring.demandScore}/10 (peso 30%)`,
+          prezzo:  `${scoring.priceScore}/10 (peso 25%) — avg $${scoring.avgPrice} ($${scoring.minPrice}–$${scoring.maxPrice})`,
+          competizione: `${scoring.competitionScore}/10 (peso 20%)`,
+          trend:   `${scoring.trendScore}/10 (peso 15%)`,
+          compliance: `${scoring.complianceScore}/10 (peso 10%) — categoria: ${complianceCategory}`,
+        },
+        prezzoStats: {
+          avg: scoring.avgPrice, min: scoring.minPrice, max: scoring.maxPrice,
+        },
+        pagineStats: {
+          avg: scoring.avgPages, min: scoring.minPages, max: scoring.maxPages,
+        },
+        avgBsr: scoring.avgBsr,
+      },
+    })
+
     // ── Step 1: passo0 + pain points ──────────────────────────────────────────
     push({ type: 'progress', stage: 'passo0' })
-    const [passo0, painPoints] = await Promise.all([
-      runPasso0(amazonData),
-      runPainPointsReddit(keyword, redditData, youtubeData),
-    ])
-
-    logEntries.push({
-      step: 'passo0', label: 'Analisi competitor (AI)',
-      status: 'ok',
-      summary: `Angolo: ${passo0.angolo} · Target: ${passo0.target_reader}`,
-      details: {
-        angolo: passo0.angolo,
-        target_reader: passo0.target_reader,
-        usp: passo0.usp,
-        punti_forza: passo0.punti_forza,
-        punti_debolezza: passo0.punti_debolezza,
-      },
-    })
-    const criticalCount = painPoints.filter(p => p.criticalSignal).length
-    logEntries.push({
-      step: 'painpoints', label: 'Pain Points (AI)',
-      status: painPoints.length === 0 ? 'warn' : 'ok',
-      summary: `${painPoints.length} pain point · ${criticalCount} segnali critici`,
-      details: {
-        count: painPoints.length,
-        criticalSignals: criticalCount,
-        list: painPoints.map(p => ({ pain_point: p.pain_point, score: p.score, criticalSignal: !!p.criticalSignal })),
-      },
-    })
+    const t1 = Date.now()
+    let passo0: Awaited<ReturnType<typeof runPasso0>>
+    let painPoints: Awaited<ReturnType<typeof runPainPointsReddit>>
+    try {
+      ;[passo0, painPoints] = await Promise.all([
+        runPasso0(amazonData),
+        runPainPointsReddit(keyword, redditData, youtubeData),
+      ])
+      logEntries.push({
+        step: 'passo0', label: 'Analisi competitor (AI)',
+        status: 'ok',
+        summary: `Angolo: ${passo0.angolo} · Target: ${passo0.target_reader}`,
+        durationMs: Date.now() - t1,
+        details: {
+          angolo: passo0.angolo,
+          target_reader: passo0.target_reader,
+          usp: passo0.usp,
+          punti_forza: passo0.punti_forza,
+          punti_debolezza: passo0.punti_debolezza,
+        },
+      })
+      const criticalCount = painPoints.filter(p => p.criticalSignal).length
+      const bySource = painPoints.reduce<Record<string, number>>((acc, p) => {
+        acc[p.fonte] = (acc[p.fonte] ?? 0) + 1; return acc
+      }, {})
+      logEntries.push({
+        step: 'painpoints', label: 'Pain Points (AI)',
+        status: painPoints.length === 0 ? 'warn' : 'ok',
+        summary: `${painPoints.length} pain point · ${criticalCount} segnali critici`,
+        details: {
+          count: painPoints.length,
+          criticalSignals: criticalCount,
+          bySource,
+          list: painPoints.map(p => ({ pain_point: p.pain_point, score: p.score, fonte: p.fonte, criticalSignal: !!p.criticalSignal })),
+        },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logEntries.push({ step: 'passo0', label: 'Analisi competitor (AI)', status: 'error', summary: msg, durationMs: Date.now() - t1, details: {}, error: msg })
+      logEntries.push({ step: 'painpoints', label: 'Pain Points (AI)', status: 'error', summary: 'Step saltato per errore passo0', details: {}, error: msg })
+      throw err
+    }
 
     // ── Step 2: insights + trend forecast + gap analysis ─────────────────────
     push({ type: 'progress', stage: 'insights' })
-    const [keyInsights, trendForecast, gapAnalysis] = await Promise.all([
-      runKeyInsights(amazonData, trendsData, redditData, scoring, painPoints),
-      runTrendForecast(keyword, trendsData, scoring.trendSignal),
-      runGapAnalysis(amazonData, painPoints, redditData),
-    ])
-
-    logEntries.push({
-      step: 'insights', label: 'Insight & Gap Analysis (AI)',
-      status: 'ok',
-      summary: `${keyInsights.length} insight · trend: ${trendForecast?.classificazione ?? 'N/A'}`,
-      details: {
-        keyInsightsCount: keyInsights.length,
-        trendClassificazione: trendForecast?.classificazione ?? null,
-        gapItemsCount: (gapAnalysis.gap_inventory_table as unknown[])?.length ?? 0,
-      },
-    })
+    const t2 = Date.now()
+    let keyInsights: Awaited<ReturnType<typeof runKeyInsights>>
+    let trendForecast: Awaited<ReturnType<typeof runTrendForecast>>
+    let gapAnalysis: Awaited<ReturnType<typeof runGapAnalysis>>
+    try {
+      ;[keyInsights, trendForecast, gapAnalysis] = await Promise.all([
+        runKeyInsights(amazonData, trendsData, redditData, scoring, painPoints),
+        runTrendForecast(keyword, trendsData, scoring.trendSignal),
+        runGapAnalysis(amazonData, painPoints, redditData),
+      ])
+      logEntries.push({
+        step: 'insights', label: 'Insight & Gap Analysis (AI)',
+        status: 'ok',
+        summary: `${keyInsights.length} insight · trend: ${trendForecast?.classificazione ?? 'N/A'}`,
+        durationMs: Date.now() - t2,
+        details: {
+          keyInsightsCount: keyInsights.length,
+          trendClassificazione: trendForecast?.classificazione ?? null,
+          gapItemsCount: (gapAnalysis.gap_inventory_table as unknown[])?.length ?? 0,
+        },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logEntries.push({ step: 'insights', label: 'Insight & Gap Analysis (AI)', status: 'error', summary: msg, durationMs: Date.now() - t2, details: {}, error: msg })
+      throw err
+    }
 
     // ── Step 3: series strategy + ROI ─────────────────────────────────────────
     push({ type: 'progress', stage: 'strategy' })
-    const [seriesStrategy, roiNarrative] = await Promise.all([
-      runSeriesStrategy(amazonData, gapAnalysis.passo5_tesi_libro, scoring, roi),
-      runRoiNarrative(keyword, market, roi, scoring, budget),
-    ])
-
-    logEntries.push({
-      step: 'strategy', label: 'Strategia e ROI (AI)',
-      status: 'ok',
-      summary: `Verdetto: ${seriesStrategy.verdetto} · Breakeven: ${roi.breakEvenMonths} mesi`,
-      details: {
-        verdetto: seriesStrategy.verdetto,
-        breakEvenMonths: roi.breakEvenMonths,
-        avgMonthlyRevenueMin: roi.avgMonthlyRevenueMin,
-        avgMonthlyRevenueMax: roi.avgMonthlyRevenueMax,
-      },
-    })
+    const t3 = Date.now()
+    let seriesStrategy: Awaited<ReturnType<typeof runSeriesStrategy>>
+    let roiNarrative: Awaited<ReturnType<typeof runRoiNarrative>>
+    try {
+      ;[seriesStrategy, roiNarrative] = await Promise.all([
+        runSeriesStrategy(amazonData, gapAnalysis.passo5_tesi_libro, scoring, roi),
+        runRoiNarrative(keyword, market, roi, scoring, budget),
+      ])
+      logEntries.push({
+        step: 'strategy', label: 'Strategia e ROI (AI)',
+        status: 'ok',
+        summary: `Verdetto: ${seriesStrategy.verdetto} · Breakeven: ${roi.breakEvenMonths} mesi`,
+        durationMs: Date.now() - t3,
+        details: {
+          verdetto: seriesStrategy.verdetto,
+          breakEvenMonths: roi.breakEvenMonths,
+          avgMonthlyRevenueMin: roi.avgMonthlyRevenueMin,
+          avgMonthlyRevenueMax: roi.avgMonthlyRevenueMax,
+        },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logEntries.push({ step: 'strategy', label: 'Strategia e ROI (AI)', status: 'error', summary: msg, durationMs: Date.now() - t3, details: {}, error: msg })
+      throw err
+    }
 
     const analysisLog: AnalysisLog = {
       entries: logEntries,

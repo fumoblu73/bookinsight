@@ -79,8 +79,14 @@ function LogCard({ entry }: { entry: LogEntry }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-zinc-900 text-sm">{entry.label}</span>
             <StatusBadge status={entry.status} />
+            {entry.durationMs !== undefined && (
+              <span className="text-xs text-zinc-400 font-mono">{entry.durationMs >= 1000 ? `${(entry.durationMs / 1000).toFixed(1)}s` : `${entry.durationMs}ms`}</span>
+            )}
           </div>
           <p className="text-sm text-zinc-600 mt-0.5">{entry.summary}</p>
+          {entry.error && (
+            <p className="text-xs text-red-600 font-mono mt-1 break-all">{entry.error}</p>
+          )}
         </div>
       </div>
 
