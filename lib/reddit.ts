@@ -1,4 +1,4 @@
-import { RedditData, RedditPost } from './types'
+import { RedditData, RedditPost, RedditComment } from './types'
 
 const MIN_RESULTS_FOR_ANALYSIS = 5
 
@@ -57,6 +57,77 @@ function extractSubreddit(link: string): string {
   return m ? m[1] : 'reddit'
 }
 
+function extractPostId(link: string): string | null {
+  const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
+  return m ? m[1] : null
+}
+
+// ─── Apify Reddit scraper ─────────────────────────────────────────────────────
+
+type ApifyItem = Record<string, unknown>
+
+async function fetchCommentsViaApify(
+  postUrl: string,
+  token: string,
+): Promise<RedditComment[]> {
+  const postId = extractPostId(postUrl) ?? 'unknown'
+  try {
+    const res = await fetch(
+      `https://api.apify.com/v2/acts/trudax~reddit-scraper/run-sync-get-dataset-items?token=${token}&timeout=25`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startUrls: [{ url: postUrl }],
+          maxComments: 5,
+          maxItems: 10,
+        }),
+        signal: AbortSignal.timeout(28000),
+      }
+    )
+
+    console.log(`[reddit-comments] id:${postId} status:${res.status}`)
+    if (!res.ok) return []
+
+    const items = await res.json() as ApifyItem[]
+    console.log(`[reddit-comments] id:${postId} items:${items.length}`)
+
+    // Log struttura primo item per diagnostica (solo prima analisi)
+    if (items.length > 0 && postId !== 'unknown') {
+      console.log(`[reddit-comments] sample:${JSON.stringify(items[0]).slice(0, 150)}`)
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+
+    return items
+      .filter(item => {
+        const type = item.type as string | undefined
+        const body = String(item.body ?? item.text ?? item.content ?? '')
+        return type === 'comment' &&
+          body.length > 20 &&
+          body !== '[deleted]' &&
+          body !== '[removed]'
+      })
+      .slice(0, 5)
+      .map((item, i) => {
+        const body   = String(item.body ?? item.text ?? item.content ?? '')
+        const isoDate = item.createdAt as string | undefined
+        const createdUtc = isoDate ? Math.floor(new Date(isoDate).getTime() / 1000) : now
+        return {
+          id:         String(item.id ?? `apify_${postId}_${i}`),
+          body,
+          score:      Number(item.score ?? 0),
+          author:     String(item.author ?? ''),
+          createdUtc,
+          month:      new Date(createdUtc * 1000).toISOString().slice(0, 7),
+        }
+      })
+  } catch (err) {
+    console.log(`[reddit-comments] FAILED id:${postId} error:${err}`)
+    return []
+  }
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function fetchRedditData(keyword: string): Promise<RedditData> {
@@ -98,12 +169,28 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     link: r.link ?? '',
   }))
 
-  const subredditsUsed = [...new Set(posts.map(p => p.subreddit))]
+  // Fetch commenti via Apify (parallelo, fallback silenzioso se token assente)
+  const apifyToken = process.env.APIFY_TOKEN
+  if (apifyToken) {
+    await Promise.all(
+      posts.map(async post => {
+        if (!post.link) return
+        post.comments = await fetchCommentsViaApify(post.link, apifyToken)
+      })
+    )
+  } else {
+    console.log('[reddit] APIFY_TOKEN non configurata — comments: []')
+  }
+
+  const subredditsUsed  = [...new Set(posts.map(p => p.subreddit))]
+  const totalComments   = posts.reduce((acc, p) => acc + p.comments.length, 0)
+
+  console.log(`[reddit] "${keyword}" → ${posts.length} post · ${totalComments} commenti caricati`)
 
   return {
     keyword,
     posts,
-    totalComments: posts.length,
+    totalComments,
     subredditsUsed,
     threadCount: posts.length,
     available: true,

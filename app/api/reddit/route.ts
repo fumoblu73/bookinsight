@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchRedditData } from '@/lib/reddit'
 
-export const maxDuration = 10
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   try {
