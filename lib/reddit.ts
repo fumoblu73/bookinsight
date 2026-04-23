@@ -122,7 +122,7 @@ async function fetchCommentsViaOAuth(
   }
 
   try {
-    const res = await fetch(`https://oauth.reddit.com/comments/${id}.json?limit=5`, {
+    const res = await fetch(`https://oauth.reddit.com/comments/${id}.json?limit=5&depth=1`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'User-Agent': 'BookInsight/1.0 by bookinsight-bot',
@@ -236,7 +236,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       posts.push(base)
     }
 
-    if (i < allResults.length - 1) await sleep(500)
+    if (i < allResults.length - 1) await sleep(300)
   }
 
   const subredditsUsed = [...new Set(posts.map(p => p.subreddit))]
