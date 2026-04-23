@@ -1,8 +1,7 @@
-import { RedditData, RedditPost } from './types'
+import { RedditData, RedditPost, RedditComment } from './types'
 
 const MIN_RESULTS_FOR_ANALYSIS = 5
 
-// Parole generiche da rimuovere per ottenere la variante corta
 const GENERIC_WORDS = new Set([
   'for', 'beginners', 'beginner', 'guide', 'book', 'complete', 'easy', 'simple',
   'how', 'to', 'the', 'a', 'an', 'and', 'or', 'with', 'your', 'my',
@@ -58,6 +57,75 @@ function extractSubreddit(link: string): string {
   return m ? m[1] : 'reddit'
 }
 
+// ─── Reddit public JSON API ───────────────────────────────────────────────────
+
+function extractPostId(link: string): string | null {
+  const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)/)
+  return m ? m[1] : null
+}
+
+interface RedditJsonPost {
+  selftext?: string
+  created_utc?: number
+}
+
+interface RedditJsonComment {
+  kind: string
+  data: {
+    id?: string
+    body?: string
+    score?: number
+    author?: string
+    created_utc?: number
+  }
+}
+
+async function fetchRedditPost(link: string): Promise<{ selftext: string; comments: RedditComment[]; createdUtc: number } | null> {
+  const id = extractPostId(link)
+  if (!id) return null
+
+  try {
+    const res = await fetch(`https://www.reddit.com/comments/${id}.json?limit=10&raw_json=1`, {
+      headers: { 'User-Agent': 'BookInsight/1.0 research-bot' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+
+    const data = await res.json() as [
+      { data: { children: Array<{ data: RedditJsonPost }> } },
+      { data: { children: RedditJsonComment[] } },
+    ]
+
+    const postData = data[0]?.data?.children?.[0]?.data
+    const selftext  = (postData?.selftext ?? '').trim()
+    const createdUtc = postData?.created_utc ?? Math.floor(Date.now() / 1000)
+
+    const commentChildren = data[1]?.data?.children ?? []
+    const comments: RedditComment[] = commentChildren
+      .filter(c =>
+        c.kind === 't1' &&
+        c.data.body &&
+        c.data.body !== '[deleted]' &&
+        c.data.body !== '[removed]' &&
+        c.data.body.length > 20
+      )
+      .slice(0, 5)
+      .map(c => ({
+        id: c.data.id ?? '',
+        body: (c.data.body ?? '').slice(0, 600),
+        score: c.data.score ?? 0,
+        author: c.data.author ?? '',
+        createdUtc: c.data.created_utc ?? createdUtc,
+        month: new Date((c.data.created_utc ?? createdUtc) * 1000).toISOString().slice(0, 7),
+      }))
+
+    return { selftext, comments, createdUtc }
+  } catch (err) {
+    console.error(`[reddit] fetchRedditPost failed for ${id}:`, err)
+    return null
+  }
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function fetchRedditData(keyword: string): Promise<RedditData> {
@@ -65,10 +133,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const queries = [keyword.toLowerCase()]
   if (short !== keyword.toLowerCase()) queries.push(short)
 
-  // Ricerche in parallelo: keyword completa + variante corta
   const resultSets = await Promise.all(queries.map(q => searchRedditViaGoogle(q)))
 
-  // Deduplicazione per URL
   const seen = new Set<string>()
   const allResults: GoogleResult[] = []
   for (const results of resultSets) {
@@ -89,25 +155,44 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
   }
 
-  // Ogni risultato Google diventa un post sintetico con il snippet come corpo
-  // Il titolo + snippet = estratto della discussione Reddit indicizzata da Google
-  const posts: RedditPost[] = allResults.map((r, i) => ({
-    id: `g_${i}`,
-    title: r.title ?? '',
-    selftext: r.snippet ?? '',   // il corpus AI legge selftext
-    score: 5,
-    subreddit: r.link ? extractSubreddit(r.link) : 'reddit',
-    createdUtc: Math.floor(Date.now() / 1000),
-    month: new Date().toISOString().slice(0, 7),
-    comments: [],                // snippet già in selftext, commenti non necessari
-  }))
+  // Fetch parallelo dei thread completi via Reddit JSON API
+  const posts: RedditPost[] = await Promise.all(
+    allResults.map(async (r, i) => {
+      const base: RedditPost = {
+        id: `g_${i}`,
+        title: r.title ?? '',
+        selftext: r.snippet ?? '',
+        score: 5,
+        subreddit: r.link ? extractSubreddit(r.link) : 'reddit',
+        createdUtc: Math.floor(Date.now() / 1000),
+        month: new Date().toISOString().slice(0, 7),
+        comments: [],
+      }
+
+      if (!r.link) return base
+
+      const full = await fetchRedditPost(r.link)
+      if (!full) return base
+
+      return {
+        ...base,
+        selftext: full.selftext || base.selftext,
+        comments: full.comments,
+        createdUtc: full.createdUtc,
+        month: new Date(full.createdUtc * 1000).toISOString().slice(0, 7),
+      }
+    })
+  )
 
   const subredditsUsed = [...new Set(posts.map(p => p.subreddit))]
+  const totalComments = posts.reduce((acc, p) => acc + p.comments.length, 0)
+
+  console.log(`[reddit] "${keyword}" → ${posts.length} post · ${totalComments} commenti caricati`)
 
   return {
     keyword,
     posts,
-    totalComments: posts.length,  // ogni snippet = 1 unità di corpus
+    totalComments,
     subredditsUsed,
     threadCount: posts.length,
     available: true,
