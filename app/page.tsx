@@ -242,10 +242,7 @@ export default function HomePage() {
   }, [amazonDataState, selectedTargetAsin, customAsinProduct, market, userNotes])
 
   const isLoading = !['idle', 'awaiting_validation', 'done', 'error'].includes(stage)
-  const creditsBlocked = credits !== null && (
-    credits.analysesAvailable < 1 ||
-    (credits.apifyAnalysesAvailable !== null && credits.apifyAnalysesAvailable < 1)
-  )
+  const creditsBlocked = credits !== null && credits.available && credits.analysesMain < 1
 
   return (
     <div className="min-h-screen bg-zinc-50 print:bg-white">
@@ -264,32 +261,38 @@ export default function HomePage() {
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="no-print">
           {/* ── Credits banner ────────────────────────────────────────────── */}
-          {!creditsLoading && credits && (
-            <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-              credits.analysesAvailable === 0
-                ? 'bg-red-50 border-red-200 text-red-800'
-                : credits.analysesAvailable <= 3
-                ? 'bg-amber-50 border-amber-200 text-amber-800'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          {!creditsLoading && credits?.available && (
+            <div className={`mb-4 rounded-xl border px-4 py-3 text-sm no-print ${
+              credits.analysesMain === 0
+                ? 'bg-red-50 border-red-200'
+                : credits.analysesMain <= 3
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-zinc-50 border-zinc-200'
             }`}>
               <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
-                <span>
-                  <strong>SerpApi:</strong> {credits.searchesLeft.toLocaleString('it-IT')} ricerche
-                  {' · '}<strong>{credits.analysesAvailable}</strong> analisi disponibili
-                  {credits.analysesAvailable === 0 && (
-                    <span className="ml-2 font-semibold">— crediti esauriti</span>
-                  )}
-                </span>
-                {credits.apifyBalanceUsd !== null && credits.apifyAnalysesAvailable !== null ? (
-                  <span>
-                    <strong>Apify:</strong> ${credits.apifyBalanceUsd.toFixed(2)} rimasti
-                    {' · '}<strong>{credits.apifyAnalysesAvailable}</strong> analisi disponibili
-                    {credits.apifyAnalysesAvailable === 0 && (
-                      <span className="ml-2 font-semibold">— saldo insufficiente</span>
-                    )}
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs font-bold uppercase tracking-widest ${
+                    credits.analysesMain === 0 ? 'text-red-400' :
+                    credits.analysesMain <= 3  ? 'text-amber-500' : 'text-zinc-400'
+                  }`}>Analisi disponibili</span>
+                  <span className={`font-semibold tabular-nums ${
+                    credits.analysesMain === 0 ? 'text-red-600' :
+                    credits.analysesMain <= 3  ? 'text-amber-600' : 'text-zinc-700'
+                  }`}>
+                    {credits.analysesMain}
                   </span>
-                ) : (
-                  <span className="opacity-60"><strong>Apify:</strong> saldo non disponibile</span>
+                  <span className="text-xs text-zinc-400">
+                    SerpApi {credits.total_searches_left.toLocaleString('it-IT')} cr. · ~12/analisi
+                    {credits.apifyAvailable && ` · Apify $${credits.apifyBalanceUsd.toFixed(2)}`}
+                  </span>
+                </div>
+                {credits.analysesMain === 0 && (
+                  <span className="text-xs font-medium text-red-600 shrink-0">
+                    {credits.analysesAvailable === 0 ? 'Crediti SerpApi esauriti' : 'Saldo Apify insufficiente'}
+                  </span>
+                )}
+                {credits.analysesMain > 0 && credits.analysesMain <= 3 && (
+                  <span className="text-xs text-amber-500 shrink-0">Ultime analisi disponibili</span>
                 )}
               </div>
             </div>

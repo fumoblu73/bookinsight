@@ -208,11 +208,19 @@ export interface AnalysisLog {
 // ─── Credits ──────────────────────────────────────────────────────────────────
 
 export interface CreditsData {
-  searchesLeft: number
-  analysesAvailable: number
-  creditsPerAnalysis: number
-  apifyBalanceUsd: number | null
-  apifyAnalysesAvailable: number | null
-  apifyCostPerAnalysis: number
-  fetchedAt: string
+  // SerpApi account fields
+  total_searches_left: number
+  plan_searches_left: number
+  searches_per_month: number
+  plan_name: string
+  account_email: string
+  available: boolean        // false se la chiamata SerpApi ha fallito
+  cached: boolean           // true se il dato viene da Redis
+  cached_at?: string        // ISO timestamp del caching
+  // Derived
+  analysesAvailable: number        // floor(total_searches_left / CREDITS_PER_ANALYSIS)
+  apifyBalanceUsd: number          // saldo Apify in USD
+  apifyAnalysesAvailable: number   // floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
+  apifyAvailable: boolean          // false se la chiamata Apify ha fallito
+  analysesMain: number             // min(analysesAvailable, apifyAnalysesAvailable) — collo di bottiglia
 }

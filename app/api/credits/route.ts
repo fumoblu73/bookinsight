@@ -2,105 +2,130 @@ import { NextResponse } from 'next/server'
 import { Redis } from '@upstash/redis'
 import type { CreditsData } from '@/lib/types'
 
-export const maxDuration = 10
+export const revalidate = 0
 
-const CREDITS_PER_ANALYSIS = 14
-const APIFY_COST_PER_ANALYSIS = 0.47
 const CACHE_KEY = 'serpapi:credits'
-const CACHE_TTL = 300
+const CACHE_TTL = 300  // 5 minuti
 
-function getRedis(): Redis {
-  const url = process.env.KV_REST_API_URL
-  const token = process.env.KV_REST_API_TOKEN
-  if (!url || !token) throw new Error('Upstash: variabili KV mancanti')
-  return new Redis({ url, token })
+// Valori calibrati su analisi reale (aprile 2026)
+const CREDITS_PER_ANALYSIS = 12       // 65→77 usate = 12 ricerche/analisi
+const APIFY_COST_PER_ANALYSIS = 0.29  // $0.77→$1.06 = $0.29/analisi
+
+// Giorno del mese del rinnovo Apify — configurabile via env var
+const APIFY_RENEWAL_DAY = parseInt(process.env.APIFY_RENEWAL_DAY ?? '1', 10)
+
+// TTL cache Apify: secondi fino al prossimo rinnovo (si azzera automaticamente)
+function apifyCacheTTL(): number {
+  const now = new Date()
+  const renewal = new Date(now)
+  renewal.setDate(APIFY_RENEWAL_DAY)
+  renewal.setHours(0, 0, 0, 0)
+  if (renewal <= now) renewal.setMonth(renewal.getMonth() + 1)
+  return Math.max(60, Math.floor((renewal.getTime() - now.getTime()) / 1000))
 }
 
-export async function GET() {
+const EMPTY: CreditsData = {
+  total_searches_left: 0, plan_searches_left: 0, searches_per_month: 0,
+  plan_name: 'unknown', account_email: '', available: false, cached: false,
+  analysesAvailable: 0, apifyBalanceUsd: 0, apifyAnalysesAvailable: 0,
+  apifyAvailable: false, analysesMain: 0,
+}
+
+export async function GET(): Promise<NextResponse<CreditsData>> {
+  const redis = Redis.fromEnv()
+
+  // ── Cache check ───────────────────────────────────────────────────────────
   try {
-    const redis = getRedis()
+    const cached = await redis.get<CreditsData>(CACHE_KEY)
+    if (cached) return NextResponse.json({ ...cached, cached: true })
+  } catch {
+    console.warn('[credits] Redis non disponibile, fallback diretto')
+  }
 
-    // Check cache
-    const raw = await redis.get<unknown>(CACHE_KEY)
-    if (raw) {
-      const cached = typeof raw === 'string' ? JSON.parse(raw) as CreditsData : raw as CreditsData
-      return NextResponse.json(cached)
-    }
+  // ── SerpApi account ───────────────────────────────────────────────────────
+  const apiKey = process.env.SERPAPI_KEY
+  if (!apiKey) return NextResponse.json(EMPTY)
 
-    // Fetch SerpApi account
-    const apiKey = process.env.SERPAPI_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: 'SERPAPI_KEY non configurata' }, { status: 500 })
-    }
-
+  let serpResult: Omit<CreditsData, 'apifyBalanceUsd' | 'apifyAnalysesAvailable' | 'apifyAvailable' | 'analysesMain'>
+  try {
     const res = await fetch(`https://serpapi.com/account?api_key=${apiKey}`, {
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) throw new Error(`SerpApi account: ${res.status}`)
+    const data = await res.json() as Record<string, unknown>
 
-    const account = await res.json() as {
-      plan_searches_left?: number
+    const totalLeft = (data.total_searches_left as number | undefined) ?? 0
+    serpResult = {
+      total_searches_left:  totalLeft,
+      plan_searches_left:   (data.plan_searches_left  as number | undefined) ?? 0,
+      searches_per_month:   (data.searches_per_month  as number | undefined) ?? 0,
+      plan_name:            (data.plan_name            as string | undefined) ?? 'unknown',
+      account_email:        (data.account_email        as string | undefined) ?? '',
+      available:            true,
+      cached:               false,
+      cached_at:            new Date().toISOString(),
+      analysesAvailable:    Math.floor(totalLeft / CREDITS_PER_ANALYSIS),
     }
+  } catch (err) {
+    console.error('[credits] SerpApi fetch fallito:', err)
+    return NextResponse.json(EMPTY)
+  }
 
-    const searchesLeft = account.plan_searches_left ?? 0
-    const analysesAvailable = Math.floor(searchesLeft / CREDITS_PER_ANALYSIS)
+  // ── Apify balance ─────────────────────────────────────────────────────────
+  let apifyBalanceUsd = 0
+  let apifyAnalysesAvailable = 0
+  let apifyAvailable = false
 
-    // Try Apify balance
-    let apifyBalanceUsd: number | null = null
-    let apifyAnalysesAvailable: number | null = null
-    const apifyToken = process.env.APIFY_TOKEN
-    if (apifyToken) {
-      try {
+  const apifyToken = process.env.APIFY_TOKEN
+  if (apifyToken) {
+    try {
+      // Try cache first
+      const apifyCached = await redis.get<{ balance: number; analyses: number }>('apify:credits').catch(() => null)
+      if (apifyCached) {
+        apifyBalanceUsd = apifyCached.balance
+        apifyAnalysesAvailable = apifyCached.analyses
+        apifyAvailable = true
+      } else {
         const apifyRes = await fetch(`https://api.apify.com/v2/users/me?token=${apifyToken}`, {
           signal: AbortSignal.timeout(5000),
         })
         if (apifyRes.ok) {
-          const apifyData = await apifyRes.json() as {
-            data?: {
-              availableBalance?: number           // prepaid accounts
-              monthlyUsageCreditsUsd?: number     // plan limit
-              usedMonthlyUsageCreditsUsd?: number // used this month
-              plan?: { monthlyUsageCreditsUsd?: number }
-            }
-          }
-          const d = apifyData.data
-          if (d) {
-            // Prepaid: availableBalance
-            if (typeof d.availableBalance === 'number') {
-              apifyBalanceUsd = Math.round(d.availableBalance * 100) / 100
-            // Free/subscription: plan limit - used
-            } else {
-              const limit = d.plan?.monthlyUsageCreditsUsd ?? d.monthlyUsageCreditsUsd ?? 0
-              const used  = d.usedMonthlyUsageCreditsUsd ?? 0
-              if (limit > 0) {
-                apifyBalanceUsd = Math.round(Math.max(0, limit - used) * 100) / 100
-              }
-            }
-            if (apifyBalanceUsd !== null) {
-              apifyAnalysesAvailable = Math.floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
-            }
-          }
+          const d = ((await apifyRes.json()) as { data?: Record<string, unknown> }).data ?? {}
+          const limit = (d.plan as { monthlyUsageCreditsUsd?: number } | undefined)?.monthlyUsageCreditsUsd
+                     ?? (d.monthlyUsageCreditsUsd as number | undefined)
+                     ?? 0
+          const used  = (d.usedMonthlyUsageCreditsUsd as number | undefined) ?? 0
+          const avail = typeof d.availableBalance === 'number'
+            ? d.availableBalance as number
+            : Math.max(0, limit - used)
+
+          apifyBalanceUsd = Math.round(avail * 100) / 100
+          apifyAnalysesAvailable = Math.floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
+          apifyAvailable = true
+
+          // Cache Apify until next renewal
+          await redis.set('apify:credits',
+            { balance: apifyBalanceUsd, analyses: apifyAnalysesAvailable },
+            { ex: apifyCacheTTL() }
+          ).catch(() => {})
         }
-      } catch {
-        // Apify balance not available — ignore
       }
+    } catch {
+      console.warn('[credits] Apify balance non disponibile')
     }
-
-    const data: CreditsData = {
-      searchesLeft,
-      analysesAvailable,
-      creditsPerAnalysis: CREDITS_PER_ANALYSIS,
-      apifyBalanceUsd,
-      apifyAnalysesAvailable,
-      apifyCostPerAnalysis: APIFY_COST_PER_ANALYSIS,
-      fetchedAt: new Date().toISOString(),
-    }
-
-    await redis.set(CACHE_KEY, JSON.stringify(data), { ex: CACHE_TTL })
-
-    return NextResponse.json(data)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Errore sconosciuto'
-    return NextResponse.json({ error: message }, { status: 500 })
   }
+
+  const result: CreditsData = {
+    ...serpResult,
+    apifyBalanceUsd,
+    apifyAnalysesAvailable,
+    apifyAvailable,
+    analysesMain: apifyAvailable
+      ? Math.min(serpResult.analysesAvailable, apifyAnalysesAvailable)
+      : serpResult.analysesAvailable,
+  }
+
+  try { await redis.set(CACHE_KEY, result, { ex: CACHE_TTL }) } catch {}
+
+  return NextResponse.json(result)
 }

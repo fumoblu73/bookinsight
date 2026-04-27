@@ -272,7 +272,7 @@ export async function POST(req: NextRequest) {
       ;[keyInsights, trendForecast, gapAnalysis] = await Promise.all([
         runKeyInsights(amazonData, trendsData, redditData, scoring, painPoints),
         runTrendForecast(keyword, trendsData, scoring.trendSignal),
-        runGapAnalysis(amazonData, painPoints, redditData, userNotes),
+        runGapAnalysis(amazonData, painPoints, redditData, userNotes, youtubeData),
       ])
       logEntries.push({
         step: 'insights', label: 'Insight & Gap Analysis (AI)',

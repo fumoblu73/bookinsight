@@ -229,9 +229,14 @@ export function promptGapAnalysis(
   painPoints: PainPoint[],
   reddit: RedditData,
   userNotes?: string,
+  youtube?: YouTubeData,
 ): string {
   const topPains = painPointsList(painPoints)
   const books = booksTable(amazon)
+
+  const ytBlock = youtube?.available && youtube.totalComments > 0
+    ? `\nYOUTUBE (${youtube.videos.length} video · ${youtube.totalComments} commenti): sì`
+    : '\nYOUTUBE: non disponibile'
 
   const userNotesBlock = userNotes?.trim()
     ? `\nOSSERVAZIONI DELL'UTENTE (segnale integrativo):\n${userNotes.trim()}\nREGOLA: I dati numerici (recensioni Amazon, Reddit, trends) hanno priorità assoluta sulle osservazioni dell'utente. Usa le osservazioni come segnale aggiuntivo, non come dato primario. Per ogni gap nella gap_inventory_table indica in nota_utente se l'osservazione dell'utente conferma, contraddice o è irrilevante rispetto al gap (max 15 parole, oppure null).\n`
@@ -245,10 +250,10 @@ ${books}
 RECENSIONI AMAZON TOP COMPETITOR (testo reale):
 ${reviewsBlock(amazon)}
 
-TOP PAIN POINT (da Reddit/discussioni online):
+TOP PAIN POINT (da Reddit/YouTube/discussioni online):
 ${topPains || 'Nessun pain point estratto — basati su competitor e recensioni.'}
 
-REDDIT/DISCUSSIONI ONLINE: ${reddit.available ? `sì (${reddit.threadCount} thread da ${reddit.subredditsUsed.join(', ')})` : 'non disponibile'}${userNotesBlock}
+REDDIT/DISCUSSIONI ONLINE: ${reddit.available ? `sì (${reddit.threadCount} thread da ${reddit.subredditsUsed.join(', ')})` : 'non disponibile'}${ytBlock}${userNotesBlock}
 
 ISTRUZIONI:
 - Usa le recensioni positive per capire cosa apprezzano i lettori (aspetti da eguagliare o superare)
