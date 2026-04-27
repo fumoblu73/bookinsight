@@ -56,12 +56,29 @@ export async function GET() {
         })
         if (apifyRes.ok) {
           const apifyData = await apifyRes.json() as {
-            data?: { availableBalance?: number }
+            data?: {
+              availableBalance?: number           // prepaid accounts
+              monthlyUsageCreditsUsd?: number     // plan limit
+              usedMonthlyUsageCreditsUsd?: number // used this month
+              plan?: { monthlyUsageCreditsUsd?: number }
+            }
           }
-          const balance = apifyData.data?.availableBalance
-          if (typeof balance === 'number') {
-            apifyBalanceUsd = Math.round(balance * 100) / 100
-            apifyAnalysesAvailable = Math.floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
+          const d = apifyData.data
+          if (d) {
+            // Prepaid: availableBalance
+            if (typeof d.availableBalance === 'number') {
+              apifyBalanceUsd = Math.round(d.availableBalance * 100) / 100
+            // Free/subscription: plan limit - used
+            } else {
+              const limit = d.plan?.monthlyUsageCreditsUsd ?? d.monthlyUsageCreditsUsd ?? 0
+              const used  = d.usedMonthlyUsageCreditsUsd ?? 0
+              if (limit > 0) {
+                apifyBalanceUsd = Math.round(Math.max(0, limit - used) * 100) / 100
+              }
+            }
+            if (apifyBalanceUsd !== null) {
+              apifyAnalysesAvailable = Math.floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
+            }
           }
         }
       } catch {
