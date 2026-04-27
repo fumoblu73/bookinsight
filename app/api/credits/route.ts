@@ -92,21 +92,33 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
         if (apifyRes.ok) {
           const raw = await apifyRes.json() as { data?: Record<string, unknown> }
           const d = raw.data ?? {}
-          // Log struttura per diagnostica
+          // Piano free: limite $5/mese da plan.monthlyUsageCreditsUsd
           const plan = d.plan as Record<string, unknown> | undefined
-          console.log('[credits] Apify plan keys:', plan ? Object.keys(plan).join(', ') : 'null')
-          console.log('[credits] Apify plan full:', JSON.stringify(plan))
+          const APIFY_MONTHLY_LIMIT: number = (plan?.monthlyUsageCreditsUsd as number | undefined) ?? 5
 
-          // Piano free Apify: $5/mese fisso. Saldo = 5 - crediti_spesi_questo_mese
-          const APIFY_MONTHLY_LIMIT = 5
-          // Cerca il campo "used" in tutti i possibili posti
-          const used =
-            (d.usedMonthlyUsageCreditsUsd as number | undefined) ??
-            (plan?.usedMonthlyUsageCreditsUsd as number | undefined) ??
-            (plan?.currentSpend as number | undefined) ??
-            (plan?.usedCreditsUsd as number | undefined) ??
-            0
-          console.log(`[credits] Apify used resolved: ${used}`)
+          // Consumo mensile: endpoint separato /v2/users/me/usage/monthly
+          let used = 0
+          try {
+            const usageRes = await fetch(
+              `https://api.apify.com/v2/users/me/usage/monthly?token=${apifyToken}`,
+              { signal: AbortSignal.timeout(4000) }
+            )
+            if (usageRes.ok) {
+              const usageData = await usageRes.json() as Record<string, unknown>
+              console.log('[credits] Apify usage keys:', Object.keys(usageData).join(', '))
+              console.log('[credits] Apify usage full:', JSON.stringify(usageData).slice(0, 400))
+              used =
+                (usageData.totalUsageUsd as number | undefined) ??
+                (usageData.usedCreditsUsd as number | undefined) ??
+                (usageData.totalCostUsd as number | undefined) ??
+                0
+            } else {
+              console.log('[credits] Apify usage endpoint status:', usageRes.status)
+            }
+          } catch (e) {
+            console.log('[credits] Apify usage fetch error:', e)
+          }
+          console.log(`[credits] Apify used: ${used} / limit: ${APIFY_MONTHLY_LIMIT}`)
           const avail = Math.max(0, APIFY_MONTHLY_LIMIT - used)
 
           apifyBalanceUsd = Math.round(avail * 100) / 100
