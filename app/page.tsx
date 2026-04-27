@@ -249,7 +249,10 @@ export default function HomePage() {
       <header className="bg-white border-b border-zinc-200 no-print">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-zinc-900">BookInsight</h1>
+            <h1 className="text-xl font-bold text-zinc-900">
+              BookInsight
+              <span className="ml-2 text-sm font-normal text-zinc-400">v6.7</span>
+            </h1>
             <p className="text-xs text-zinc-500">Analisi nicchie Amazon KDP con AI</p>
           </div>
           <a href="/history" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
