@@ -262,9 +262,10 @@ export async function runGapAnalysis(
   amazon: AmazonData,
   painPoints: PainPoint[],
   reddit: RedditData,
+  userNotes?: string,
 ): Promise<GapAnalysisResult> {
   return callSonnet<GapAnalysisResult>(
-    promptGapAnalysis(amazon, painPoints, reddit)
+    promptGapAnalysis(amazon, painPoints, reddit, userNotes)
   )
 }
 

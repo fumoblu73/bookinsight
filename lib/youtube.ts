@@ -1,9 +1,9 @@
 import { YouTubeData, YouTubeVideo, YouTubeComment } from './types'
 
 const YT_API = 'https://www.googleapis.com/youtube/v3'
-const MIN_COMMENTS = 10
-const MAX_VIDEOS = 5
-const MAX_COMMENTS_PER_VIDEO = 50
+const MIN_COMMENTS = 25
+const MAX_VIDEOS = 8
+const MAX_COMMENTS_PER_VIDEO = 100
 const MAX_COMMENT_AGE_MONTHS = 24
 
 function getApiKey(): string {
@@ -20,7 +20,7 @@ function isRecentEnough(publishedAt: string): boolean {
 }
 
 function isValidComment(text: string, likeCount: number): boolean {
-  if (text.length < 50) return false
+  if (text.length === 0) return false
   if (likeCount < 2) return false
   if (/https?:\/\//.test(text)) return false
   if (/^[\s\p{Emoji}\p{P}]+$/u.test(text)) return false
@@ -98,7 +98,7 @@ export async function fetchYouTubeData(keyword: string): Promise<YouTubeData> {
     let totalComments = 0
     const capped: YouTubeVideo[] = []
     for (const v of sorted) {
-      const remaining = 150 - totalComments
+      const remaining = 400 - totalComments
       if (remaining <= 0) break
       const sliced = { ...v, comments: v.comments.slice(0, remaining) }
       capped.push(sliced)

@@ -228,9 +228,14 @@ export function promptGapAnalysis(
   amazon: AmazonData,
   painPoints: PainPoint[],
   reddit: RedditData,
+  userNotes?: string,
 ): string {
   const topPains = painPointsList(painPoints)
   const books = booksTable(amazon)
+
+  const userNotesBlock = userNotes?.trim()
+    ? `\nOSSERVAZIONI DELL'UTENTE (segnale integrativo):\n${userNotes.trim()}\nREGOLA: I dati numerici (recensioni Amazon, Reddit, trends) hanno priorità assoluta sulle osservazioni dell'utente. Usa le osservazioni come segnale aggiuntivo, non come dato primario. Per ogni gap nella gap_inventory_table indica in nota_utente se l'osservazione dell'utente conferma, contraddice o è irrilevante rispetto al gap (max 15 parole, oppure null).\n`
+    : ''
 
   return `Sei un esperto di strategia editoriale KDP. Esegui una Gap Analysis completa per la nicchia "${amazon.keyword}" (mercato ${amazon.market}).
 
@@ -243,7 +248,7 @@ ${reviewsBlock(amazon)}
 TOP PAIN POINT (da Reddit/discussioni online):
 ${topPains || 'Nessun pain point estratto — basati su competitor e recensioni.'}
 
-REDDIT/DISCUSSIONI ONLINE: ${reddit.available ? `sì (${reddit.threadCount} thread da ${reddit.subredditsUsed.join(', ')})` : 'non disponibile'}
+REDDIT/DISCUSSIONI ONLINE: ${reddit.available ? `sì (${reddit.threadCount} thread da ${reddit.subredditsUsed.join(', ')})` : 'non disponibile'}${userNotesBlock}
 
 ISTRUZIONI:
 - Usa le recensioni positive per capire cosa apprezzano i lettori (aspetti da eguagliare o superare)
@@ -281,7 +286,8 @@ Esegui i 5 passi e rispondi SOLO con un oggetto JSON valido:
       "gap": "nome gap",
       "tipo": "contenuto | formato | target | angolo",
       "priorita": "ALTA | MEDIA | BASSA",
-      "opportunita": "come sfruttarlo (max 15 parole)"
+      "opportunita": "come sfruttarlo (max 15 parole)",
+      "nota_utente": "conferma/contraddice/null — solo se osservazioni utente presenti"
     }
   ]
 }`

@@ -44,7 +44,7 @@ function makeStream(fn: (push: (e: StreamEvent) => void) => Promise<void>) {
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { keyword, market, amazonData, trendsData, redditData, youtubeData, cpc } = await req.json() as {
+  const { keyword, market, amazonData, trendsData, redditData, youtubeData, cpc, userNotes } = await req.json() as {
     keyword: string
     market: Market
     amazonData: AmazonData
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
     redditData: RedditData
     youtubeData?: YouTubeData
     cpc?: number
+    userNotes?: string
   }
 
   if (!amazonData?.topBooks || amazonData.topBooks.length < 3) {
@@ -271,7 +272,7 @@ export async function POST(req: NextRequest) {
       ;[keyInsights, trendForecast, gapAnalysis] = await Promise.all([
         runKeyInsights(amazonData, trendsData, redditData, scoring, painPoints),
         runTrendForecast(keyword, trendsData, scoring.trendSignal),
-        runGapAnalysis(amazonData, painPoints, redditData),
+        runGapAnalysis(amazonData, painPoints, redditData, userNotes),
       ])
       logEntries.push({
         step: 'insights', label: 'Insight & Gap Analysis (AI)',

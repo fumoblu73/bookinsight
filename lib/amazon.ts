@@ -33,6 +33,11 @@ const KDP_PRINT_COST: Record<Market, { fixed: number; perPage: number }> = {
   ES: { fixed: 0.75, perPage: 0.012 },
 }
 
+// Soglia royalty KDP giugno 2025: 60% se prezzo >= soglia, 50% sotto
+const ROYALTY_THRESHOLD: Record<Market, number> = {
+  US: 9.99, UK: 9.99, DE: 9.99, FR: 9.99, IT: 9.99, ES: 9.99,
+}
+
 const VULNERABILITY_THRESHOLD = 100
 
 const BOOK_FORMATS = new Set([
@@ -251,7 +256,8 @@ export function calcRoyalty(price: number, pages: number, market: Market): numbe
   const { fixed, perPage } = KDP_PRINT_COST[market]
   const effectivePages = pages < 24 ? 0 : pages
   const printCost = fixed + perPage * effectivePages
-  return Math.max(0, price * 0.6 - printCost)
+  const royaltyRate = price >= ROYALTY_THRESHOLD[market] ? 0.60 : 0.50
+  return Math.max(0, price * royaltyRate - printCost)
 }
 
 function bsrToSales(bsr: number, market: Market): { min: number; max: number } {

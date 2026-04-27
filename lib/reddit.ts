@@ -1,6 +1,8 @@
 import { RedditData, RedditPost, RedditComment } from './types'
 
 const MIN_RESULTS_FOR_ANALYSIS = 5
+const MAX_POSTS = 15
+const MAX_COMMENTS_PER_POST = 10
 
 const GENERIC_WORDS = new Set([
   'for', 'beginners', 'beginner', 'guide', 'book', 'complete', 'easy', 'simple',
@@ -42,7 +44,7 @@ async function searchRedditViaGoogle(query: string): Promise<GoogleResult[]> {
     const data = await serpApiFetch({
       engine: 'google',
       q: `site:reddit.com ${query}`,
-      num: '10',
+      num: '15',
     }) as { organic_results?: GoogleResult[] }
     return (data.organic_results ?? [])
       .filter(r => r.link?.includes('reddit.com/r/') && r.link.includes('/comments/'))
@@ -79,8 +81,8 @@ async function fetchCommentsViaApify(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           startUrls: [{ url: postUrl }],
-          maxComments: 5,
-          maxItems: 10,
+          maxComments: MAX_COMMENTS_PER_POST,
+          maxItems: MAX_COMMENTS_PER_POST * 2,
         }),
         signal: AbortSignal.timeout(28000),
       }
@@ -104,11 +106,13 @@ async function fetchCommentsViaApify(
         const dataType = item.dataType as string | undefined
         const body = String(item.body ?? '')
         return dataType === 'comment' &&
-          body.length > 20 &&
+          body.length > 0 &&
           body !== '[deleted]' &&
-          body !== '[removed]'
+          body !== '[removed]' &&
+          !/^https?:\/\//.test(body.trim()) &&
+          !/^[\s\p{Emoji}\p{P}]+$/u.test(body)
       })
-      .slice(0, 5)
+      .slice(0, MAX_COMMENTS_PER_POST)
       .map((item, i) => {
         const body     = String(item.body ?? '')
         const isoDate  = item.createdAt as string | undefined
@@ -157,7 +161,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
   }
 
-  const posts: RedditPost[] = allResults.map((r, i) => ({
+  const posts: RedditPost[] = allResults.slice(0, MAX_POSTS).map((r, i) => ({
     id: `g_${i}`,
     title: r.title ?? '',
     selftext: r.snippet ?? '',

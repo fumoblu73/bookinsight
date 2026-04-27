@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import ReportView from '@/components/ReportView'
 import type { FullReport } from '@/components/ReportView'
-import type { AmazonData, FilteredBook, Market, YouTubeData } from '@/lib/types'
+import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData } from '@/lib/types'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
@@ -65,6 +65,23 @@ export default function HomePage() {
   const [report, setReport]   = useState<FullReport | null>(null)
   const [reportId, setReportId] = useState<string | null>(null)
   const [error, setError]     = useState<string | null>(null)
+
+  // Credits state
+  const [credits, setCredits] = useState<CreditsData | null>(null)
+  const [creditsLoading, setCreditsLoading] = useState(true)
+
+  // User notes (Sessione 4)
+  const [userNotes, setUserNotes] = useState('')
+  const [showNotes, setShowNotes] = useState(false)
+
+  // Fetch credits on mount
+  useEffect(() => {
+    fetch('/api/credits')
+      .then(r => r.ok ? r.json() as Promise<CreditsData> : Promise.reject())
+      .then(data => setCredits(data))
+      .catch(() => setCredits(null))
+      .finally(() => setCreditsLoading(false))
+  }, [])
 
   // Validation phase state
   const [amazonDataState, setAmazonDataState] = useState<AmazonData | null>(null)
@@ -186,7 +203,7 @@ export default function HomePage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, youtubeData, cpc: cpcValue }),
+        body: JSON.stringify({ keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, youtubeData, cpc: cpcValue, userNotes: userNotes.trim() || undefined }),
       })
       if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
       if (!res.body) throw new Error('Stream non supportato dal browser')
@@ -222,9 +239,10 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : String(err))
       setStage('error')
     }
-  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market])
+  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market, userNotes])
 
   const isLoading = !['idle', 'awaiting_validation', 'done', 'error'].includes(stage)
+  const creditsBlocked = credits !== null && credits.analysesAvailable < 1
 
   return (
     <div className="min-h-screen bg-zinc-50 print:bg-white">
@@ -242,6 +260,25 @@ export default function HomePage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="no-print">
+          {/* ── Credits banner ────────────────────────────────────────────── */}
+          {!creditsLoading && credits && (
+            <div className={`mb-4 rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-3 ${
+              credits.analysesAvailable === 0
+                ? 'bg-red-50 border-red-200 text-red-800'
+                : credits.analysesAvailable <= 3
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            }`}>
+              <span>
+                <strong>Crediti SerpApi:</strong> {credits.searchesLeft.toLocaleString('it-IT')} ricerche rimaste
+                {' '}({credits.analysesAvailable} analisi disponibili)
+              </span>
+              {credits.analysesAvailable === 0 && (
+                <span className="text-xs font-semibold">Crediti esauriti — ricarica SerpApi per continuare</span>
+              )}
+            </div>
+          )}
+
           <form onSubmit={handlePhase1} className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
             <h2 className="text-lg font-semibold text-zinc-800 mb-4">Analizza una nicchia KDP</h2>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -265,8 +302,9 @@ export default function HomePage() {
               </select>
               <button
                 type="submit"
-                disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation'}
+                disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation' || creditsBlocked}
                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={creditsBlocked ? 'Crediti SerpApi esauriti' : undefined}
               >
                 {isLoading ? 'Analisi…' : 'Analizza'}
               </button>
@@ -316,6 +354,33 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* User notes — collapsible */}
+            <div className="mt-4 border-t border-zinc-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowNotes(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <span className={`transition-transform ${showNotes ? 'rotate-90' : ''} inline-block`}>▶</span>
+                Osservazioni personali sulla nicchia (opzionale)
+              </button>
+              {showNotes && (
+                <div className="mt-2">
+                  <textarea
+                    value={userNotes}
+                    onChange={e => setUserNotes(e.target.value)}
+                    maxLength={1000}
+                    rows={4}
+                    placeholder="Es. ho notato che i libri esistenti ignorano il target over 50 · il formato workbook sembra mancante · la keyword X sembra emergente…"
+                    disabled={isLoading || stage === 'awaiting_validation'}
+                    className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50 resize-y"
+                  />
+                  <p className="text-xs text-zinc-400 mt-1 text-right">{userNotes.length}/1000</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">I dati oggettivi (recensioni, Reddit, trends) hanno priorità. Le tue osservazioni vengono usate come segnale integrativo nella Gap Analysis.</p>
+                </div>
+              )}
             </div>
 
             {(isLoading || stage === 'awaiting_validation') && (

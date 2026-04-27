@@ -204,3 +204,15 @@ export interface AnalysisLog {
   startedAt: string
   completedAt: string
 }
+
+// ─── Credits ──────────────────────────────────────────────────────────────────
+
+export interface CreditsData {
+  searchesLeft: number
+  analysesAvailable: number
+  creditsPerAnalysis: number
+  apifyBalanceUsd: number | null
+  apifyAnalysesAvailable: number | null
+  apifyCostPerAnalysis: number
+  fetchedAt: string
+}

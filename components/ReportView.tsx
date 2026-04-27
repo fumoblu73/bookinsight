@@ -38,7 +38,7 @@ export interface FullReport {
     passo2_angoli_mancanti: { items: string[] }
     passo4_target_non_servito: { segmento: string; dimensione: string }
     passo5_tesi_libro: { titolo_proposto: string; sottotitolo: string; hook: string; differenziatori: string[] }
-    gap_inventory_table: { gap: string; tipo: string; priorita: 'ALTA' | 'MEDIA' | 'BASSA'; opportunita: string }[]
+    gap_inventory_table: { gap: string; tipo: string; priorita: 'ALTA' | 'MEDIA' | 'BASSA'; opportunita: string; nota_utente?: string | null }[]
   }
   seriesStrategy: {
     verdetto: 'INVEST' | 'PARTIAL' | 'PASS'
@@ -767,6 +767,27 @@ export default function ReportView({ report }: { report: FullReport }) {
               ))}
             </div>
           </SubCard>
+
+          {/* Confronto osservazioni utente — solo se presenti */}
+          {report.gapAnalysis.gap_inventory_table.some(g => g.nota_utente) && (
+            <SubCard title="Confronto con le tue osservazioni" accent="amber">
+              <div className="space-y-2">
+                {report.gapAnalysis.gap_inventory_table
+                  .filter(g => g.nota_utente)
+                  .map((g, i) => {
+                    const nota = g.nota_utente!
+                    const isContrast = /contraddic|contrast/i.test(nota)
+                    return (
+                      <div key={i} className={`rounded-lg px-3 py-2 text-xs border ${isContrast ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                        <span className="font-semibold text-zinc-700">{g.gap}:</span>
+                        {' '}
+                        <span className={isContrast ? 'text-amber-800' : 'text-emerald-800'}>{nota}</span>
+                      </div>
+                    )
+                  })}
+              </div>
+            </SubCard>
+          )}
 
         </div>
         <SectionNote>
