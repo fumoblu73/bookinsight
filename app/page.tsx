@@ -73,6 +73,7 @@ export default function HomePage() {
   // User notes (Sessione 4)
   const [userNotes, setUserNotes] = useState('')
   const [showNotes, setShowNotes] = useState(false)
+  const [showCpc, setShowCpc] = useState(false)
 
   // Fetch credits on mount
   useEffect(() => {
@@ -265,38 +266,40 @@ export default function HomePage() {
         <div className="no-print">
           {/* ── Credits banner ────────────────────────────────────────────── */}
           {!creditsLoading && credits?.available && (
-            <div className={`mb-4 rounded-xl border px-4 py-3 text-sm no-print ${
+            <div className={`mb-4 rounded-xl border px-5 py-3 no-print ${
               credits.analysesMain === 0
                 ? 'bg-red-50 border-red-200'
                 : credits.analysesMain <= 3
                 ? 'bg-amber-50 border-amber-200'
                 : 'bg-zinc-50 border-zinc-200'
             }`}>
-              <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-bold uppercase tracking-widest ${
+              <div className="flex items-center justify-between gap-4">
+                {/* Left: label + big number */}
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-xs font-semibold uppercase tracking-wider ${
                     credits.analysesMain === 0 ? 'text-red-400' :
                     credits.analysesMain <= 3  ? 'text-amber-500' : 'text-zinc-400'
                   }`}>Analisi disponibili</span>
-                  <span className={`font-semibold tabular-nums ${
+                  <span className={`text-2xl font-black tabular-nums leading-none ${
                     credits.analysesMain === 0 ? 'text-red-600' :
-                    credits.analysesMain <= 3  ? 'text-amber-600' : 'text-zinc-700'
-                  }`}>
-                    {credits.analysesMain}
-                  </span>
-                  <span className="text-xs text-zinc-400">
-                    SerpApi {credits.total_searches_left.toLocaleString('it-IT')} cr. · ~12/analisi
-                    {credits.apifyAvailable && ` · Apify $${credits.apifyBalanceUsd.toFixed(2)}`}
-                  </span>
+                    credits.analysesMain <= 3  ? 'text-amber-600' : 'text-zinc-800'
+                  }`}>{credits.analysesMain}</span>
+                  {credits.analysesMain === 0 && (
+                    <span className="text-xs font-medium text-red-500 ml-1">
+                      {credits.analysesAvailable === 0 ? '— SerpApi esaurito' : '— Apify insufficiente'}
+                    </span>
+                  )}
+                  {credits.analysesMain > 0 && credits.analysesMain <= 3 && (
+                    <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
+                  )}
                 </div>
-                {credits.analysesMain === 0 && (
-                  <span className="text-xs font-medium text-red-600 shrink-0">
-                    {credits.analysesAvailable === 0 ? 'Crediti SerpApi esauriti' : 'Saldo Apify insufficiente'}
-                  </span>
-                )}
-                {credits.analysesMain > 0 && credits.analysesMain <= 3 && (
-                  <span className="text-xs text-amber-500 shrink-0">Ultime analisi disponibili</span>
-                )}
+                {/* Right: SerpApi + Apify detail */}
+                <div className="text-right text-xs text-zinc-400 space-y-0.5 shrink-0">
+                  <div>SerpApi <span className="font-medium text-zinc-600">{credits.analysesAvailable}</span></div>
+                  {credits.apifyAvailable && (
+                    <div>Apify <span className="font-medium text-zinc-600">${credits.apifyBalanceUsd.toFixed(2)}</span> · <span className="font-medium text-zinc-600">{credits.apifyAnalysesAvailable}</span></div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -332,7 +335,7 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* CPC Amazon Ads — campo opzionale con box esplicativo */}
+            {/* CPC Amazon Ads — campo opzionale con box esplicativo collassabile */}
             <div className="mt-4 border-t border-zinc-100 pt-4 space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <label className="text-xs font-medium text-zinc-500 whitespace-nowrap">CPC Amazon Ads stimato (opzionale):</label>
@@ -345,37 +348,46 @@ export default function HomePage() {
                   className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
                 />
                 <span className="text-xs text-zinc-400">$/€ per click · stima i click/mese acquistabili con il budget ads in §7</span>
+                <button
+                  type="button"
+                  onClick={() => setShowCpc(v => !v)}
+                  className="ml-auto flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 transition-colors"
+                >
+                  <span className={`transition-transform inline-block ${showCpc ? 'rotate-90' : ''}`}>▶</span>
+                  Come stimare il CPC
+                </button>
               </div>
-              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed space-y-2">
-                <p className="font-semibold text-amber-900">Come stimare il CPC Amazon Ads</p>
-                <div className="space-y-1.5">
-                  <div className="flex gap-2">
-                    <span className="shrink-0 font-bold text-amber-600">①</span>
-                    <p>
-                      <strong>Amazon Ads (gratuito, diretto):</strong> accedi ad{' '}
-                      <em>Amazon Ads → Sponsored Products → crea campagna manuale</em>.
-                      Aggiungi la keyword nella sezione <em>Targeting per keyword</em> e leggi il{' '}
-                      <em>Bid suggerito</em> che appare accanto — non serve pubblicare la campagna.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="shrink-0 font-bold text-amber-600">②</span>
-                    <p>
-                      <strong>Helium10 Adtomic:</strong> nel modulo Adtomic cerca la keyword e leggi la colonna{' '}
-                      <em>Suggested Bid</em>. Offre anche la fascia min/max (bid basso / bid alto) per calibrare meglio il budget.
-                      Richiede piano Platinum o superiore.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="shrink-0 font-bold text-amber-600">③</span>
-                    <p>
-                      <strong>Publisher Rocket:</strong> nella scheda <em>AMS Keyword</em> inserisci la keyword
-                      e ottieni direttamente il <em>Avg. CPC</em> stimato insieme al volume di ricerca Amazon.
-                      È il metodo più rapido se hai già Publisher Rocket attivo.
-                    </p>
+              {showCpc && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed space-y-2">
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <span className="shrink-0 font-bold text-amber-600">①</span>
+                      <p>
+                        <strong>Amazon Ads (gratuito, diretto):</strong> accedi ad{' '}
+                        <em>Amazon Ads → Sponsored Products → crea campagna manuale</em>.
+                        Aggiungi la keyword nella sezione <em>Targeting per keyword</em> e leggi il{' '}
+                        <em>Bid suggerito</em> che appare accanto — non serve pubblicare la campagna.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="shrink-0 font-bold text-amber-600">②</span>
+                      <p>
+                        <strong>Helium10 Adtomic:</strong> nel modulo Adtomic cerca la keyword e leggi la colonna{' '}
+                        <em>Suggested Bid</em>. Offre anche la fascia min/max (bid basso / bid alto) per calibrare meglio il budget.
+                        Richiede piano Platinum o superiore.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="shrink-0 font-bold text-amber-600">③</span>
+                      <p>
+                        <strong>Publisher Rocket:</strong> nella scheda <em>AMS Keyword</em> inserisci la keyword
+                        e ottieni direttamente il <em>Avg. CPC</em> stimato insieme al volume di ricerca Amazon.
+                        È il metodo più rapido se hai già Publisher Rocket attivo.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* User notes — collapsible */}

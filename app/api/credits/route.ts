@@ -91,13 +91,12 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
         })
         if (apifyRes.ok) {
           const d = ((await apifyRes.json()) as { data?: Record<string, unknown> }).data ?? {}
+          // Piano free Apify: $5/mese. Saldo = limite_piano - crediti_spesi_questo_mese
           const limit = (d.plan as { monthlyUsageCreditsUsd?: number } | undefined)?.monthlyUsageCreditsUsd
                      ?? (d.monthlyUsageCreditsUsd as number | undefined)
-                     ?? 0
+                     ?? 5  // default free plan
           const used  = (d.usedMonthlyUsageCreditsUsd as number | undefined) ?? 0
-          const avail = typeof d.availableBalance === 'number'
-            ? d.availableBalance as number
-            : Math.max(0, limit - used)
+          const avail = Math.max(0, limit - used)
 
           apifyBalanceUsd = Math.round(avail * 100) / 100
           apifyAnalysesAvailable = Math.floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
