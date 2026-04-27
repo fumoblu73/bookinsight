@@ -4,7 +4,7 @@ import type { CreditsData } from '@/lib/types'
 
 export const revalidate = 0
 
-const CACHE_KEY = 'serpapi:credits:v4'
+const CACHE_KEY = 'serpapi:credits:v5'
 const CACHE_TTL = 300  // 5 minuti
 
 // Valori calibrati su analisi reale (aprile 2026)
@@ -80,7 +80,7 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
   if (apifyToken) {
     try {
       // Try cache first
-      const apifyCached = await redis.get<{ balance: number; analyses: number }>('apify:credits:v4').catch(() => null)
+      const apifyCached = await redis.get<{ balance: number; analyses: number }>('apify:credits:v5').catch(() => null)
       if (apifyCached) {
         apifyBalanceUsd = apifyCached.balance
         apifyAnalysesAvailable = apifyCached.analyses
@@ -104,21 +104,17 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
               { signal: AbortSignal.timeout(4000) }
             )
             if (usageRes.ok) {
-              const usageData = await usageRes.json() as Record<string, unknown>
-              console.log('[credits] Apify usage keys:', Object.keys(usageData).join(', '))
-              console.log('[credits] Apify usage full:', JSON.stringify(usageData).slice(0, 400))
-              used =
-                (usageData.totalUsageUsd as number | undefined) ??
-                (usageData.usedCreditsUsd as number | undefined) ??
-                (usageData.totalCostUsd as number | undefined) ??
-                0
-            } else {
-              console.log('[credits] Apify usage endpoint status:', usageRes.status)
+              type ServiceEntry = { amountAfterVolumeDiscountUsd?: number }
+              type UsageResponse = { data?: { monthlyServiceUsage?: Record<string, ServiceEntry> } }
+              const usageData = await usageRes.json() as UsageResponse
+              const services = usageData.data?.monthlyServiceUsage ?? {}
+              used = Object.values(services).reduce(
+                (sum, s) => sum + (s.amountAfterVolumeDiscountUsd ?? 0), 0
+              )
             }
-          } catch (e) {
-            console.log('[credits] Apify usage fetch error:', e)
+          } catch {
+            // silently ignore — used stays 0
           }
-          console.log(`[credits] Apify used: ${used} / limit: ${APIFY_MONTHLY_LIMIT}`)
           const avail = Math.max(0, APIFY_MONTHLY_LIMIT - used)
 
           apifyBalanceUsd = Math.round(avail * 100) / 100
@@ -126,7 +122,7 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
           apifyAvailable = true
 
           // Cache Apify until next renewal
-          await redis.set('apify:credits:v4',
+          await redis.set('apify:credits:v5',
             { balance: apifyBalanceUsd, analyses: apifyAnalysesAvailable },
             { ex: apifyCacheTTL() }
           ).catch(() => {})
