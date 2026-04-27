@@ -295,9 +295,9 @@ export default function HomePage() {
                 </div>
                 {/* Right: SerpApi + Apify detail */}
                 <div className="text-right text-xs text-zinc-400 space-y-0.5 shrink-0">
-                  <div>SerpApi <span className="font-medium text-zinc-600">{credits.analysesAvailable}</span></div>
+                  <div>SerpApi <span className="font-medium text-zinc-600">{credits.total_searches_left.toLocaleString('it-IT')}</span></div>
                   {credits.apifyAvailable && (
-                    <div>Apify <span className="font-medium text-zinc-600">${credits.apifyBalanceUsd.toFixed(2)}</span> · <span className="font-medium text-zinc-600">{credits.apifyAnalysesAvailable}</span></div>
+                    <div>Apify <span className="font-medium text-zinc-600">${credits.apifyBalanceUsd.toFixed(2)}</span></div>
                   )}
                 </div>
               </div>
