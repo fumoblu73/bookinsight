@@ -93,13 +93,20 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
           const raw = await apifyRes.json() as { data?: Record<string, unknown> }
           const d = raw.data ?? {}
           // Log struttura per diagnostica
-          console.log('[credits] Apify raw keys:', Object.keys(d).join(', '))
-          console.log('[credits] Apify raw sample:', JSON.stringify(d).slice(0, 400))
+          const plan = d.plan as Record<string, unknown> | undefined
+          console.log('[credits] Apify plan keys:', plan ? Object.keys(plan).join(', ') : 'null')
+          console.log('[credits] Apify plan full:', JSON.stringify(plan))
 
           // Piano free Apify: $5/mese fisso. Saldo = 5 - crediti_spesi_questo_mese
           const APIFY_MONTHLY_LIMIT = 5
-          const used = (d.usedMonthlyUsageCreditsUsd as number | undefined) ?? 0
-          console.log(`[credits] Apify used: ${used}`)
+          // Cerca il campo "used" in tutti i possibili posti
+          const used =
+            (d.usedMonthlyUsageCreditsUsd as number | undefined) ??
+            (plan?.usedMonthlyUsageCreditsUsd as number | undefined) ??
+            (plan?.currentSpend as number | undefined) ??
+            (plan?.usedCreditsUsd as number | undefined) ??
+            0
+          console.log(`[credits] Apify used resolved: ${used}`)
           const avail = Math.max(0, APIFY_MONTHLY_LIMIT - used)
 
           apifyBalanceUsd = Math.round(avail * 100) / 100
