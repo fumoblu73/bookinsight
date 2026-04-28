@@ -252,7 +252,7 @@ export default function HomePage() {
           <div>
             <h1 className="text-xl font-bold text-zinc-900">
               BookInsight
-              <span className="ml-2 text-sm font-normal text-zinc-400">v6.7</span>
+              <span className="ml-2 text-sm font-normal text-zinc-400">v6.8</span>
             </h1>
             <p className="text-xs text-zinc-500">Analisi nicchie Amazon KDP con AI</p>
           </div>
