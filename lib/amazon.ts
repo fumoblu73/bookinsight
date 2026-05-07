@@ -221,6 +221,8 @@ function defaultProductDetails(): ProductDetails {
 
 // ─── Recensioni competitor ────────────────────────────────────────────────────
 
+const NON_ENGLISH_MARKETS_REVIEWS = new Set<Market>(['IT', 'DE', 'FR', 'ES'])
+
 async function fetchBookReviews(asin: string, market: Market): Promise<AmazonReview[]> {
   const domain = MARKET_AMAZON_DOMAIN[market]
   try {
@@ -230,20 +232,28 @@ async function fetchBookReviews(asin: string, market: Market): Promise<AmazonRev
       amazon_domain: domain,
     }) as {
       reviews_information?: {
-        authors_reviews?: Array<{ rating?: number; title?: string; text?: string }>
-        other_countries_reviews?: Array<{ rating?: number; title?: string; text?: string }>
+        authors_reviews?: Array<{ rating?: number; title?: string; text?: string; helpful_count?: number }>
+        other_countries_reviews?: Array<{ rating?: number; title?: string; text?: string; helpful_count?: number }>
       }
     }
     const ri = data.reviews_information ?? {}
-    const raw = [
-      ...(ri.authors_reviews ?? []),
-      ...(ri.other_countries_reviews ?? []),
-    ]
-    return raw.slice(0, 10).map(r => ({
-      rating: Number(r.rating ?? 0),
-      title:  String(r.title ?? '').slice(0, 100),
-      body:   String(r.text  ?? '').slice(0, 400),
-    })).filter(r => r.body.length > 20)
+    const local   = ri.authors_reviews ?? []
+    const foreign = ri.other_countries_reviews ?? []
+
+    // Per mercati non-anglofoni: preferire recensioni locali (lingua del marketplace)
+    const raw = NON_ENGLISH_MARKETS_REVIEWS.has(market) && local.length >= 5
+      ? local
+      : [...local, ...foreign]
+
+    return raw
+      .filter(r => (r.text ?? '').length >= 80)
+      .sort((a, b) => (b.helpful_count ?? 0) - (a.helpful_count ?? 0))
+      .slice(0, 10)
+      .map(r => ({
+        rating: Number(r.rating ?? 0),
+        title:  String(r.title ?? '').slice(0, 100),
+        body:   String(r.text  ?? '').slice(0, 500),
+      }))
   } catch (err) {
     console.error(`[amazon] fetchBookReviews failed for ${asin}:`, err)
     return []
@@ -503,14 +513,10 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
   const subNiches = detectSubNiches(rawBooks, keyword)
   const competitorTarget = selectCompetitorTarget(topBooks, subNiches)
 
-  // Recensioni: top 2 per BSR + competitorTarget; se target già tra i top 2, aggiunge il 3°
-  const top2Asins = new Set(topBooks.slice(0, 2).map(b => b.asin))
-  const reviewCandidates = topBooks.slice(0, 2) as FilteredBook[]
-  if (top2Asins.has(competitorTarget.asin)) {
-    if (topBooks[2]) reviewCandidates.push(topBooks[2])
-  } else {
-    reviewCandidates.push(competitorTarget)
-  }
+  // Recensioni: tutti i top 5 libri, deduplicati per ASIN
+  const reviewCandidatesMap = new Map<string, FilteredBook>()
+  for (const b of topBooks) reviewCandidatesMap.set(b.asin, b)
+  const reviewCandidates = [...reviewCandidatesMap.values()]
 
   const topBookReviews: BookReviews[] = (
     await Promise.all(

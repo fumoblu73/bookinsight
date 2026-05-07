@@ -6,6 +6,7 @@ import {
   runPasso0, runPainPointsReddit,
   runKeyInsights, runTrendForecast, runGapAnalysis,
   runSeriesStrategy, runRoiNarrative,
+  isAnthropicBillingError,
 } from '@/lib/ai'
 import { saveReport, updateReport } from '@/lib/upstash'
 
@@ -18,10 +19,10 @@ const DEFAULT_BUDGET: Record<Market, number> = {
 
 // ─── Helper streaming ─────────────────────────────────────────────────────────
 
-type ProgressEvent = { type: 'progress'; stage: string }
-type DoneEvent     = { type: 'done'; report: unknown }
-type ErrorEvent    = { type: 'error'; message: string }
-type StreamEvent   = ProgressEvent | DoneEvent | ErrorEvent
+type ProgressEvent      = { type: 'progress'; stage: string }
+type DoneEvent          = { type: 'done'; report: unknown }
+type ErrorEvent         = { type: 'error'; message: string; errorType?: string }
+type StreamEvent        = ProgressEvent | DoneEvent | ErrorEvent
 
 function makeStream(fn: (push: (e: StreamEvent) => void) => Promise<void>) {
   const encoder = new TextEncoder()
@@ -33,7 +34,15 @@ function makeStream(fn: (push: (e: StreamEvent) => void) => Promise<void>) {
       try {
         await fn(push)
       } catch (err) {
-        push({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+        if (isAnthropicBillingError(err)) {
+          push({
+            type: 'error',
+            errorType: 'billing_anthropic',
+            message: 'Crediti Anthropic esauriti. Ricarica su console.anthropic.com/settings/billing',
+          })
+        } else {
+          push({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+        }
       } finally {
         controller.close()
       }

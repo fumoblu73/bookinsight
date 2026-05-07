@@ -8,7 +8,7 @@ const CACHE_KEY = 'serpapi:credits:v5'
 const CACHE_TTL = 300  // 5 minuti
 
 // Valori calibrati su analisi reale (aprile 2026)
-const CREDITS_PER_ANALYSIS = 12       // 65→77 usate = 12 ricerche/analisi
+const CREDITS_PER_ANALYSIS = 14       // 1 SERP + 8 product + 5 recensioni (S7-6)
 const APIFY_COST_PER_ANALYSIS = 0.29  // $0.77→$1.06 = $0.29/analisi
 
 // Giorno del mese del rinnovo Apify — configurabile via env var

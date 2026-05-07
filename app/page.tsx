@@ -291,6 +291,11 @@ export default function HomePage() {
             setReportId((event.report as { id?: string }).id ?? null)
             setStage('done')
           } else if (event.type === 'error') {
+            if ((event as { errorType?: string }).errorType === 'billing_anthropic') {
+              setError('BILLING_ANTHROPIC')
+              setStage('error')
+              return
+            }
             throw new Error(event.message ?? 'Errore sconosciuto dal server')
           }
         }
@@ -418,7 +423,11 @@ export default function HomePage() {
                 type="submit"
                 disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation' || creditsBlocked}
                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title={creditsBlocked ? 'Crediti SerpApi esauriti' : undefined}
+                title={
+                  credits?.analysesAvailable === 0 ? 'Crediti SerpApi insufficienti — ricarica su serpapi.com' :
+                  (credits?.apifyAvailable && (credits?.apifyAnalysesAvailable ?? 1) < 1) ? 'Crediti Apify insufficienti — ricarica su console.apify.com' :
+                  undefined
+                }
               >
                 {isLoading ? 'Analisi…' : 'Analizza'}
               </button>
@@ -513,9 +522,23 @@ export default function HomePage() {
             )}
 
             {stage === 'error' && error && (
-              <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-                <strong>Errore:</strong> {error}
-              </div>
+              error === 'BILLING_ANTHROPIC' ? (
+                <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm">
+                  <p className="font-semibold text-red-700">Crediti Anthropic esauriti</p>
+                  <a
+                    href="https://console.anthropic.com/settings/billing"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-red-600 underline underline-offset-2 text-xs"
+                  >
+                    Ricarica crediti Anthropic →
+                  </a>
+                </div>
+              ) : (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                  <strong>Errore:</strong> {error}
+                </div>
+              )
             )}
           </form>
 

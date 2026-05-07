@@ -24,6 +24,20 @@ const SYSTEM_SONNET = `Sei un esperto analista di mercato KDP (Kindle Direct Pub
 
 const SYSTEM_HAIKU = `Sei un assistente di estrazione dati per analisi KDP. Il tuo compito è leggere testi e strutturare informazioni in JSON valido. Rispondi sempre con JSON puro, senza testo aggiuntivo.`
 
+// ─── Riconoscimento errori billing Anthropic ─────────────────────────────────
+
+export function isAnthropicBillingError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const msg = err.message.toLowerCase()
+  return (
+    msg.includes('billing') ||
+    msg.includes('credit') ||
+    msg.includes('402') ||
+    msg.includes('payment') ||
+    msg.includes('overloaded') && msg.includes('quota')
+  )
+}
+
 // ─── Retry con backoff esponenziale per errori transitori ────────────────────
 
 const RETRYABLE_STATUSES = new Set([429, 500, 503, 529])

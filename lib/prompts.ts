@@ -111,6 +111,8 @@ NOTA: i commenti YouTube provengono da spettatori di video tutorial — tendono 
   return `Sei un ricercatore di mercato specializzato in libri non-fiction. Analizza le discussioni sulla keyword "${keyword}" ed estrai i pain point reali degli utenti.
 
 ${redditLanguageNote}${redditSection}${ytSection}
+REGOLA COMMENTI BREVI DI CONFERMA: Se un commento è una conferma breve del problema espresso nel post padre o nei commenti precedenti (es. "stesso problema", "anche io", "idem", "exactly", "same here", "this!", "+1", "agree") — NON assegnargli un pain point autonomo. Invece, incrementa di +1 il punteggio F del pain point del post padre o del commento descrittivo più recente sullo stesso problema. Haiku ha tutto il contesto necessario: conosce il titolo del post e i commenti precedenti. La stessa regola si applica al corpus YouTube.
+
 ISTRUZIONI:
 - Identifica 5-12 pain point distinti e concreti espressi dagli utenti
 - Per ogni pain point assegna:
@@ -222,7 +224,7 @@ Rispondi SOLO con un oggetto JSON valido:
 function reviewsBlock(amazon: AmazonData): string {
   if (!amazon.topBookReviews?.length) return 'Non disponibili.'
   return amazon.topBookReviews.map(br => {
-    const pos = br.reviews.filter((r: AmazonReview) => r.rating >= 4).slice(0, 3)
+    const pos = br.reviews.filter((r: AmazonReview) => r.rating >= 4).slice(0, 2)
     const neg = br.reviews.filter((r: AmazonReview) => r.rating <= 3).slice(0, 3)
     const fmt = (r: AmazonReview) => `[${r.rating}★] "${r.title}" — ${r.body.slice(0, 200)}`
     return `"${br.bookTitle.slice(0, 60)}" (${br.reviews.length} recensioni analizzate):
