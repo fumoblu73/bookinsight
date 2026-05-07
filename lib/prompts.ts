@@ -70,10 +70,10 @@ export function promptPainPointsReddit(
     : ''
 
   const corpus = reddit.posts
-    .slice(0, 20)
+    .slice(0, 15)
     .map(p => {
       const comments = p.comments
-        .slice(0, 5)
+        .slice(0, 10)
         .map(c => `    [score ${c.score}] ${c.body.substring(0, 300)}`)
         .join('\n')
       return `POST (r/${p.subreddit}, score ${p.score}): "${p.title}"\n${p.selftext ? '  ' + p.selftext.substring(0, 200) + '\n' : ''}${comments}`
@@ -83,7 +83,6 @@ export function promptPainPointsReddit(
   const ytCorpus = youtube?.available && youtube.videos.length > 0
     ? youtube.videos.map(v => {
         const comments = v.comments
-          .slice(0, 10)
           .map(c => `  [${c.likeCount} likes] ${c.text.substring(0, 300)}`)
           .join('\n')
         return `VIDEO YouTube (${v.viewCount.toLocaleString()} views): "${v.title}"\n${comments}`
