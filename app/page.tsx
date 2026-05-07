@@ -44,6 +44,15 @@ const MARKETS: { value: Market; label: string }[] = [
   { value: 'ES', label: 'ES' },
 ]
 
+const AMAZON_AUTOCOMPLETE_MID: Record<Market, string> = {
+  US: 'ATVPDKIKX0DER',
+  UK: 'A1F83G8C2ARO7P',
+  DE: 'A1PA6795UKMFR9',
+  FR: 'A13V1IB3VIYZZH',
+  IT: 'APJ6JRA9NG5V4',
+  ES: 'A1RKKUPIHCS9HS',
+}
+
 async function postJSON(url: string, body: unknown) {
   const res = await fetch(url, {
     method: 'POST',
@@ -75,6 +84,12 @@ export default function HomePage() {
   const [showNotes, setShowNotes] = useState(false)
   const [showCpc, setShowCpc] = useState(false)
 
+  // Autocomplete suggestions (Sessione 8)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
+  const suggestionsRef = useRef<HTMLDivElement>(null)
+
   // Fetch credits on mount
   useEffect(() => {
     fetch('/api/credits')
@@ -82,6 +97,50 @@ export default function HomePage() {
       .then(data => setCredits(data))
       .catch(() => setCredits(null))
       .finally(() => setCreditsLoading(false))
+  }, [])
+
+  // Autocomplete: fetch suggestions via proxy
+  const fetchSuggestions = useCallback(async (value: string, mkt: Market) => {
+    if (value.length < 2) { setSuggestions([]); return }
+    const mid = AMAZON_AUTOCOMPLETE_MID[mkt]
+    setLoadingSuggestions(true)
+    try {
+      const res = await fetch(`/api/autocomplete?mid=${mid}&prefix=${encodeURIComponent(value)}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json() as { suggestions?: Array<{ value: string }> }
+      setSuggestions(data.suggestions?.map(s => s.value) ?? [])
+      setShowSuggestions(true)
+    } catch {
+      setSuggestions([])
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }, [])
+
+  // Debounce 300ms sul typing della keyword
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (keyword.trim().length >= 2) fetchSuggestions(keyword.trim(), market)
+      else setSuggestions([])
+    }, 300)
+    return () => clearTimeout(t)
+  }, [keyword, market, fetchSuggestions])
+
+  // Reset dropdown al cambio mercato
+  useEffect(() => {
+    setSuggestions([])
+    setShowSuggestions(false)
+  }, [market])
+
+  // Chiudi dropdown al click fuori
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   // Validation phase state
@@ -136,7 +195,7 @@ export default function HomePage() {
         fetch('/api/youtube', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword: kw }),
+          body: JSON.stringify({ keyword: kw, market }),
         }).then(r => r.ok ? r.json() : { videos: [], totalComments: 0, available: false, insufficientCorpus: true, keyword: kw }),
       ]) as Promise<[unknown, unknown, unknown]>
 
@@ -307,14 +366,44 @@ export default function HomePage() {
           <form onSubmit={handlePhase1} className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
             <h2 className="text-lg font-semibold text-zinc-800 mb-4">Analizza una nicchia KDP</h2>
             <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                placeholder="es. stoicism for beginners"
-                disabled={isLoading || stage === 'awaiting_validation'}
-                className="flex-1 rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:bg-zinc-50"
-              />
+              <div className="relative flex-1" ref={suggestionsRef}>
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={e => {
+                    setKeyword(e.target.value)
+                    if (e.target.value.length < 2) setShowSuggestions(false)
+                  }}
+                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                  onKeyDown={e => { if (e.key === 'Escape') setShowSuggestions(false) }}
+                  placeholder="es. stoicism for beginners"
+                  disabled={isLoading || stage === 'awaiting_validation'}
+                  className="w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:bg-zinc-50"
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white rounded-xl border border-zinc-200 shadow-lg overflow-hidden">
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setKeyword(s)
+                          setShowSuggestions(false)
+                          setSuggestions([])
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors flex items-center gap-2"
+                      >
+                        <span className="text-zinc-300 text-xs">⌕</span>
+                        {s}
+                      </button>
+                    ))}
+                    <div className="px-4 py-1.5 text-xs text-zinc-300 border-t border-zinc-100 flex items-center gap-1">
+                      <span>Suggerimenti Amazon {market}</span>
+                      {loadingSuggestions && <span className="animate-pulse">…</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
               <select
                 value={market}
                 onChange={e => setMarket(e.target.value as Market)}

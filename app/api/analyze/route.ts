@@ -225,7 +225,7 @@ export async function POST(req: NextRequest) {
     try {
       ;[passo0, painPoints] = await Promise.all([
         runPasso0(amazonData),
-        runPainPointsReddit(keyword, redditData, youtubeData),
+        runPainPointsReddit(keyword, redditData, youtubeData, market),
       ])
       logEntries.push({
         step: 'passo0', label: 'Analisi competitor (AI)',

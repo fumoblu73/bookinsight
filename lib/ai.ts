@@ -140,6 +140,7 @@ import {
   RedditData,
   YouTubeData,
   PainPoint,
+  Market,
 } from './types'
 
 import {
@@ -179,11 +180,12 @@ export async function runPainPointsReddit(
   keyword: string,
   reddit: RedditData,
   youtube?: YouTubeData,
+  market?: Market,
 ): Promise<PainPoint[]> {
   if ((!reddit.available || reddit.insufficientCorpus) && (!youtube?.available || youtube.insufficientCorpus)) return []
 
   const raw = await callHaiku<RawPainPoint[]>(
-    promptPainPointsReddit(keyword, reddit, youtube)
+    promptPainPointsReddit(keyword, reddit, youtube, market)
   )
 
   // Normalizza i campi opzionali e calcola score

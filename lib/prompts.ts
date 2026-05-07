@@ -1,4 +1,4 @@
-import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview } from './types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -57,11 +57,18 @@ Rispondi SOLO con un oggetto JSON valido (nessun testo prima o dopo), con questa
 // ─── Pain Points — estrazione Haiku da Reddit ─────────────────────────────────
 // §5: Haiku legge il corpus Reddit e restituisce pain point grezzi F/I/S
 
+const NON_ENGLISH_MARKETS = new Set<Market>(['DE', 'FR', 'IT', 'ES'])
+
 export function promptPainPointsReddit(
   keyword: string,
   reddit: RedditData,
   youtube?: YouTubeData,
+  market?: Market,
 ): string {
+  const redditLanguageNote = market && NON_ENGLISH_MARKETS.has(market)
+    ? `NOTA IMPORTANTE: il mercato selezionato è ${market} (non anglofono). Reddit è prevalentemente in inglese: il corpus potrebbe contenere discussioni in inglese sullo stesso argomento invece che in lingua locale. Questo è accettabile — i pain point universali emergono anche da comunità anglofone. Tuttavia, le recensioni Amazon in lingua locale sono la fonte primaria più affidabile per questo mercato. Dai priorità ai segnali dalle recensioni rispetto a quelli Reddit se ci sono discrepanze.\n\n`
+    : ''
+
   const corpus = reddit.posts
     .slice(0, 20)
     .map(p => {
@@ -103,7 +110,7 @@ NOTA: i commenti YouTube provengono da spettatori di video tutorial — tendono 
 
   return `Sei un ricercatore di mercato specializzato in libri non-fiction. Analizza le discussioni sulla keyword "${keyword}" ed estrai i pain point reali degli utenti.
 
-${redditSection}${ytSection}
+${redditLanguageNote}${redditSection}${ytSection}
 ISTRUZIONI:
 - Identifica 5-12 pain point distinti e concreti espressi dagli utenti
 - Per ogni pain point assegna:

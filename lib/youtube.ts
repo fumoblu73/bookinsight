@@ -1,6 +1,17 @@
-import { YouTubeData, YouTubeVideo, YouTubeComment } from './types'
+import { YouTubeData, YouTubeVideo, YouTubeComment, Market } from './types'
 
 const YT_API = 'https://www.googleapis.com/youtube/v3'
+
+// ─── Parametri lingua/regione per YouTube Data API v3 ────────────────────────
+
+const MARKET_YOUTUBE_PARAMS: Record<Market, { relevanceLanguage: string; regionCode: string }> = {
+  US: { relevanceLanguage: 'en', regionCode: 'US' },
+  UK: { relevanceLanguage: 'en', regionCode: 'GB' },
+  DE: { relevanceLanguage: 'de', regionCode: 'DE' },
+  FR: { relevanceLanguage: 'fr', regionCode: 'FR' },
+  IT: { relevanceLanguage: 'it', regionCode: 'IT' },
+  ES: { relevanceLanguage: 'es', regionCode: 'ES' },
+}
 const MIN_COMMENTS = 25
 const MAX_VIDEOS = 8
 const MAX_COMMENTS_PER_VIDEO = 100
@@ -27,9 +38,10 @@ function isValidComment(text: string, likeCount: number): boolean {
   return true
 }
 
-async function searchVideos(keyword: string): Promise<string[]> {
+async function searchVideos(keyword: string, market: Market): Promise<string[]> {
+  const { relevanceLanguage, regionCode } = MARKET_YOUTUBE_PARAMS[market]
   const query = encodeURIComponent(`${keyword} tutorial`)
-  const url = `${YT_API}/search?part=id&type=video&q=${query}&maxResults=${MAX_VIDEOS}&order=viewCount&key=${getApiKey()}`
+  const url = `${YT_API}/search?part=id&type=video&q=${query}&maxResults=${MAX_VIDEOS}&order=viewCount&relevanceLanguage=${relevanceLanguage}&regionCode=${regionCode}&key=${getApiKey()}`
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
   if (!res.ok) throw new Error(`YouTube search: ${res.status}`)
   const data = await res.json() as { items?: { id: { videoId: string } }[] }
@@ -75,13 +87,13 @@ async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
     .sort((a, b) => b.likeCount - a.likeCount)
 }
 
-export async function fetchYouTubeData(keyword: string): Promise<YouTubeData> {
+export async function fetchYouTubeData(keyword: string, market: Market = 'US'): Promise<YouTubeData> {
   if (!process.env.YOUTUBE_API_KEY) {
     return { keyword, videos: [], totalComments: 0, available: false, insufficientCorpus: true }
   }
 
   try {
-    const videoIds = await searchVideos(keyword)
+    const videoIds = await searchVideos(keyword, market)
     if (videoIds.length === 0) {
       return { keyword, videos: [], totalComments: 0, available: false, insufficientCorpus: true }
     }

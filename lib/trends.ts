@@ -1,4 +1,4 @@
-import { TrendsData, TrendsDataPoint, RelatedQuery } from './types'
+import { TrendsData, TrendsDataPoint, RelatedQuery, Market } from './types'
 
 const MONTHS = 60  // 5 anni
 
@@ -18,6 +18,17 @@ function shortKeyword(keyword: string): string {
   if (core.length === 0) return keyword.toLowerCase()
   // Use first 2 core words (most generic useful variant)
   return core.slice(0, 2).join(' ')
+}
+
+// ─── Parametri geo/lingua per Google Trends per mercato ─────────────────────
+
+const MARKET_TRENDS_PARAMS: Record<Market, { gl: string; hl: string }> = {
+  US: { gl: 'us', hl: 'en' },
+  UK: { gl: 'gb', hl: 'en' },
+  DE: { gl: 'de', hl: 'de' },
+  FR: { gl: 'fr', hl: 'fr' },
+  IT: { gl: 'it', hl: 'it' },
+  ES: { gl: 'es', hl: 'es' },
 }
 
 // ─── SerpApi fetch (riuso stesso pattern di amazon.ts) ───────────────────────
@@ -54,7 +65,7 @@ function calcYoY(timeline: TrendsDataPoint[]): number {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-export async function fetchTrendsData(keyword: string): Promise<TrendsData> {
+export async function fetchTrendsData(keyword: string, market: Market = 'US'): Promise<TrendsData> {
   const endDate   = new Date()
   const startDate = new Date()
   startDate.setMonth(startDate.getMonth() - MONTHS)
@@ -63,12 +74,13 @@ export async function fetchTrendsData(keyword: string): Promise<TrendsData> {
   const dateRange = `${startDate.toISOString().slice(0, 10)} ${endDate.toISOString().slice(0, 10)}`
 
   const trendsQuery = shortKeyword(keyword)
+  const { gl, hl } = MARKET_TRENDS_PARAMS[market]
 
   try {
     // Due chiamate in parallelo: timeline + related queries
     const [timelineRaw, relatedRaw] = await Promise.all([
-      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES' }),
-      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'RELATED_QUERIES' }),
+      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES', gl, hl }),
+      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'RELATED_QUERIES', gl, hl }),
     ])
 
     // ── Parse timeline ────────────────────────────────────────────────────────
