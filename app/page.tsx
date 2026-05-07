@@ -105,7 +105,7 @@ export default function HomePage() {
     const mid = AMAZON_AUTOCOMPLETE_MID[mkt]
     setLoadingSuggestions(true)
     try {
-      const res = await fetch(`/api/autocomplete?mid=${mid}&prefix=${encodeURIComponent(value)}`)
+      const res = await fetch(`/api/autocomplete?mid=${mid}&prefix=${encodeURIComponent(value)}&market=${mkt}`)
       if (!res.ok) throw new Error()
       const data = await res.json() as { suggestions?: Array<{ value: string }> }
       setSuggestions(data.suggestions?.map(s => s.value) ?? [])
