@@ -359,15 +359,27 @@ export default function HomePage() {
                 </div>
                 {/* Right: SerpApi + Apify + Anthropic detail */}
                 <div className="text-right text-xs text-zinc-400 space-y-0.5 shrink-0">
-                  <div>SerpApi <span className="font-medium text-zinc-600">{credits.total_searches_left.toLocaleString('it-IT')} ricerche rimanenti</span></div>
+                  <div>
+                    <a href="https://serpapi.com/manage-api-key" target="_blank" rel="noreferrer"
+                      className="inline-flex items-center justify-end gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                      SerpApi — <span className="font-medium text-zinc-600">{credits.total_searches_left.toLocaleString('it-IT')} ricerche rimanenti</span>
+                    </a>
+                  </div>
                   {credits.apifyAvailable && (
-                    <div>Apify <span className="font-medium text-zinc-600">${credits.apifyBalanceUsd.toFixed(2)} credito rimanente</span></div>
+                    <div>
+                      <a href="https://console.apify.com/billing" target="_blank" rel="noreferrer"
+                        className="inline-flex items-center justify-end gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                        Apify — <span className="font-medium text-zinc-600">${credits.apifyBalanceUsd.toFixed(2)} credito rimanente</span>
+                      </a>
+                    </div>
                   )}
                   <div>
                     <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
+                      className="inline-flex items-center justify-end gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-                      Anthropic — verifica crediti
+                      Anthropic — <span className="font-medium text-zinc-600">verifica crediti</span>
                     </a>
                   </div>
                 </div>

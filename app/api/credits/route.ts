@@ -11,19 +11,6 @@ const CACHE_TTL = 300  // 5 minuti
 const CREDITS_PER_ANALYSIS = 14       // 1 SERP + 8 product + 5 recensioni (S7-6)
 const APIFY_COST_PER_ANALYSIS = 0.29  // $0.77→$1.06 = $0.29/analisi
 
-// Giorno del mese del rinnovo Apify — configurabile via env var
-const APIFY_RENEWAL_DAY = parseInt(process.env.APIFY_RENEWAL_DAY ?? '1', 10)
-
-// TTL cache Apify: secondi fino al prossimo rinnovo (si azzera automaticamente)
-function apifyCacheTTL(): number {
-  const now = new Date()
-  const renewal = new Date(now)
-  renewal.setDate(APIFY_RENEWAL_DAY)
-  renewal.setHours(0, 0, 0, 0)
-  if (renewal <= now) renewal.setMonth(renewal.getMonth() + 1)
-  return Math.max(60, Math.floor((renewal.getTime() - now.getTime()) / 1000))
-}
-
 const EMPTY: CreditsData = {
   total_searches_left: 0, plan_searches_left: 0, searches_per_month: 0,
   plan_name: 'unknown', account_email: '', available: false, cached: false,
@@ -121,10 +108,9 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
           apifyAnalysesAvailable = Math.floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
           apifyAvailable = true
 
-          // Cache Apify until next renewal
           await redis.set('apify:credits:v5',
             { balance: apifyBalanceUsd, analyses: apifyAnalysesAvailable },
-            { ex: apifyCacheTTL() }
+            { ex: CACHE_TTL }
           ).catch(() => {})
         }
       }
