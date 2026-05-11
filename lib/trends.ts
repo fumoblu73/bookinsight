@@ -20,6 +20,25 @@ function shortKeyword(keyword: string): string {
   return core.slice(0, 2).join(' ')
 }
 
+// ─── Conversione data SerpApi → YYYY-MM ──────────────────────────────────────
+// SerpApi restituisce date tipo "Jan 2020" o "2020-01-01 2020-01-31"
+
+const MONTH_TO_NUM: Record<string, string> = {
+  jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06',
+  jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12',
+}
+
+function toYearMonth(raw: string): string {
+  if (!raw) return ''
+  if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7)
+  const m = raw.match(/^([A-Za-z]{3})\w*\s+(\d{4})/)
+  if (m) {
+    const mon = MONTH_TO_NUM[m[1].toLowerCase()]
+    if (mon) return `${m[2]}-${mon}`
+  }
+  return ''
+}
+
 // ─── Parametri geo/lingua per Google Trends per mercato ─────────────────────
 
 const MARKET_TRENDS_PARAMS: Record<Market, { gl: string; hl: string }> = {
@@ -95,7 +114,7 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
 
     const timeline: TrendsDataPoint[] = (timelineRes.interest_over_time?.timeline_data ?? [])
       .map(item => ({
-        date:  (item.date ?? '').slice(0, 7),   // "Jan 2020" → usato solo per display
+        date:  toYearMonth(item.date ?? ''),
         value: item.values?.[0]?.extracted_value ?? 0,
       }))
       .filter(p => p.date !== '')

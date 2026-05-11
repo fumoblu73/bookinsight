@@ -139,13 +139,23 @@ function difficultyColor(d: string) {
 
 const MONTHS_IT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 
+const MONTH_ABBR_IDX: Record<string, number> = {
+  jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11,
+}
+
+function parseDateMonth(date: string): number {
+  // "YYYY-MM" format (normal)
+  if (/^\d{4}-\d{2}/.test(date)) return parseInt(date.slice(5, 7)) - 1
+  // Legacy "Jan 202" (truncated by old .slice(0,7) on "Jan 2020")
+  const abbr = date.toLowerCase().slice(0, 3)
+  return MONTH_ABBR_IDX[abbr] ?? -1
+}
+
 function calcSeasonality(timelineData: { date: string; value: number }[]) {
   if (timelineData.length < 12) return null
   const byMonth: number[][] = Array.from({ length: 12 }, () => [])
   for (const dp of timelineData) {
-    const parts = dp.date.split('-')
-    if (parts.length < 2) continue
-    const idx = parseInt(parts[1]) - 1
+    const idx = parseDateMonth(dp.date)
     if (idx >= 0 && idx < 12) byMonth[idx].push(dp.value)
   }
   if (byMonth.filter(m => m.length > 0).length < 10) return null
@@ -621,14 +631,34 @@ export default function ReportView({ report }: { report: FullReport }) {
 
           {report.subNiches.length > 0 && (
             <SubCard title="Sub-nicchie rilevate" accent="emerald">
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
                 {report.subNiches.map((s, i) => (
-                  <span key={i} className={`text-xs px-3 py-1 rounded-full border font-medium ${s.vulnerable ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-zinc-100 border-zinc-200 text-zinc-600'}`}>
-                    {s.keyword} · BSR {s.bsr.toLocaleString('it-IT')}
-                    {s.vulnerable && <span className="ml-1 opacity-70">✓</span>}
-                  </span>
+                  <div key={i} className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-xs ${s.vulnerable ? 'border-emerald-200 bg-emerald-50' : 'border-zinc-200'}`}>
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={`https://www.${AMAZON_DOMAIN[report.market]}/s?k=${encodeURIComponent(s.keyword)}&i=stripbooks`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-zinc-800 hover:text-indigo-600 underline underline-offset-2 transition-colors"
+                      >
+                        {s.keyword}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 text-zinc-500">
+                      <span>BSR <strong className="text-zinc-700">{s.bsr.toLocaleString('it-IT')}</strong></span>
+                      <span><strong className="text-zinc-700">{s.reviewCount.toLocaleString('it-IT')}</strong> rec.</span>
+                      {s.vulnerable && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700">
+                          Opportunità
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
+              <p className="text-xs text-zinc-400 mt-3 leading-relaxed">
+                Trovate nella top 15 Amazon. <strong className="text-emerald-700">Opportunità</strong> = leader con meno di 50 recensioni — punto di ingresso a bassa resistenza. Clicca la keyword per esplorare la SERP.
+              </p>
             </SubCard>
           )}
           {report.competitiveDynamism && report.competitiveDynamism.signal !== 'N/A' && (() => {
