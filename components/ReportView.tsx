@@ -30,7 +30,7 @@ export interface FullReport {
     punti_forza: string[]; punti_debolezza: string[]
     confidence: 'ALTA' | 'MEDIA' | 'BASSA'
   }
-  trends: { available: boolean; yoyGrowth: number; relatedQueries: { query: string; value: number; growthYoY: number }[] }
+  trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[] }
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
   painPoints: { pain_point: string; score: number; F: number; I: number; S: number; evidence: string; criticalSignal?: boolean }[]
   gapAnalysis: {
@@ -135,6 +135,95 @@ function difficultyColor(d: string) {
   if (d === 'MEDIO')  return 'text-amber-500'
   return 'text-rose-500'
 }
+// ─── Stagionalità ─────────────────────────────────────────────────────────────
+
+const MONTHS_IT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
+
+function calcSeasonality(timelineData: { date: string; value: number }[]) {
+  if (timelineData.length < 12) return null
+  const byMonth: number[][] = Array.from({ length: 12 }, () => [])
+  for (const dp of timelineData) {
+    const parts = dp.date.split('-')
+    if (parts.length < 2) continue
+    const idx = parseInt(parts[1]) - 1
+    if (idx >= 0 && idx < 12) byMonth[idx].push(dp.value)
+  }
+  if (byMonth.filter(m => m.length > 0).length < 10) return null
+  const rawAvg = byMonth.map(vals =>
+    vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0
+  )
+  const maxVal = Math.max(...rawAvg)
+  if (maxVal === 0) return null
+  const nonZero = rawAvg.filter(v => v > 0)
+  const minVal = nonZero.length > 0 ? Math.min(...nonZero) : 0
+  const monthlyAvg = rawAvg.map(v => Math.round((v / maxVal) * 100))
+  const ratio = minVal > 0 ? maxVal / minVal : 1
+  const peakIdx = monthlyAvg.indexOf(Math.max(...monthlyAvg))
+  const launchMonths = new Set([((peakIdx - 2 + 12) % 12), ((peakIdx - 1 + 12) % 12)])
+  const classification = ratio < 1.4 ? 'EVERGREEN' : ratio < 2.5 ? 'STAGIONALE' : 'ALTAMENTE STAGIONALE'
+  const yearsOfData = Math.round(timelineData.length / 12)
+  return { monthlyAvg, classification, peakIdx, launchMonths, ratio, yearsOfData }
+}
+
+function SeasonalityChart({ timelineData }: { timelineData: { date: string; value: number }[] }) {
+  const data = calcSeasonality(timelineData)
+  if (!data) return null
+  const { monthlyAvg, classification, peakIdx, launchMonths, yearsOfData } = data
+
+  const barW = 22, gap = 8, totalBarW = barW + gap
+  const W = 12 * totalBarW + 8, maxBarH = 60, baseY = 78
+  const offsetX = 4
+
+  const clsBadge = classification === 'EVERGREEN'
+    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+    : classification === 'STAGIONALE'
+    ? 'bg-amber-50 border-amber-200 text-amber-700'
+    : 'bg-rose-50 border-rose-200 text-rose-600'
+
+  const launch0 = (peakIdx - 2 + 12) % 12
+  const launch1 = (peakIdx - 1 + 12) % 12
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className={`text-xs font-bold px-3 py-1 rounded-full border ${clsBadge}`}>
+          {classification}
+        </span>
+        <span className="text-xs text-zinc-400">
+          Picco: <strong className="text-zinc-700">{MONTHS_IT[peakIdx]}</strong>
+          {' · '}Finestra lancio consigliata: <strong className="text-emerald-700">{MONTHS_IT[launch0]} – {MONTHS_IT[launch1]}</strong>
+          {' · '}<span className="text-zinc-300">{yearsOfData} anni di dati</span>
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} 100`} className="w-full" style={{ maxHeight: 110 }}>
+        {monthlyAvg.map((val, i) => {
+          const x = offsetX + i * totalBarW
+          const barH = Math.max(3, (val / 100) * maxBarH)
+          const y = baseY - barH
+          const isPeak = i === peakIdx
+          const isLaunch = launchMonths.has(i)
+          const fill = isPeak ? '#f97316' : isLaunch ? '#86efac' : val >= 70 ? '#fbbf24' : val >= 40 ? '#93c5fd' : '#e5e7eb'
+          const labelFill = isPeak ? '#ea580c' : isLaunch ? '#16a34a' : '#9ca3af'
+          return (
+            <g key={i}>
+              <rect x={x} y={y} width={barW} height={barH} rx={3} fill={fill} />
+              {isPeak && <text x={x + barW / 2} y={y - 3} textAnchor="middle" fontSize={8} fill="#ea580c" fontWeight="bold">▲</text>}
+              <text x={x + barW / 2} y={baseY + 11} textAnchor="middle" fontSize={8} fill={labelFill} fontWeight={isPeak || isLaunch ? 'bold' : 'normal'}>
+                {MONTHS_IT[i].slice(0, 3)}
+              </text>
+            </g>
+          )
+        })}
+        <g transform={`translate(${offsetX},92)`}>
+          <rect width={8} height={6} rx={1} fill="#f97316"/><text x={11} y={6} fontSize={7} fill="#9ca3af">Picco vendite</text>
+          <rect x={72} width={8} height={6} rx={1} fill="#86efac"/><text x={83} y={6} fontSize={7} fill="#9ca3af">Finestra lancio</text>
+          <rect x={155} width={8} height={6} rx={1} fill="#fbbf24"/><text x={166} y={6} fontSize={7} fill="#9ca3af">Alta domanda</text>
+        </g>
+      </svg>
+    </div>
+  )
+}
+
 function trendColor(t: string) {
   if (t === 'CRESCITA') return 'text-emerald-600'
   if (t === 'DECLINO')  return 'text-rose-500'
@@ -658,6 +747,12 @@ export default function ReportView({ report }: { report: FullReport }) {
                 )}
               </div>
             </SubCard>
+
+            {report.trends.timelineData?.length >= 12 && (
+              <SubCard title="Stagionalità della nicchia" accent="violet">
+                <SeasonalityChart timelineData={report.trends.timelineData} />
+              </SubCard>
+            )}
 
             {report.trends.relatedQueries.length > 0 && (
               <SubCard title="Query correlate" accent="violet">
