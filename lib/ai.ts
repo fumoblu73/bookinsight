@@ -308,6 +308,48 @@ export async function runSeriesStrategy(
   )
 }
 
+// §2 — Sub-niche detection semantica (Haiku) ─────────────────────────────────
+
+export type SubNicheAI = { keyword: string; asin: string }
+
+export async function runSubNicheDetection(
+  rawBooks: Array<{ asin: string; title: string; subtitle?: string; bsr: number; reviewCount: number }>,
+  mainKeyword: string,
+  market: Market,
+): Promise<SubNicheAI[]> {
+  const bookList = rawBooks
+    .filter(b => b.bsr > 0)
+    .slice(0, 15)
+    .map(b => {
+      const sub = b.subtitle ? ` — ${b.subtitle}` : ''
+      return `${b.asin} | BSR ${b.bsr.toLocaleString()} | ${b.title}${sub}`
+    })
+    .join('\n')
+
+  const prompt = `Stai analizzando i libri più venduti su Amazon per la keyword principale: "${mainKeyword}" (mercato ${market}).
+
+Libri nella SERP (ASIN | BSR | Titolo — Sottotitolo):
+${bookList}
+
+Identifica 3-5 sub-nicchie semantiche DISTINTE — varianti tematiche, angoli specifici o target reader specifici che emergono da questi titoli e sottotitoli, ma che sono DIVERSI dalla keyword principale.
+
+Regole:
+- Ogni sub-nicchia: keyword di 2-4 parole, concreta e ricercabile su Amazon
+- NON usare "${mainKeyword}" o varianti dirette (es. se mainKeyword è "stoicism", non usare "stoic guide")
+- Usa la stessa lingua dei titoli (mercato ${market})
+- Scegli angoli semanticamente rilevanti e distinti tra loro
+- Per ogni sub-nicchia indica l'ASIN del libro più rappresentativo tra quelli elencati
+
+Output JSON puro senza markdown:
+[{"keyword": "...", "asin": "..."}]`
+
+  try {
+    return await callHaiku<SubNicheAI[]>(prompt)
+  } catch {
+    return []
+  }
+}
+
 // §7 — ROI Narrativa (Haiku)
 export interface RoiNarrativeResult {
   blocco_scenario: string

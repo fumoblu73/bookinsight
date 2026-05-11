@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server'
-import { AmazonData, TrendsData, RedditData, YouTubeData, Market, LogEntry, AnalysisLog } from '@/lib/types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, Market, LogEntry, AnalysisLog, SubNiche } from '@/lib/types'
 import { calcProfitabilityScore, calcRoiEstimate, calcCompetitiveDynamism } from '@/lib/scoring'
 import { detectComplianceCategory, getComplianceRisk } from '@/lib/compliance'
 import {
   runPasso0, runPainPointsReddit,
   runKeyInsights, runTrendForecast, runGapAnalysis,
   runSeriesStrategy, runRoiNarrative,
+  runSubNicheDetection,
   isAnthropicBillingError,
 } from '@/lib/ai'
 import { saveReport, updateReport } from '@/lib/upstash'
@@ -226,15 +227,17 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // ── Step 1: passo0 + pain points ──────────────────────────────────────────
+    // ── Step 1: passo0 + pain points + sub-niche detection ───────────────────
     push({ type: 'progress', stage: 'passo0' })
     const t1 = Date.now()
     let passo0: Awaited<ReturnType<typeof runPasso0>>
     let painPoints: Awaited<ReturnType<typeof runPainPointsReddit>>
+    let aiSubNiches: Awaited<ReturnType<typeof runSubNicheDetection>>
     try {
-      ;[passo0, painPoints] = await Promise.all([
+      ;[passo0, painPoints, aiSubNiches] = await Promise.all([
         runPasso0(amazonData),
         runPainPointsReddit(keyword, redditData, youtubeData, market),
+        runSubNicheDetection(amazonData.rawTop15, keyword, market),
       ])
       logEntries.push({
         step: 'passo0', label: 'Analisi competitor (AI)',
@@ -334,6 +337,18 @@ export async function POST(req: NextRequest) {
       completedAt: new Date().toISOString(),
     }
 
+    // ── Sub-nicchie: mappa risultato AI → SubNiche con BSR/reviewCount ───────
+    const subNiches: SubNiche[] = aiSubNiches.length > 0
+      ? aiSubNiches
+          .map(s => {
+            const book = amazonData.rawTop15.find(b => b.asin === s.asin)
+            if (!book || book.bsr === 0) return null
+            return { keyword: s.keyword, bsr: book.bsr, reviewCount: book.reviewCount, vulnerable: book.reviewCount < 100 }
+          })
+          .filter((s): s is SubNiche => s !== null)
+          .sort((a, b) => a.bsr - b.bsr)
+      : amazonData.subNiches
+
     // ── Assembla + salva ──────────────────────────────────────────────────────
     const report = {
       id: reportId, keyword, market,
@@ -364,7 +379,7 @@ export async function POST(req: NextRequest) {
       competitiveDynamism,
       complianceCategory,
       complianceRisk,
-      subNiches: amazonData.subNiches,
+      subNiches,
       voice_data: {
         reddit: {
           posts: redditData.posts.map(p => ({

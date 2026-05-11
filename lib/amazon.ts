@@ -296,7 +296,8 @@ export function detectSubNiches(raw15: RawBook[], mainKeyword: string): SubNiche
 
   for (const book of raw15) {
     if (book.bsr === 0) continue
-    const words = book.title.toLowerCase().split(/[\s\-–:,]+/)
+    const fullText = [book.title, book.subtitle].filter(Boolean).join(' ')
+    const words = fullText.toLowerCase().split(/[\s\-–:,]+/)
     for (const word of words) {
       if (word.length < 4) continue
       if (mainWords.includes(word)) continue
