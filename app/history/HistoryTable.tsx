@@ -57,16 +57,6 @@ function difficultyCls(d?: string) {
   return null
 }
 
-function statusBadge(s: string) {
-  switch (s) {
-    case 'complete':       return { label: 'Completo', cls: 'bg-emerald-100 text-emerald-700' }
-    case 'partial_gap':
-    case 'partial_trends':
-    case 'partial_reddit': return { label: 'Parziale',  cls: 'bg-amber-100 text-amber-700' }
-    case 'failed':         return { label: 'Fallito',   cls: 'bg-rose-100 text-rose-700' }
-    default:               return { label: s,           cls: 'bg-zinc-100 text-zinc-500' }
-  }
-}
 
 function ThBase({
   col, label, sortKey, sortDir, onSort, className = '',
@@ -135,7 +125,6 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
               <ThBase {...thProps} col="trendSignal"   label="Trend" />
               <ThBase {...thProps} col="difficulty"    label="Difficoltà" />
               <ThBase {...thProps} col="monthlyRevenue" label="Ric./mese" />
-              <ThBase {...thProps} col="status"        label="Stato" />
               <ThBase {...thProps} col="createdAt"     label="Data" className="pr-3" />
               <th className="px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                 Azioni
@@ -148,7 +137,6 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
                 day: '2-digit', month: '2-digit', year: '2-digit',
                 hour: '2-digit', minute: '2-digit',
               })
-              const badge = statusBadge(r.status)
               const tCls  = trendCls(r.trendSignal)
               const dCls  = difficultyCls(r.difficulty)
               return (
@@ -201,13 +189,6 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
                       ? `$${Math.round(r.monthlyRevenue).toLocaleString('it-IT')}`
                       : <span className="text-zinc-300">—</span>
                     }
-                  </td>
-
-                  {/* Stato */}
-                  <td className="px-3 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${badge.cls}`}>
-                      {badge.label}
-                    </span>
                   </td>
 
                   {/* Data */}
