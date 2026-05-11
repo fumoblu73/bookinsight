@@ -160,7 +160,7 @@ function calcSeasonality(timelineData: { date: string; value: number }[]) {
   const ratio = minVal > 0 ? maxVal / minVal : 1
   const peakIdx = monthlyAvg.indexOf(Math.max(...monthlyAvg))
   const launchMonths = new Set([((peakIdx - 2 + 12) % 12), ((peakIdx - 1 + 12) % 12)])
-  const classification = ratio < 1.4 ? 'EVERGREEN' : ratio < 2.5 ? 'STAGIONALE' : 'ALTAMENTE STAGIONALE'
+  const classification = ratio < 1.4 ? 'EVERGREEN' : ratio < 2.5 ? 'STAGIONALE' : 'TREND'
   const yearsOfData = Math.round(timelineData.length / 12)
   return { monthlyAvg, classification, peakIdx, launchMonths, ratio, yearsOfData }
 }
