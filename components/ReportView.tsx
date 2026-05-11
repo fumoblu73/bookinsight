@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { Market, FilteredBook, RawBook } from '@/lib/types'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -220,6 +220,86 @@ function SeasonalityChart({ timelineData }: { timelineData: { date: string; valu
           <rect x={155} width={8} height={6} rx={1} fill="#fbbf24"/><text x={166} y={6} fontSize={7} fill="#9ca3af">Alta domanda</text>
         </g>
       </svg>
+    </div>
+  )
+}
+
+// ─── Prospetto multi-mercato ──────────────────────────────────────────────────
+
+interface MarketTrendSummary {
+  market: string
+  signal: 'CRESCITA' | 'STABILE' | 'DECLINO' | 'N/A'
+  yoyGrowth: number
+  classification: 'EVERGREEN' | 'STAGIONALE' | 'TREND' | 'N/A'
+  peakMonth: string | null
+}
+
+function MultiMarketPanel({ keyword, primaryMarket }: { keyword: string; primaryMarket: string }) {
+  const [data, setData] = useState<MarketTrendSummary[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [attempted, setAttempted] = useState(false)
+
+  function load() {
+    setLoading(true)
+    fetch('/api/trends-multimarket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword, market: primaryMarket }),
+    })
+      .then(r => r.ok ? r.json() as Promise<MarketTrendSummary[]> : Promise.reject())
+      .then(json => setData(json))
+      .catch(() => {})
+      .finally(() => { setAttempted(true); setLoading(false) })
+  }
+
+  if (!attempted) {
+    return (
+      <button
+        onClick={load}
+        disabled={loading}
+        className="text-xs text-violet-600 hover:text-violet-800 underline underline-offset-2 transition-colors disabled:opacity-50"
+      >
+        {loading ? 'Caricamento…' : 'Carica prospetto (+10 crediti SerpAPI)'}
+      </button>
+    )
+  }
+
+  if (!data || data.length === 0) {
+    return <p className="text-xs text-zinc-400 italic">Dati non disponibili.</p>
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {data.map(row => (
+        <div key={row.market} className="flex items-center gap-3 flex-wrap text-xs">
+          <span className="w-7 font-bold text-zinc-600">{row.market}</span>
+          {row.signal === 'N/A' ? (
+            <span className="text-zinc-300 italic">N/D</span>
+          ) : (
+            <>
+              <span className={`w-16 font-semibold ${row.signal === 'CRESCITA' ? 'text-emerald-600' : row.signal === 'DECLINO' ? 'text-rose-500' : 'text-zinc-500'}`}>
+                {row.signal}
+              </span>
+              <span className={`tabular-nums w-14 ${row.yoyGrowth > 0 ? 'text-emerald-600' : row.yoyGrowth < 0 ? 'text-rose-500' : 'text-zinc-400'}`}>
+                {row.yoyGrowth > 0 ? '+' : ''}{row.yoyGrowth}% YoY
+              </span>
+              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
+                row.classification === 'EVERGREEN' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                row.classification === 'STAGIONALE' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                row.classification === 'TREND' ? 'bg-rose-50 border-rose-200 text-rose-600' :
+                'bg-zinc-100 border-zinc-200 text-zinc-400'
+              }`}>{row.classification}</span>
+              {row.peakMonth && (
+                <span className="text-zinc-400">Picco: <strong className="text-zinc-600">{row.peakMonth}</strong></span>
+              )}
+              {row.signal === 'CRESCITA' && (
+                <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">Analizza</span>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+      <p className="text-[10px] text-zinc-300 pt-1.5 border-t border-zinc-100">Google Trends · stessa keyword · ultimi 5 anni</p>
     </div>
   )
 }
@@ -753,6 +833,10 @@ export default function ReportView({ report }: { report: FullReport }) {
                 <SeasonalityChart timelineData={report.trends.timelineData} />
               </SubCard>
             )}
+
+            <SubCard title="Prospetto multi-mercato" accent="violet">
+              <MultiMarketPanel keyword={report.keyword} primaryMarket={report.market} />
+            </SubCard>
 
             {report.trends.relatedQueries.length > 0 && (
               <SubCard title="Query correlate" accent="violet">
