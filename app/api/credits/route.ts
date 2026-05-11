@@ -4,7 +4,7 @@ import type { CreditsData } from '@/lib/types'
 
 export const revalidate = 0
 
-const CACHE_KEY = 'serpapi:credits:v5'
+const CACHE_KEY = 'serpapi:credits:v6'
 const CACHE_TTL = 300  // 5 minuti
 
 // Valori calibrati su analisi reale (aprile 2026)
@@ -67,7 +67,7 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
   if (apifyToken) {
     try {
       // Try cache first
-      const apifyCached = await redis.get<{ balance: number; analyses: number }>('apify:credits:v5').catch(() => null)
+      const apifyCached = await redis.get<{ balance: number; analyses: number }>('apify:credits:v6').catch(() => null)
       if (apifyCached) {
         apifyBalanceUsd = apifyCached.balance
         apifyAnalysesAvailable = apifyCached.analyses
@@ -108,7 +108,7 @@ export async function GET(): Promise<NextResponse<CreditsData>> {
           apifyAnalysesAvailable = Math.floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
           apifyAvailable = true
 
-          await redis.set('apify:credits:v5',
+          await redis.set('apify:credits:v6',
             { balance: apifyBalanceUsd, analyses: apifyAnalysesAvailable },
             { ex: CACHE_TTL }
           ).catch(() => {})
