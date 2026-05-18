@@ -73,10 +73,10 @@ export function promptPainPointsReddit(
     .slice(0, 15)
     .map(p => {
       const comments = p.comments
-        .slice(0, 10)
+        .slice(0, 20)
         .map(c => `    [score ${c.score}] ${c.body.substring(0, 300)}`)
         .join('\n')
-      return `POST (r/${p.subreddit}, score ${p.score}): "${p.title}"\n${p.selftext ? '  ' + p.selftext.substring(0, 200) + '\n' : ''}${comments}`
+      return `POST (r/${p.subreddit}, score ${p.score}): "${p.title}"\n${p.selftext ? '  ' + p.selftext.substring(0, 400) + '\n' : ''}${comments}`
     })
     .join('\n\n---\n\n')
 
@@ -112,12 +112,27 @@ NOTA: i commenti YouTube provengono da spettatori di video tutorial — tendono 
 ${redditLanguageNote}${redditSection}${ytSection}
 REGOLA COMMENTI BREVI DI CONFERMA: Se un commento è una conferma breve del problema espresso nel post padre o nei commenti precedenti (es. "stesso problema", "anche io", "idem", "exactly", "same here", "this!", "+1", "agree") — NON assegnargli un pain point autonomo. Invece, incrementa di +1 il punteggio F del pain point del post padre o del commento descrittivo più recente sullo stesso problema. Haiku ha tutto il contesto necessario: conosce il titolo del post e i commenti precedenti. La stessa regola si applica al corpus YouTube.
 
+CALIBRAZIONE F (Frequenza) — scala obbligatoria:
+- F=1–2: menzione isolata in 1 solo thread/video, anche con più commenti di conferma
+- F=3–4: presente in 2–3 thread distinti
+- F=5–6: citato in 4–7 thread, tema ricorrente ma non dominante
+- F=7–8: presente in 8+ thread o sub-tema dominante nel corpus
+- F=9–10: il problema più citato, quasi ogni thread ne parla
+REGOLA HARD: se num_fonti=1, F NON può superare 4.
+
+CALIBRAZIONE I (Intensità emotiva) — scala obbligatoria:
+- I=1–3: osservazione neutra, nessun disagio espresso
+- I=4–6: frustrazione lieve, "sarebbe utile", "mi manca"
+- I=7–8: frustrazione forte, "sono bloccato", "è impossibile", linguaggio emotivo diretto
+- I=9–10: disagio acuto, impatto sulla vita/lavoro, parole come "desperate", "ruining", "failed"
+
 ISTRUZIONI:
 - Identifica 5-12 pain point distinti e concreti espressi dagli utenti
 - Per ogni pain point assegna:
-  - F (Frequenza): quante volte appare nel corpus, scala 1-10
-  - I (Intensità emotiva): quanto è forte il disagio espresso, scala 1-10
+  - F (Frequenza): quante volte appare nel corpus, rispetta la calibrazione sopra
+  - I (Intensità emotiva): quanto è forte il disagio espresso, rispetta la calibrazione sopra
   - S (Specificità/Solvibilità con un libro): quanto può essere risolto con contenuto scritto, scala 1-10
+  - num_fonti: numero di thread/video DISTINTI in cui questo pain point appare (minimo 1)
 - evidence: citazione breve o parafrase dal corpus (max 80 caratteri)
 - ${fonteInstr}
 - tipo: "gap_esecuzione" se è un problema pratico non risolto dai libri esistenti, "job_confermato" se è un bisogno già servito ma migliorabile
@@ -129,6 +144,7 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
     "F": numero,
     "I": numero,
     "S": numero,
+    "num_fonti": numero,
     "evidence": "citazione o parafrasi",
     "fonte": "reddit | youtube",
     "tipo": "gap_esecuzione | job_confermato",

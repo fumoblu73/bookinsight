@@ -110,12 +110,13 @@ export async function callSonnet<T>(userPrompt: string): Promise<T> {
 
 // ─── callHaiku ────────────────────────────────────────────────────────────────
 
-export async function callHaiku<T>(userPrompt: string): Promise<T> {
+export async function callHaiku<T>(userPrompt: string, options?: { temperature?: number }): Promise<T> {
   const client = getClient()
 
   const response = await callWithRetry(() => client.messages.create({
     model: MODEL_HAIKU,
     max_tokens: 3072,
+    ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
     system: [
       {
         type: 'text',
@@ -184,6 +185,7 @@ interface RawPainPoint {
   F: number
   I: number
   S: number
+  num_fonti?: number
   evidence: string
   fonte: 'reddit'
   tipo?: 'gap_esecuzione' | 'job_confermato'
@@ -199,20 +201,26 @@ export async function runPainPointsReddit(
   if ((!reddit.available || reddit.insufficientCorpus) && (!youtube?.available || youtube.insufficientCorpus)) return []
 
   const raw = await callHaiku<RawPainPoint[]>(
-    promptPainPointsReddit(keyword, reddit, youtube, market)
+    promptPainPointsReddit(keyword, reddit, youtube, market),
+    { temperature: 0.2 },
   )
 
   // Normalizza i campi opzionali e calcola score
-  const normalized = raw.map(r => ({
-    pain_point: r.pain_point,
-    F: Math.min(10, Math.max(1, Math.round(r.F))),
-    I: Math.min(10, Math.max(1, Math.round(r.I))),
-    S: Math.min(10, Math.max(1, Math.round(r.S))),
-    evidence: r.evidence,
-    fonte: 'reddit' as const,
-    tipo: r.tipo,
-    linguaggio: r.linguaggio ?? undefined,
-  }))
+  const normalized = raw.map(r => {
+    const F_raw = Math.min(10, Math.max(1, Math.round(r.F)))
+    // Hard cap: se fonte singola, F non può superare 4
+    const F = (r.num_fonti ?? 1) <= 1 ? Math.min(F_raw, 4) : F_raw
+    return {
+      pain_point: r.pain_point,
+      F,
+      I: Math.min(10, Math.max(1, Math.round(r.I))),
+      S: Math.min(10, Math.max(1, Math.round(r.S))),
+      evidence: r.evidence,
+      fonte: 'reddit' as const,
+      tipo: r.tipo,
+      linguaggio: r.linguaggio ?? undefined,
+    }
+  })
 
   return filterPainPoints(normalized)
 }

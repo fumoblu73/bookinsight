@@ -2,7 +2,8 @@ import { RedditData, RedditPost, RedditComment } from './types'
 
 const MIN_RESULTS_FOR_ANALYSIS = 5
 const MAX_POSTS = 15
-const MAX_COMMENTS_PER_POST = 10
+const MAX_COMMENTS_PER_POST = 20
+const COMMENT_AGE_MONTHS = 18
 
 const GENERIC_WORDS = new Set([
   'for', 'beginners', 'beginner', 'guide', 'book', 'complete', 'easy', 'simple',
@@ -71,7 +72,7 @@ type ApifyItem = Record<string, unknown>
 async function fetchCommentsViaApify(
   postUrl: string,
   token: string,
-): Promise<RedditComment[]> {
+): Promise<{ comments: RedditComment[]; postBody: string }> {
   const postId = extractPostId(postUrl) ?? 'unknown'
   try {
     const res = await fetch(
@@ -82,14 +83,14 @@ async function fetchCommentsViaApify(
         body: JSON.stringify({
           startUrls: [{ url: postUrl }],
           maxComments: MAX_COMMENTS_PER_POST,
-          maxItems: MAX_COMMENTS_PER_POST * 2,
+          maxItems: MAX_COMMENTS_PER_POST * 2 + 5,
         }),
         signal: AbortSignal.timeout(28000),
       }
     )
 
     console.log(`[reddit-comments] id:${postId} status:${res.status}`)
-    if (!res.ok) return []
+    if (!res.ok) return { comments: [], postBody: '' }
 
     const items = await res.json() as ApifyItem[]
     console.log(`[reddit-comments] id:${postId} items:${items.length}`)
@@ -100,17 +101,28 @@ async function fetchCommentsViaApify(
     }
 
     const now = Math.floor(Date.now() / 1000)
+    const ageLimit = now - COMMENT_AGE_MONTHS * 30 * 24 * 3600
 
-    return items
+    // Estrai corpo del post originale (dataType === 'post')
+    const postItem = items.find(item => (item.dataType as string) === 'post')
+    const postBody = String(postItem?.selftext ?? postItem?.body ?? '')
+      .replace(/\[deleted\]|\[removed\]/g, '').trim()
+
+    const comments = items
       .filter(item => {
         const dataType = item.dataType as string | undefined
         const body = String(item.body ?? '')
+        const score = Number(item.upVotes ?? 0)
+        const isoDate = item.createdAt as string | undefined
+        const createdUtc = isoDate ? Math.floor(new Date(isoDate).getTime() / 1000) : now
         return dataType === 'comment' &&
           body.length > 0 &&
           body !== '[deleted]' &&
           body !== '[removed]' &&
           !/^https?:\/\//.test(body.trim()) &&
-          !/^[\s\p{Emoji}\p{P}]+$/u.test(body)
+          !/^[\s\p{Emoji}\p{P}]+$/u.test(body) &&
+          score >= -1 &&
+          createdUtc >= ageLimit
       })
       .slice(0, MAX_COMMENTS_PER_POST)
       .map((item, i) => {
@@ -126,9 +138,11 @@ async function fetchCommentsViaApify(
           month:    new Date(createdUtc * 1000).toISOString().slice(0, 7),
         }
       })
+
+    return { comments, postBody }
   } catch (err) {
     console.log(`[reddit-comments] FAILED id:${postId} error:${err}`)
-    return []
+    return { comments: [], postBody: '' }
   }
 }
 
@@ -177,9 +191,12 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const apifyToken = process.env.APIFY_TOKEN
   if (apifyToken) {
     await Promise.all(
-      posts.map(async post => {
+      posts.map(async (post, i) => {
         if (!post.link) return
-        post.comments = await fetchCommentsViaApify(post.link, apifyToken)
+        const { comments, postBody } = await fetchCommentsViaApify(post.link, apifyToken)
+        post.comments = comments
+        // Sostituisce lo snippet Google con il corpo reale del post se disponibile
+        if (postBody) posts[i].selftext = postBody
       })
     )
   } else {

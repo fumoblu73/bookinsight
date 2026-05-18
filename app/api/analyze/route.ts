@@ -228,6 +228,7 @@ export async function POST(req: NextRequest) {
     })
 
     // ── Step 1: passo0 + pain points + sub-niche detection ───────────────────
+    try {
     push({ type: 'progress', stage: 'passo0' })
     const t1 = Date.now()
     let passo0: Awaited<ReturnType<typeof runPasso0>>
@@ -416,6 +417,14 @@ export async function POST(req: NextRequest) {
     })
 
     push({ type: 'done', report })
+    } catch (err) {
+      // Salva il log parziale (con le entry di errore già aggiunte dai catch interni) prima di rilanciare
+      await updateReport(reportId, {
+        status: 'failed',
+        log: { entries: logEntries, startedAt, completedAt: new Date().toISOString() },
+      }).catch(() => {})
+      throw err
+    }
   })
 
   return new Response(stream, {
