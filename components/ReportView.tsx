@@ -804,9 +804,13 @@ export default function ReportView({ report }: { report: FullReport }) {
                           <span className="absolute bottom-0 inset-x-0 text-center text-[8px] font-bold bg-indigo-500 text-white py-0.5">Target</span>
                         )}
                       </div>
-                      <p className="text-[9px] text-zinc-500 text-center line-clamp-2 leading-snug w-full">
+                      <p className="text-[9px] text-zinc-600 text-center line-clamp-2 leading-snug w-full font-medium">
                         {b.title}
                       </p>
+                      <div className="text-[9px] text-zinc-400 text-center leading-tight w-full space-y-0.5">
+                        <p><span className="font-semibold text-zinc-600">{b.bsr.toLocaleString('it-IT')}</span> BSR</p>
+                        <p>★ {b.rating.toFixed(1)} · <span className="font-semibold text-zinc-600">{b.reviewCount >= 1000 ? `${(b.reviewCount / 1000).toFixed(1)}k` : b.reviewCount}</span> rec.</p>
+                      </div>
                     </a>
                   )
                 })}
@@ -846,7 +850,7 @@ export default function ReportView({ report }: { report: FullReport }) {
                           <span>{b.currency}<strong className="text-zinc-700">{b.price.toFixed(2)}</strong></span>
                           <span>★ <strong className="text-zinc-700">{b.rating.toFixed(1)}</strong></span>
                           <span><strong className="text-zinc-700">{b.reviewCount.toLocaleString('it-IT')}</strong> rec.</span>
-                          {full && <span className="text-emerald-600 font-medium">~{full.estimatedDailySalesMin}–{full.estimatedDailySalesMax} cop/g</span>}
+                          {full && full.royalty > 0 && <span className="text-emerald-700 font-medium">{b.currency}{full.royalty.toFixed(2)} royalty/cop.</span>}
                           {full && (full.pages ?? 0) > 0 && <span className="text-zinc-500">{full.pages} pag.</span>}
                         </div>
                         <div className="flex gap-2 flex-wrap">
