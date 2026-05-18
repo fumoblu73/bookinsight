@@ -770,6 +770,50 @@ export default function ReportView({ report }: { report: FullReport }) {
             </SubCard>
           </div>
 
+          {((report.amazon?.rawTop15 ?? report.amazon?.topBooks ?? report.topBooks)?.length ?? 0) > 0 && (
+            <SubCard title="Cover competitor" accent="zinc">
+              <div className="grid grid-cols-5 gap-2 sm:gap-3">
+                {(report.amazon?.rawTop15 ?? report.amazon?.topBooks ?? report.topBooks).slice(0, 15).map((b, i) => {
+                  const isTarget = b.asin === report.competitorTarget?.asin
+                  return (
+                    <a
+                      key={b.asin}
+                      href={amazonProductUrl(b.asin, report.market)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col items-center gap-1 group"
+                      title={b.title}
+                    >
+                      <div className={`relative rounded overflow-hidden border-2 transition-all ${isTarget ? 'border-indigo-400' : 'border-zinc-200 group-hover:border-zinc-400'}`}>
+                        <span className="absolute top-1 left-1 text-[9px] font-bold text-zinc-400 bg-white/80 rounded px-0.5 leading-none">#{i + 1}</span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={coverUrl(b.asin, b.imageUrl)}
+                          alt=""
+                          width={64}
+                          height={92}
+                          className="object-cover bg-zinc-100 block"
+                          style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties}
+                          onError={e => {
+                            const img = e.target as HTMLImageElement
+                            img.style.visibility = 'hidden'
+                            img.style.minHeight = '92px'
+                          }}
+                        />
+                        {isTarget && (
+                          <span className="absolute bottom-0 inset-x-0 text-center text-[8px] font-bold bg-indigo-500 text-white py-0.5">Target</span>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-zinc-500 text-center line-clamp-2 leading-snug w-full">
+                        {b.title}
+                      </p>
+                    </a>
+                  )
+                })}
+              </div>
+            </SubCard>
+          )}
+
           {(report.amazon?.topBooks ?? report.topBooks)?.length > 0 && (
             <SubCard title="Top 5 competitor analizzati" accent="zinc">
               <div className="space-y-2">
