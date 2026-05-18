@@ -78,6 +78,7 @@ export interface TrendsData {
   relatedQueries: RelatedQuery[]
   yoyGrowth: number          // % variazione ultimo anno vs anno precedente
   available: boolean         // false se API ha fallito (fallback attivo)
+  peakMonth: string | null   // nome mese con interesse medio più alto (es. "Dicembre")
 }
 
 // ─── Reddit ───────────────────────────────────────────────────────────────────

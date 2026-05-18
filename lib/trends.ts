@@ -70,6 +70,32 @@ function filterRelatedQuery(query: string): boolean {
   return true
 }
 
+// ─── Calcolo mese di picco stagionale ────────────────────────────────────────
+
+const MONTH_NAMES_IT = [
+  'Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+  'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre',
+]
+
+function calcPeakMonth(timeline: TrendsDataPoint[]): string | null {
+  if (!timeline.length) return null
+  const byMonth: Record<string, number[]> = {}
+  for (const dp of timeline) {
+    const month = dp.date?.slice(5, 7)  // "YYYY-MM" → "MM"
+    if (!month) continue
+    if (!byMonth[month]) byMonth[month] = []
+    byMonth[month].push(dp.value)
+  }
+  let bestMonth = '', bestAvg = -1
+  for (const [m, vals] of Object.entries(byMonth)) {
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+    if (avg > bestAvg) { bestAvg = avg; bestMonth = m }
+  }
+  if (!bestMonth) return null
+  const idx = parseInt(bestMonth, 10) - 1
+  return MONTH_NAMES_IT[idx] ?? null
+}
+
 // ─── Calcolo YoY ─────────────────────────────────────────────────────────────
 
 function calcYoY(timeline: TrendsDataPoint[]): number {
@@ -154,7 +180,8 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       timelineData:   timeline,
       relatedQueries: relatedQueries.slice(0, 10),
       yoyGrowth,
-      available: timeline.length > 0,
+      available:  timeline.length > 0,
+      peakMonth:  calcPeakMonth(timeline),
     }
   } catch (err) {
     console.error(`[trends] fetchTrendsData failed for "${trendsQuery}" (original: "${keyword}"):`, err)
@@ -164,6 +191,7 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       relatedQueries: [],
       yoyGrowth:      0,
       available:      false,
+      peakMonth:      null,
     }
   }
 }

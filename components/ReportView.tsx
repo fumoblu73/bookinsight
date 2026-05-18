@@ -30,7 +30,7 @@ export interface FullReport {
     punti_forza: string[]; punti_debolezza: string[]
     confidence: 'ALTA' | 'MEDIA' | 'BASSA'
   }
-  trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[] }
+  trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null }
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
   painPoints: { pain_point: string; score: number; F: number; I: number; S: number; evidence: string; criticalSignal?: boolean }[]
   gapAnalysis: {
@@ -623,6 +623,7 @@ export default function ReportView({ report }: { report: FullReport }) {
               <span className="text-zinc-500">BSR medio: <strong className="text-zinc-800">{sb.avgBsr.toLocaleString('it-IT')}</strong></span>
               <span className="text-zinc-500">Prezzo medio: <strong className="text-zinc-800">{fmt(sb.avgPrice)} ({fmt(sb.minPrice)}–{fmt(sb.maxPrice)})</strong></span>
               <span className="text-zinc-500">Pagine medie: <strong className="text-zinc-800">{sb.avgPages} ({sb.minPages}–{sb.maxPages})</strong></span>
+              <span className="text-zinc-500">📏 Lunghezza target: <strong className="text-indigo-700">~{Math.round(sb.avgPages / 10) * 10} pag.</strong></span>
               <span className="text-zinc-500">Difficoltà: <strong className={difficultyColor(sb.entryDifficulty)}>{sb.entryDifficulty}</strong></span>
               <span className="text-zinc-500">Trend: <strong className={trendColor(sb.trendSignal)}>{sb.trendSignal}</strong></span>
               <span className="text-zinc-500">Compliance: <strong className="text-zinc-800">{report.complianceCategory}</strong> <span className="text-zinc-400">({report.complianceRisk})</span></span>
@@ -860,6 +861,13 @@ export default function ReportView({ report }: { report: FullReport }) {
 
             {report.trends.timelineData?.length >= 12 && (
               <SubCard title="Stagionalità della nicchia" accent="violet">
+                {report.trends.peakMonth && (
+                  <div className="mb-3 flex items-center gap-2 text-sm text-zinc-700">
+                    <span className="text-base">📅</span>
+                    <span>Timing ottimale di lancio: <strong className="text-emerald-700">{report.trends.peakMonth}</strong></span>
+                    <span className="text-zinc-400 text-xs">(mese di picco storico)</span>
+                  </div>
+                )}
                 <SeasonalityChart timelineData={report.trends.timelineData} />
               </SubCard>
             )}
