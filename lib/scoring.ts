@@ -1,7 +1,9 @@
-import { FilteredBook, PainPoint, TrendsData } from './types'
+import { FilteredBook, PainPoint, TrendsData, RoasSignal, InvestVerdict, RoiScenario, RoiEstimate } from './types'
 import { getComplianceMultiplier, ComplianceRisk } from './compliance'
 import { calcRoyalty } from './amazon'
 import type { Market } from './types'
+
+export type { RoasSignal, InvestVerdict, RoiScenario, RoiEstimate }
 
 // ─── Pain Point scoring ───────────────────────────────────────────────────────
 // Formula: F×0.2 + I×0.4 + S×0.4
@@ -191,88 +193,176 @@ export function calcProfitabilityScore(
   }
 }
 
-// ─── Investment / ROI ─────────────────────────────────────────────────────────
-// Stima deterministica per §7 del report
-// ROAS fisso = 2; semaforo verde ≤2.0 BEP, giallo 2.0-3.5, rosso >3.5
+// ─── ROI Re-anchor — costanti §5.2 ───────────────────────────────────────────
 
-export type RoasSignal = 'VERDE' | 'GIALLO' | 'ROSSO'
+const CAPTURE_FRACTIONS = { pessimistico: 0.40, base: 0.70, ottimistico: 1.00 } as const
 
-export interface RoiEstimate {
-  avgDailySalesMin: number
-  avgDailySalesMax: number
-  avgMonthlyRevenueMin: number  // royalty × vendite/giorno × 30
-  avgMonthlyRevenueMax: number
-  breakEvenMonths: number       // budget / guadagno_mensile_mid
-  bepSignal: RoasSignal
-  suggestedAdsMonthly: number   // guadagno_mensile_mid × 0.3 (30% budget)
-  cashflowBuffer: number        // suggestedAdsMonthly × 2 (NON guadagno × 2)
-  roiCluster12mMin: number      // proiezione 12 mesi low
-  roiCluster12mMax: number
-  investVerdict: 'INVEST' | 'PARTIAL' | 'PASS'
+const DEFAULT_CONVERSION_RATE = 0.10
+
+const DEFAULT_CPC: Record<Market, number> = {
+  US: 0.55, UK: 0.45, DE: 0.40, FR: 0.35, IT: 0.30, ES: 0.30,
 }
 
+const DEFAULT_COSTO_SCRITTURA      = 0
+const DEFAULT_COSTO_COPERTINA      = 50
+const DEFAULT_COSTO_PER_RECENSIONE = 6
+const DEFAULT_ARC_REVIEWS          = 30
+
+const ADS_SHARE_START = 0.70
+const ADS_SHARE_DECAY = 0.50
+const ADS_SHARE_FLOOR = 0.20
+
+// ─── Investment / ROI Re-anchor ───────────────────────────────────────────────
+// §7: 3 scenari ancorati al competitor target, §6.2
+
 export function calcRoiEstimate(
-  topBooks: FilteredBook[],
-  budget: number,            // budget totale investimento (scrittura + copertina + ads)
+  competitorTarget: FilteredBook,
   market: Market,
+  opts: {
+    monthsToParity?: number
+    arcReviews?: number
+    cpc?: number
+    conversionRate?: number
+    plannedPrice?: number
+    plannedPages?: number
+    costoScrittura?: number
+    costoCopertina?: number
+    costoPerRecensione?: number
+  } = {},
 ): RoiEstimate {
-  const avgDailySalesMin = Math.round(
-    topBooks.reduce((s, b) => s + b.estimatedDailySalesMin, 0) / topBooks.length
-  )
-  const avgDailySalesMax = Math.round(
-    topBooks.reduce((s, b) => s + b.estimatedDailySalesMax, 0) / topBooks.length
-  )
+  const warnings: string[] = []
 
-  const avgRoyalty = topBooks.reduce(
-    (s, b) => s + calcRoyalty(b.price, b.pages ?? 200, market), 0
-  ) / topBooks.length
+  // 1. Risolvi parametri
+  const cpc            = opts.cpc            ?? DEFAULT_CPC[market]
+  const conversionRate = opts.conversionRate ?? DEFAULT_CONVERSION_RATE
+  const plannedPrice   = opts.plannedPrice   ?? competitorTarget.price
+  const plannedPages   = opts.plannedPages   ?? (competitorTarget.pages ?? 200)
+  const costoScrittura     = opts.costoScrittura     ?? DEFAULT_COSTO_SCRITTURA
+  const costoCopertina     = opts.costoCopertina     ?? DEFAULT_COSTO_COPERTINA
+  const costoPerRecensione = opts.costoPerRecensione ?? DEFAULT_COSTO_PER_RECENSIONE
+  const arcReviews         = opts.arcReviews         ?? DEFAULT_ARC_REVIEWS
 
-  const avgMonthlyRevenueMin = Math.round(avgDailySalesMin * avgRoyalty * 30 * 100) / 100
-  const avgMonthlyRevenueMax = Math.round(avgDailySalesMax * avgRoyalty * 30 * 100) / 100
-  const avgMonthlyRevenueMid = (avgMonthlyRevenueMin + avgMonthlyRevenueMax) / 2
+  if (opts.plannedPrice === undefined) warnings.push('prezzo pianificato non fornito: usato prezzo del bersaglio')
+  if (opts.plannedPages === undefined) warnings.push('pagine pianificate non fornite: usate pagine del bersaglio')
 
-  const breakEvenMonths = avgMonthlyRevenueMid > 0
-    ? Math.round((budget / avgMonthlyRevenueMid) * 10) / 10
-    : 999
+  // 2. Budget di produzione (solo produzione, no ads)
+  const budgetProduzione = costoScrittura + costoCopertina + costoPerRecensione * arcReviews
+  if (budgetProduzione === 0) warnings.push('budget di produzione nullo: tutti i costi sono 0')
 
-  const bepSignal: RoasSignal =
-    breakEvenMonths <= 2.0 ? 'VERDE' :
-    breakEvenMonths <= 3.5 ? 'GIALLO' :
-    'ROSSO'
+  // 3. Royalty del nuovo libro
+  const newBookRoyalty = calcRoyalty(plannedPrice, plannedPages, market)
+  if (newBookRoyalty <= 0) warnings.push('royalty negativa: prezzo insufficiente a coprire il costo di stampa')
 
-  // Buffer cashflow = spesa_ads × 2 (NON guadagno × 2)
-  const suggestedAdsMonthly = Math.round(avgMonthlyRevenueMid * 0.3 * 100) / 100
-  const cashflowBuffer = Math.round(suggestedAdsMonthly * 2 * 100) / 100
+  // 4. Ramp
+  let rampMonths: number
+  if (opts.monthsToParity !== undefined) {
+    rampMonths = Math.min(12, Math.max(1, Math.round(opts.monthsToParity)))
+  } else {
+    rampMonths = 3
+    warnings.push('monthsToParity assente: ramp fisso a 3 mesi (non ancorato al bersaglio)')
+  }
 
-  // Proiezione cluster 12 mesi (conservative: mese 1-3 ramp-up al 50%)
-  const rampMonths = 3
-  const fullMonths = 9
-  const roiCluster12mMin = Math.round(
-    (avgMonthlyRevenueMin * 0.5 * rampMonths + avgMonthlyRevenueMin * fullMonths) * 100
-  ) / 100
-  const roiCluster12mMax = Math.round(
-    (avgMonthlyRevenueMax * 0.5 * rampMonths + avgMonthlyRevenueMax * fullMonths) * 100
-  ) / 100
+  // 5. Costo per vendita pubblicitaria
+  const costPerAdSale     = cpc / conversionRate
+  const adSaleIsProfitable = costPerAdSale <= newBookRoyalty
 
-  // INVEST soglia: ROI cluster 12m >= 2× budget cluster
-  const roiMid = (roiCluster12mMin + roiCluster12mMax) / 2
-  const investVerdict: 'INVEST' | 'PARTIAL' | 'PASS' =
-    roiMid >= budget * 2   ? 'INVEST' :
-    roiMid >= budget * 1.0 ? 'PARTIAL' :
+  const targetMin = competitorTarget.estimatedDailySalesMin
+  const targetMax = competitorTarget.estimatedDailySalesMax
+  const targetMid = (targetMin + targetMax) / 2
+
+  // Edge case: target vendite nulle
+  if (targetMid === 0) {
+    warnings.push('vendite del bersaglio nulle: ROI non calcolabile')
+    const zero = (label: RoiScenario['label'], captureFraction: number): RoiScenario => ({
+      label, captureFraction,
+      monthlyRevenue: Array(12).fill(0) as number[],
+      monthlyAdCost:  Array(12).fill(0) as number[],
+      netProfit12m: 0, breakEvenMonths: 999, ratioVsBudget: 0,
+    })
+    return {
+      anchoredOnTarget: true, targetAsin: competitorTarget.asin,
+      targetDailySalesMin: targetMin, targetDailySalesMax: targetMax,
+      newBookRoyalty: Math.round(newBookRoyalty * 100) / 100, rampMonths,
+      params: { cpc, conversionRate, plannedPrice, plannedPages, costoScrittura, costoCopertina, costoPerRecensione, arcReviews, budgetProduzione },
+      scenarios: [
+        zero('pessimistico', CAPTURE_FRACTIONS.pessimistico),
+        zero('base',         CAPTURE_FRACTIONS.base),
+        zero('ottimistico',  CAPTURE_FRACTIONS.ottimistico),
+      ],
+      costPerAdSale: Math.round(costPerAdSale * 100) / 100,
+      adSaleIsProfitable, bepSignal: 'ROSSO', investVerdict: 'PASS', warnings,
+    }
+  }
+
+  // 6. Calcola i 3 scenari mese per mese
+  const scenarioLabels: RoiScenario['label'][] = ['pessimistico', 'base', 'ottimistico']
+  const fractions = [CAPTURE_FRACTIONS.pessimistico, CAPTURE_FRACTIONS.base, CAPTURE_FRACTIONS.ottimistico]
+  const bepThreshold = budgetProduzione > 0 ? budgetProduzione : 0.01
+
+  const scenarios: RoiScenario[] = scenarioLabels.map((label, i) => {
+    const captureFraction = fractions[i]
+    const monthlyRevenue: number[] = []
+    const monthlyAdCost:  number[] = []
+    let netProfit12m = 0
+    let cumulative   = 0
+    let breakEvenMonths = 999
+
+    for (let m = 1; m <= 12; m++) {
+      const capture = m <= rampMonths
+        ? captureFraction * (0.3 + 0.7 * m / rampMonths)
+        : captureFraction
+
+      const monthlySales  = targetMid * capture * 30
+      const revenue       = monthlySales * newBookRoyalty
+      const adsShare      = Math.min(ADS_SHARE_START, Math.max(ADS_SHARE_FLOOR, ADS_SHARE_START - ADS_SHARE_DECAY * (m / 12)))
+      const adCost        = monthlySales * adsShare * costPerAdSale
+      const netMonth      = revenue - adCost
+
+      netProfit12m += netMonth
+      cumulative   += netMonth
+
+      if (breakEvenMonths === 999 && cumulative >= bepThreshold) breakEvenMonths = m
+
+      monthlyRevenue.push(Math.round(revenue  * 100) / 100)
+      monthlyAdCost.push( Math.round(adCost   * 100) / 100)
+    }
+
+    netProfit12m = Math.round(netProfit12m * 100) / 100
+    const ratioVsBudget = budgetProduzione === 0
+      ? (netProfit12m > 0 ? 99999 : 0)
+      : Math.round((netProfit12m / budgetProduzione) * 100) / 100
+
+    return { label, captureFraction, monthlyRevenue, monthlyAdCost, netProfit12m, breakEvenMonths, ratioVsBudget }
+  })
+
+  // 7. Verdetto dallo scenario base (indice 1)
+  const baseRatio = scenarios[1].ratioVsBudget
+  const investVerdict: InvestVerdict =
+    baseRatio >= 2.0 ? 'INVEST' :
+    baseRatio >= 1.0 ? 'PARTIAL' :
     'PASS'
 
+  // 8. Segnale BEP dallo scenario base
+  const baseBep = scenarios[1].breakEvenMonths
+  const bepSignal: RoasSignal =
+    baseBep <= 2.0 ? 'VERDE' :
+    baseBep <= 3.5 ? 'GIALLO' :
+    'ROSSO'
+
   return {
-    avgDailySalesMin,
-    avgDailySalesMax,
-    avgMonthlyRevenueMin,
-    avgMonthlyRevenueMax,
-    breakEvenMonths,
+    anchoredOnTarget: true,
+    targetAsin: competitorTarget.asin,
+    targetDailySalesMin: targetMin,
+    targetDailySalesMax: targetMax,
+    newBookRoyalty: Math.round(newBookRoyalty * 100) / 100,
+    rampMonths,
+    params: { cpc, conversionRate, plannedPrice, plannedPages, costoScrittura, costoCopertina, costoPerRecensione, arcReviews, budgetProduzione },
+    scenarios,
+    costPerAdSale: Math.round(costPerAdSale * 100) / 100,
+    adSaleIsProfitable,
     bepSignal,
-    suggestedAdsMonthly,
-    cashflowBuffer,
-    roiCluster12mMin,
-    roiCluster12mMax,
     investVerdict,
+    warnings,
   }
 }
 

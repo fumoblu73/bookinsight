@@ -9,14 +9,11 @@ import {
   runSubNicheDetection,
   isAnthropicBillingError,
 } from '@/lib/ai'
-import { saveReport, updateReport } from '@/lib/upstash'
+import { saveReport, updateReport, cacheGet } from '@/lib/upstash'
 
 // Vercel Hobby con Fluid Compute (default apr 2025): max 300s
 export const maxDuration = 300
 
-const DEFAULT_BUDGET: Record<Market, number> = {
-  US: 1200, UK: 1000, DE: 900, FR: 800, IT: 800, ES: 800,
-}
 
 // ─── Helper streaming ─────────────────────────────────────────────────────────
 
@@ -54,7 +51,12 @@ function makeStream(fn: (push: (e: StreamEvent) => void) => Promise<void>) {
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { keyword, market, amazonData, trendsData, redditData, youtubeData, cpc, userNotes } = await req.json() as {
+  const {
+    keyword, market, amazonData, trendsData, redditData, youtubeData,
+    cpc, userNotes,
+    plannedPrice, plannedPages, conversionRate,
+    costoScrittura, costoCopertina, costoPerRecensione,
+  } = await req.json() as {
     keyword: string
     market: Market
     amazonData: AmazonData
@@ -63,6 +65,12 @@ export async function POST(req: NextRequest) {
     youtubeData?: YouTubeData
     cpc?: number
     userNotes?: string
+    plannedPrice?: number
+    plannedPages?: number
+    conversionRate?: number
+    costoScrittura?: number
+    costoCopertina?: number
+    costoPerRecensione?: number
   }
 
   if (!amazonData?.topBooks || amazonData.topBooks.length < 3) {
@@ -77,8 +85,21 @@ export async function POST(req: NextRequest) {
     const complianceCategory = detectComplianceCategory(keyword)
     const complianceRisk     = getComplianceRisk(complianceCategory)
     const scoring = calcProfitabilityScore(amazonData.topBooks, trendsData, complianceRisk, market)
-    const budget  = DEFAULT_BUDGET[market]
-    const roi     = calcRoiEstimate(amazonData.topBooks, budget, market)
+
+    // Opzione A §7 ROI_REANCHOR_PLAN: leggi monthsToParity e arcReviews dal prefetch Target Finder
+    const prefetch = await cacheGet<{ monthsToParity: number; arcReviews: number }>(
+      `prefetch:${amazonData.competitorTarget.asin}:${market}`
+    )
+    const roi = calcRoiEstimate(amazonData.competitorTarget, market, {
+      ...(cpc              !== undefined && !isNaN(cpc)              && cpc > 0              ? { cpc }              : {}),
+      ...(plannedPrice     !== undefined && !isNaN(plannedPrice)     && plannedPrice > 0     ? { plannedPrice }     : {}),
+      ...(plannedPages     !== undefined && !isNaN(plannedPages)     && plannedPages > 0     ? { plannedPages }     : {}),
+      ...(conversionRate   !== undefined && !isNaN(conversionRate)   && conversionRate > 0   ? { conversionRate }   : {}),
+      ...(costoScrittura   !== undefined && !isNaN(costoScrittura)                           ? { costoScrittura }   : {}),
+      ...(costoCopertina   !== undefined && !isNaN(costoCopertina)                           ? { costoCopertina }   : {}),
+      ...(costoPerRecensione !== undefined && !isNaN(costoPerRecensione)                     ? { costoPerRecensione } : {}),
+      ...(prefetch ? { monthsToParity: prefetch.monthsToParity, arcReviews: prefetch.arcReviews } : {}),
+    })
     const competitiveDynamism = calcCompetitiveDynamism(amazonData.rawTop15, amazonData.scrapedAt)
     const reportId = await saveReport({ keyword, market, status: 'partial_gap' })
 
@@ -312,18 +333,18 @@ export async function POST(req: NextRequest) {
     try {
       ;[seriesStrategy, roiNarrative] = await Promise.all([
         runSeriesStrategy(amazonData, gapAnalysis.passo5_tesi_libro, scoring, roi),
-        runRoiNarrative(keyword, market, roi, scoring, budget),
+        runRoiNarrative(keyword, market, roi, scoring),
       ])
       logEntries.push({
         step: 'strategy', label: 'Strategia e ROI (AI)',
         status: 'ok',
-        summary: `Verdetto: ${seriesStrategy.verdetto} · Breakeven: ${roi.breakEvenMonths} mesi`,
+        summary: `Verdetto: ${seriesStrategy.verdetto} · Breakeven: ${roi.scenarios[1].breakEvenMonths} mesi`,
         durationMs: Date.now() - t3,
         details: {
           verdetto: seriesStrategy.verdetto,
-          breakEvenMonths: roi.breakEvenMonths,
-          avgMonthlyRevenueMin: roi.avgMonthlyRevenueMin,
-          avgMonthlyRevenueMax: roi.avgMonthlyRevenueMax,
+          investVerdict: roi.investVerdict,
+          breakEvenMonths: roi.scenarios[1].breakEvenMonths,
+          netProfit12mBase: roi.scenarios[1].netProfit12m,
         },
       })
     } catch (err) {
@@ -375,7 +396,7 @@ export async function POST(req: NextRequest) {
       seriesStrategy,
       roi,
       roiNarrative,
-      budget,
+      budget: roi.params.budgetProduzione,
       amazon: amazonData,
       competitiveDynamism,
       complianceCategory,
@@ -410,7 +431,7 @@ export async function POST(req: NextRequest) {
     await updateReport(reportId, {
       status: 'complete',
       profitabilityScore: scoring.score,
-      estimatedDailyRevenue: roi.avgMonthlyRevenueMin,
+      estimatedDailyRevenue: roi.scenarios[1].netProfit12m / 12,
       competitionLevel: scoring.entryDifficulty,
       log: analysisLog,
       data: report,

@@ -39,6 +39,7 @@ export interface AmazonReview {
   rating: number
   title: string
   body: string
+  date?: string        // data recensione normalizzata (ISO o stringa SerpApi)
 }
 
 export interface BookReviews {
@@ -204,6 +205,160 @@ export interface AnalysisLog {
   entries: LogEntry[]
   startedAt: string
   completedAt: string
+}
+
+// ─── Credits ──────────────────────────────────────────────────────────────────
+
+// ─── Target Finder ────────────────────────────────────────────────────────────
+
+export type TargetQuadrant =
+  | 'IDEALE'
+  | 'TROPPO_DURO'
+  | 'FACILE_BASSA_RESA'
+  | 'ANOMALO'
+  | 'NON_ATTACCABILE'
+  | 'DATI_INSUFFICIENTI'
+
+export type Attackability =
+  | 'ATTACCABILE'
+  | 'ATTACCABILE_SE_PROMOSSO'
+  | 'NON_PROMOSSO'
+  | 'NON_ATTACCABILE'
+
+export interface TargetCandidate {
+  asin: string
+  title: string
+  imageUrl?: string
+  price: number
+  currency: string
+  reviewCount: number
+  rating: number
+  bsr: number
+  pages: number
+  publishedDate?: string
+  ageMonths: number | null
+  selfPublished: boolean
+  estMonthlySalesMin: number
+  estMonthlySalesMax: number
+  estMonthlyRevenueMin: number
+  estMonthlyRevenueMax: number
+  attackability: Attackability
+  monthsToParity: number
+  promotionFactors: {
+    lowReviewVelocity: boolean
+    weakRating: boolean
+    ratingVeto: boolean
+  }
+  sellsScore: number
+  defenseScore: number
+  attractiveness: number
+  quadrant: TargetQuadrant
+  dataComplete: boolean
+  outOfBsrRange: boolean
+}
+
+export interface TargetFinderResult {
+  keyword: string
+  market: Market
+  scrapedAt: string
+  candidates: TargetCandidate[]
+  suggested: TargetCandidate[]
+  nicheReviewVelocity: number
+  medians: { revenue: number; defense: number }
+  warning?: string
+}
+
+export interface TargetWeakness {
+  difetto: string
+  gravita: 'ALTA' | 'MEDIA' | 'BASSA'
+  frequenza: number
+  evidence: string
+}
+
+export type TargetVerdict =
+  | 'BERSAGLIO_VALIDO'
+  | 'BATTIBILE_MA_SFIDA'
+  | 'BATTIBILE_MA_BASSA_RESA'
+  | 'NON_ATTACCABILE'
+  | 'DA_VALUTARE'
+
+export interface TargetViability {
+  asin: string
+  title: string
+  imageUrl?: string
+  quadrant: TargetQuadrant
+  attackability: Attackability
+  sellsScore: number
+  defenseScore: number
+  estMonthlyRevenueMin: number
+  estMonthlyRevenueMax: number
+  reviewCount: number
+  ageMonths: number | null
+  rating: number
+  freshnessAdvantage: boolean
+  reviewsToParity: number
+  monthsToParityStatic: number
+  monthsToParityMoving: number
+  recentReviewVelocity: number | null
+  isAccelerating: boolean
+  promotionFactors: {
+    lowReviewVelocity: boolean
+    weakRating: boolean
+    exploitableWeaknesses: boolean
+    ratingVeto: boolean
+  }
+  assumptions: {
+    userReviewVelocity: number
+    arcReviews: number
+  }
+  weaknesses: TargetWeakness[]
+  verdict: TargetVerdict
+  verdictReason: string
+}
+
+// ─── ROI Re-anchor ────────────────────────────────────────────────────────────
+
+export type RoasSignal = 'VERDE' | 'GIALLO' | 'ROSSO'
+export type InvestVerdict = 'INVEST' | 'PARTIAL' | 'PASS'
+
+export interface RoiScenario {
+  label: 'pessimistico' | 'base' | 'ottimistico'
+  captureFraction: number
+  monthlyRevenue: number[]         // 12 valori, ricavi lordi mese per mese
+  monthlyAdCost: number[]          // 12 valori, costo ads mese per mese
+  netProfit12m: number
+  breakEvenMonths: number          // 999 se mai raggiunto entro 12 mesi
+  ratioVsBudget: number
+}
+
+export interface RoiEstimate {
+  anchoredOnTarget: boolean
+  targetAsin?: string
+  targetDailySalesMin: number
+  targetDailySalesMax: number
+  newBookRoyalty: number
+  rampMonths: number
+
+  params: {
+    cpc: number
+    conversionRate: number
+    plannedPrice: number
+    plannedPages: number
+    costoScrittura: number
+    costoCopertina: number
+    costoPerRecensione: number
+    arcReviews: number
+    budgetProduzione: number
+  }
+
+  scenarios: RoiScenario[]         // [pessimistico, base, ottimistico]
+
+  costPerAdSale: number
+  adSaleIsProfitable: boolean
+  bepSignal: RoasSignal
+  investVerdict: InvestVerdict
+
+  warnings: string[]
 }
 
 // ─── Credits ──────────────────────────────────────────────────────────────────

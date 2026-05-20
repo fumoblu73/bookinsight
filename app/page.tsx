@@ -67,10 +67,11 @@ async function postJSON(url: string, body: unknown) {
 }
 
 export default function HomePage() {
-  const [keyword, setKeyword] = useState('')
-  const [market, setMarket]   = useState<Market>('US')
-  const [cpc, setCpc]         = useState('')
-  const [stage, setStage]     = useState<Stage>('idle')
+  const [keyword, setKeyword]             = useState('')
+  const [market, setMarket]               = useState<Market>('US')
+  const [cpc, setCpc]                     = useState('')
+  const [stage, setStage]                 = useState<Stage>('idle')
+  const [targetAsinFromUrl, setTargetAsinFromUrl] = useState<string | null>(null)
   const [report, setReport]   = useState<FullReport | null>(null)
   const [reportId, setReportId] = useState<string | null>(null)
   const [error, setError]     = useState<string | null>(null)
@@ -83,12 +84,26 @@ export default function HomePage() {
   const [userNotes, setUserNotes] = useState('')
   const [showNotes, setShowNotes] = useState(false)
   const [showCpc, setShowCpc] = useState(false)
+  const [plannedPrice, setPlannedPrice] = useState('')
+  const [plannedPages, setPlannedPages] = useState('')
+  const [showPlannedParams, setShowPlannedParams] = useState(false)
 
   // Autocomplete suggestions (Sessione 8)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const suggestionsRef = useRef<HTMLDivElement>(null)
+
+  // Leggi URL params da Target Finder (?keyword=&market=&target=)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const kw  = params.get('keyword')
+    const mkt = params.get('market') as Market | null
+    const tgt = params.get('target')
+    if (kw) setKeyword(kw)
+    if (mkt && ['US', 'UK', 'DE', 'FR', 'IT', 'ES'].includes(mkt)) setMarket(mkt)
+    if (tgt) setTargetAsinFromUrl(tgt.toUpperCase())
+  }, [])
 
   // Fetch credits on mount
   useEffect(() => {
@@ -153,8 +168,10 @@ export default function HomePage() {
 
   // Background signals promise (started during phase 1, awaited in phase 2)
   const signalsRef = useRef<Promise<[unknown, unknown, unknown]> | null>(null)
-  const kwRef      = useRef<string>('')
-  const cpcRef     = useRef<number | undefined>(undefined)
+  const kwRef           = useRef<string>('')
+  const cpcRef          = useRef<number | undefined>(undefined)
+  const plannedPriceRef = useRef<number | undefined>(undefined)
+  const plannedPagesRef = useRef<number | undefined>(undefined)
 
   // ── Phase 1: fetch Amazon, start signals in background ───────────────────────
   const handlePhase1 = useCallback(async (e: React.FormEvent) => {
@@ -175,10 +192,12 @@ export default function HomePage() {
     setStage('loading_amazon')
 
     try {
-      const amazon = await postJSON('/api/amazon', { keyword: kw, market }) as AmazonData
+      const amazon = await postJSON('/api/amazon', { keyword: kw, market, targetAsin: targetAsinFromUrl || undefined }) as AmazonData
 
-      kwRef.current  = kw
-      cpcRef.current = cpcValue
+      kwRef.current           = kw
+      cpcRef.current          = cpcValue
+      plannedPriceRef.current = plannedPrice.trim() ? parseFloat(plannedPrice.trim().replace(',', '.')) : undefined
+      plannedPagesRef.current = plannedPages.trim() ? parseInt(plannedPages.trim(), 10) : undefined
 
       // Fire-and-forget signals fetch — runs during validation pause
       signalsRef.current = Promise.all([
@@ -201,6 +220,12 @@ export default function HomePage() {
 
       setAmazonDataState(amazon)
       setSelectedTargetAsin(amazon.competitorTarget.asin)
+
+      // Se l'ASIN da Target Finder non è in topBooks, precompila il campo custom ASIN
+      if (targetAsinFromUrl && !amazon.topBooks.some(b => b.asin === targetAsinFromUrl)) {
+        setCustomAsinInput(targetAsinFromUrl)
+      }
+
       setStage('awaiting_validation')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -263,7 +288,12 @@ export default function HomePage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, youtubeData, cpc: cpcValue, userNotes: userNotes.trim() || undefined }),
+        body: JSON.stringify({
+          keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, youtubeData,
+          cpc: cpcValue, userNotes: userNotes.trim() || undefined,
+          plannedPrice: plannedPriceRef.current,
+          plannedPages: plannedPagesRef.current,
+        }),
       })
       if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
       if (!res.body) throw new Error('Stream non supportato dal browser')
@@ -320,9 +350,14 @@ export default function HomePage() {
             </h1>
             <p className="text-xs text-zinc-500">Analisi nicchie Amazon KDP con AI</p>
           </div>
-          <a href="/history" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-            Storico report
-          </a>
+          <div className="flex items-center gap-4">
+            <a href="/target" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              Trova il bersaglio
+            </a>
+            <a href="/history" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              Storico report
+            </a>
+          </div>
         </div>
       </header>
 
@@ -389,6 +424,20 @@ export default function HomePage() {
 
           <form onSubmit={handlePhase1} className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
             <h2 className="text-lg font-semibold text-zinc-800 mb-4">Analizza una nicchia KDP</h2>
+            {targetAsinFromUrl && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2 text-xs text-indigo-700">
+                <span className="font-semibold">Bersaglio da Target Finder:</span>
+                <span className="font-mono">{targetAsinFromUrl}</span>
+                <button
+                  type="button"
+                  onClick={() => setTargetAsinFromUrl(null)}
+                  className="ml-auto text-indigo-400 hover:text-indigo-700 transition-colors"
+                  title="Rimuovi bersaglio pre-selezionato"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1" ref={suggestionsRef}>
                 <input
@@ -464,7 +513,7 @@ export default function HomePage() {
                   disabled={isLoading || stage === 'awaiting_validation'}
                   className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
                 />
-                <span className="text-xs text-zinc-400">$/€ per click · stima i click/mese acquistabili con il budget ads in §7</span>
+                <span className="text-xs text-zinc-400">$/€ per click · usato per stimare il costo ads nel modello ROI §7</span>
                 <button
                   type="button"
                   onClick={() => setShowCpc(v => !v)}
@@ -502,6 +551,46 @@ export default function HomePage() {
                         È il metodo più rapido se hai già Publisher Rocket attivo.
                       </p>
                     </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Parametri libro pianificato — collassabile, opzionale */}
+            <div className="mt-4 border-t border-zinc-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowPlannedParams(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <span className={`transition-transform ${showPlannedParams ? 'rotate-90' : ''} inline-block`}>▶</span>
+                Parametri del libro pianificato (opzionale — usati nel calcolo ROI §7)
+              </button>
+              {showPlannedParams && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-zinc-500">Prezzo di vendita pianificato</label>
+                    <input
+                      type="text"
+                      value={plannedPrice}
+                      onChange={e => setPlannedPrice(e.target.value)}
+                      placeholder={`es. 14.99`}
+                      disabled={isLoading || stage === 'awaiting_validation'}
+                      className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
+                    />
+                    <p className="text-xs text-zinc-400">Se assente: usato il prezzo del bersaglio</p>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-zinc-500">Pagine pianificate</label>
+                    <input
+                      type="text"
+                      value={plannedPages}
+                      onChange={e => setPlannedPages(e.target.value)}
+                      placeholder="es. 180"
+                      disabled={isLoading || stage === 'awaiting_validation'}
+                      className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
+                    />
+                    <p className="text-xs text-zinc-400">Influisce sulla royalty (costo di stampa KDP). Se assente: usate le pagine del bersaglio</p>
                   </div>
                 </div>
               )}
@@ -568,6 +657,7 @@ export default function HomePage() {
               market={market}
               selectedTargetAsin={selectedTargetAsin}
               onSelectTarget={setSelectedTargetAsin}
+              suggestedTargetAsin={targetAsinFromUrl ?? undefined}
               customAsinInput={customAsinInput}
               onCustomAsinChange={v => setCustomAsinInput(v)}
               onFetchCustomAsin={handleFetchCustomAsin}
@@ -600,6 +690,7 @@ function coverUrl(asin: string, imageUrl?: string) {
 
 function ValidationPanel({
   amazonData, market, selectedTargetAsin, onSelectTarget,
+  suggestedTargetAsin,
   customAsinInput, onCustomAsinChange, onFetchCustomAsin,
   customAsinLoading, customAsinProduct, customAsinError, onProceed,
 }: {
@@ -607,6 +698,7 @@ function ValidationPanel({
   market: string
   selectedTargetAsin: string
   onSelectTarget: (asin: string) => void
+  suggestedTargetAsin?: string
   customAsinInput: string
   onCustomAsinChange: (v: string) => void
   onFetchCustomAsin: () => void
@@ -635,8 +727,9 @@ function ValidationPanel({
       {/* Book cards with radio */}
       <div className="space-y-2 mb-5">
         {amazonData.topBooks.map(b => {
-          const isSelected = selectedTargetAsin === b.asin
-          const isDefault  = b.asin === amazonData.competitorTarget.asin
+          const isSelected    = selectedTargetAsin === b.asin
+          const isDefault     = b.asin === amazonData.competitorTarget.asin
+          const isFromFinder  = suggestedTargetAsin === b.asin
           return (
             <label
               key={b.asin}
@@ -668,7 +761,10 @@ function ValidationPanel({
                 </p>
               </div>
               <div className="shrink-0 flex items-center gap-1.5">
-                {isDefault && !isSelected && (
+                {isFromFinder && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-semibold border border-indigo-200">Target Finder</span>
+                )}
+                {isDefault && !isSelected && !isFromFinder && (
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium">Suggerito</span>
                 )}
                 {isSelected && (
@@ -683,7 +779,9 @@ function ValidationPanel({
       {/* Custom ASIN */}
       <div className="border-t border-zinc-100 pt-4">
         <p className="text-xs font-medium text-zinc-500 mb-2">
-          Oppure inserisci un ASIN personalizzato da usare come competitor target:
+          {suggestedTargetAsin && !amazonData.topBooks.some(b => b.asin === suggestedTargetAsin)
+            ? <>Bersaglio da Target Finder (<span className="font-mono">{suggestedTargetAsin}</span>) non trovato nella SERP — cercalo come ASIN personalizzato:</>
+            : 'Oppure inserisci un ASIN personalizzato da usare come competitor target:'}
         </p>
         <div className="flex gap-2">
           <input

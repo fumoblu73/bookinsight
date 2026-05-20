@@ -147,6 +147,7 @@ import {
   promptGapAnalysis,
   promptSeriesStrategy,
   promptRoiNarrative,
+  promptTargetWeaknesses,
 } from './prompts'
 
 import {
@@ -155,7 +156,9 @@ import {
   RedditData,
   YouTubeData,
   PainPoint,
+  AmazonReview,
   Market,
+  TargetWeakness,
 } from './types'
 
 import {
@@ -358,6 +361,22 @@ Output JSON puro senza markdown:
   }
 }
 
+// Milestone 5 — Target Weaknesses (Haiku)
+export async function runTargetWeaknesses(
+  bookTitle: string,
+  reviews: AmazonReview[],
+): Promise<TargetWeakness[]> {
+  if (reviews.length < 3) return []
+  try {
+    return await callHaiku<TargetWeakness[]>(
+      promptTargetWeaknesses(bookTitle, reviews),
+      { temperature: 0.2 },
+    )
+  } catch {
+    return []
+  }
+}
+
 // §7 — ROI Narrativa (Haiku)
 export interface RoiNarrativeResult {
   blocco_scenario: string
@@ -371,9 +390,8 @@ export async function runRoiNarrative(
   market: string,
   roi: RoiEstimate,
   scoring: ProfitabilityBreakdown,
-  budget: number,
 ): Promise<RoiNarrativeResult> {
   return callHaiku<RoiNarrativeResult>(
-    promptRoiNarrative(keyword, market, roi, scoring, budget)
+    promptRoiNarrative(keyword, market, roi, scoring)
   )
 }

@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import type { Market, FilteredBook, RawBook } from '@/lib/types'
+import { useEffect, useMemo, useState } from 'react'
+import type { Market, FilteredBook, RawBook, RoiEstimate } from '@/lib/types'
+import { calcRoiEstimate } from '@/lib/scoring'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -49,14 +50,7 @@ export interface FullReport {
     strategia_lancio: string
     rischi_principali: string[]
   }
-  roi: {
-    avgDailySalesMin: number; avgDailySalesMax: number
-    avgMonthlyRevenueMin: number; avgMonthlyRevenueMax: number
-    breakEvenMonths: number; bepSignal: 'VERDE' | 'GIALLO' | 'ROSSO'
-    suggestedAdsMonthly: number; cashflowBuffer: number
-    roiCluster12mMin: number; roiCluster12mMax: number
-    investVerdict: 'INVEST' | 'PARTIAL' | 'PASS'
-  }
+  roi: RoiEstimate
   roiNarrative: { blocco_scenario: string; blocco_budget: string; blocco_timeline: string; blocco_verdetto: string }
   budget: number
   subNiches: { keyword: string; bsr: number; reviewCount: number; vulnerable: boolean }[]
@@ -489,6 +483,42 @@ export default function ReportView({ report }: { report: FullReport }) {
   const strategiaSteps = parseStrategiaLancio(report.seriesStrategy.strategia_lancio)
 
   const footerText = `BookInsight · ${report.keyword} · ${report.market} · ${date} · Score ${report.profitabilityScore}/100`
+
+  const [roiLocalParams, setRoiLocalParams] = useState({
+    costoScrittura:     roi.params.costoScrittura,
+    costoCopertina:     roi.params.costoCopertina,
+    costoPerRecensione: roi.params.costoPerRecensione,
+    arcReviews:         roi.params.arcReviews,
+    conversionRate:     roi.params.conversionRate,
+    cpc:                roi.params.cpc,
+  })
+
+  const narrativeIsStale =
+    roiLocalParams.cpc               !== roi.params.cpc               ||
+    roiLocalParams.conversionRate    !== roi.params.conversionRate    ||
+    roiLocalParams.costoScrittura    !== roi.params.costoScrittura    ||
+    roiLocalParams.costoCopertina    !== roi.params.costoCopertina    ||
+    roiLocalParams.costoPerRecensione !== roi.params.costoPerRecensione ||
+    roiLocalParams.arcReviews        !== roi.params.arcReviews
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const liveRoi = useMemo(() => {
+    const mockTarget = {
+      asin: roi.targetAsin ?? report.competitorTarget.asin,
+      title: '', bsr: 0, bsrTimestamp: '', price: roi.params.plannedPrice, currency: '',
+      reviewCount: 0, rating: 0, selfPublished: false, sponsored: false,
+      royalty: 0, pagesEstimated: false,
+      estimatedDailySalesMin: roi.targetDailySalesMin,
+      estimatedDailySalesMax: roi.targetDailySalesMax,
+      pages: roi.params.plannedPages,
+    } as FilteredBook
+    return calcRoiEstimate(mockTarget, report.market, {
+      ...roiLocalParams,
+      plannedPrice: roi.params.plannedPrice,
+      plannedPages: roi.params.plannedPages,
+      monthsToParity: roi.rampMonths,
+    })
+  }, [roiLocalParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4 report-root">
@@ -1117,77 +1147,180 @@ export default function ReportView({ report }: { report: FullReport }) {
       <Section num="7" title="Investment & ROI">
         <div className="space-y-4">
 
-          {/* Benchmark ROI — libro su cui sono basati i calcoli */}
+          {/* 1. Bersaglio ROI */}
           <div className="px-4 py-3 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center gap-3 flex-wrap print:break-inside-avoid">
-            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest shrink-0">Benchmark ROI</span>
+            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest shrink-0">Bersaglio ROI</span>
             <a
               href={amazonProductUrl(report.competitorTarget.asin, report.market)}
-              target="_blank"
-              rel="noreferrer"
+              target="_blank" rel="noreferrer"
               className="text-sm font-medium text-zinc-700 hover:text-indigo-600 underline underline-offset-2 transition-colors flex-1 min-w-0 truncate"
             >
               {report.competitorTarget.title}
             </a>
-            <div className="flex gap-4 text-xs text-zinc-400 shrink-0 flex-wrap">
+            <div className="flex gap-3 text-xs text-zinc-400 shrink-0 flex-wrap">
               <span>BSR {report.competitorTarget.bsr.toLocaleString('it-IT')}</span>
               <span>{report.competitorTarget.currency}{report.competitorTarget.price}</span>
               <span>{report.competitorTarget.reviewCount} rec.</span>
+              <span>{roi.targetDailySalesMin}–{roi.targetDailySalesMax} vend/g</span>
+              <span>royalty {roi.newBookRoyalty.toFixed(2)}</span>
               <span className="font-mono text-zinc-300">{report.competitorTarget.asin}</span>
             </div>
+            {!roi.anchoredOnTarget && (
+              <span className="text-xs text-amber-600 font-medium bg-amber-50 rounded-lg px-2 py-0.5 border border-amber-100">
+                stima non ancorata al bersaglio — accuratezza ridotta
+              </span>
+            )}
           </div>
 
-          <SubCard title="Proiezioni" accent="zinc">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <KpiCard label="Vendite/giorno"  value={`${roi.avgDailySalesMin}–${roi.avgDailySalesMax}`} />
-              <KpiCard label="Ricavo mensile"  value={`$${fmt(roi.avgMonthlyRevenueMin, 0)}–$${fmt(roi.avgMonthlyRevenueMax, 0)}`} />
-              <KpiCard label="Break-even"      value={`${roi.breakEvenMonths} mesi`} sub={roi.bepSignal} subColor={bepColor(roi.bepSignal)} />
-              <KpiCard label="ROI 12 mesi"     value={`$${fmt(roi.roiCluster12mMin, 0)}–$${fmt(roi.roiCluster12mMax, 0)}`} />
+          {/* 2. Verdetto + 3 scenari */}
+          <SubCard title="Scenari di ritorno a 12 mesi" accent="zinc">
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <span className={`px-3 py-1 rounded-full text-sm font-bold ${verdettoCls(liveRoi.investVerdict)}`}>
+                {liveRoi.investVerdict}
+              </span>
+              <span className="text-xs text-zinc-400">scenario base · ramp {liveRoi.rampMonths} {liveRoi.rampMonths === 1 ? 'mese' : 'mesi'}</span>
+              <KpiCard label="BEP" value={liveRoi.bepSignal} subColor={bepColor(liveRoi.bepSignal)} />
+              {narrativeIsStale && (
+                <span className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-0.5 border border-amber-100">
+                  valori aggiornati — la narrativa si riferisce ai parametri iniziali
+                </span>
+              )}
             </div>
-            {(() => {
-              const target = report.amazon?.topBooks.find(b => b.asin === report.competitorTarget.asin)
-              if (!target) return null
-              return (
-                <div className="mt-3 pt-3 border-t border-zinc-100">
-                  <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-widest mb-2">Benchmark — competitor target</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    <KpiCard label="Vendite/g (target)" value={`${target.estimatedDailySalesMin}–${target.estimatedDailySalesMax}`} />
-                    <KpiCard label="Prezzo (target)" value={`${target.currency}${fmt(target.price)}`} />
-                    <KpiCard label="Pagine (target)" value={(target.pages ?? 0) > 0 ? `${target.pages}` : 'N/D'} />
-                  </div>
-                </div>
-              )
-            })()}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-xs font-semibold uppercase tracking-widest border-b border-zinc-100">
+                    <th className="pb-2 text-left pr-4 text-zinc-400 font-medium w-32"></th>
+                    {liveRoi.scenarios.map(s => (
+                      <th key={s.label} className={`pb-2 text-center ${s.label === 'base' ? 'text-indigo-600' : 'text-zinc-400'}`}>
+                        {s.label.charAt(0).toUpperCase() + s.label.slice(1)}
+                        <div className="text-[10px] font-normal normal-case tracking-normal">{Math.round(s.captureFraction * 100)}% cattura</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  <tr>
+                    <td className="py-2.5 text-xs text-zinc-400 pr-4">Netto 12m</td>
+                    {liveRoi.scenarios.map(s => (
+                      <td key={s.label} className={`py-2.5 text-center font-semibold ${s.netProfit12m < 0 ? 'text-rose-500' : s.label === 'base' ? 'text-indigo-600' : 'text-zinc-700'}`}>
+                        {s.netProfit12m >= 0 ? '+' : ''}{fmt(s.netProfit12m, 0)}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 text-xs text-zinc-400 pr-4">Break-even</td>
+                    {liveRoi.scenarios.map(s => (
+                      <td key={s.label} className={`py-2.5 text-center font-semibold ${s.breakEvenMonths === 999 ? 'text-rose-500' : s.label === 'base' ? 'text-indigo-600' : 'text-zinc-700'}`}>
+                        {s.breakEvenMonths === 999 ? '> 12m' : `mese ${s.breakEvenMonths}`}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 text-xs text-zinc-400 pr-4">Ratio vs budget</td>
+                    {liveRoi.scenarios.map(s => (
+                      <td key={s.label} className={`py-2.5 text-center font-semibold ${s.ratioVsBudget < 1 ? 'text-rose-500' : s.ratioVsBudget >= 2 ? 'text-emerald-600' : s.label === 'base' ? 'text-indigo-600' : 'text-zinc-700'}`}>
+                        {s.ratioVsBudget >= 9999 ? '∞' : `${s.ratioVsBudget.toFixed(1)}×`}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 pt-3 border-t border-zinc-100 text-xs text-zinc-500">
+              Budget produzione: <strong className="text-zinc-800">{fmt(liveRoi.params.budgetProduzione, 0)}</strong>
+              <span className="text-zinc-400 ml-1">=  {liveRoi.params.costoScrittura} scrittura + {liveRoi.params.costoCopertina} copertina + {liveRoi.params.costoPerRecensione}×{liveRoi.params.arcReviews} recensioni lancio</span>
+            </div>
           </SubCard>
 
-          <SubCard title="Budget" accent="zinc">
+          {/* 3. Economia pubblicitaria */}
+          <SubCard title="Economia pubblicitaria" accent="zinc">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: 'Budget totale',   value: `$${fmt(report.budget, 0)}` },
-                { label: 'Ads consigliati', value: `$${fmt(roi.suggestedAdsMonthly, 0)}/mese` },
-                { label: 'Buffer cashflow', value: `$${fmt(roi.cashflowBuffer, 0)}` },
-                ...(report.cpc
-                  ? [{ label: 'Click stimati/mese', value: `~${Math.round(roi.suggestedAdsMonthly / report.cpc).toLocaleString('it-IT')}` }]
-                  : [{ label: 'Verdetto', value: report.roi.investVerdict }]
-                ),
-              ].map(({ label, value }) => (
-                <div key={label} className="p-3 rounded-xl border border-zinc-100 bg-zinc-50 text-center print:break-inside-avoid">
-                  <p className="text-xs text-zinc-400 mb-1">{label}</p>
-                  <p className={`text-base font-bold ${label === 'Verdetto' ? (report.roi.investVerdict === 'INVEST' ? 'text-emerald-600' : report.roi.investVerdict === 'PARTIAL' ? 'text-amber-500' : 'text-rose-500') : 'text-zinc-800'}`}>
-                    {value}
-                  </p>
-                </div>
-              ))}
+              <KpiCard label="CPC" value={`${liveRoi.params.cpc.toFixed(2)}`} sub="per click" />
+              <KpiCard label="Tasso conversione" value={`${(liveRoi.params.conversionRate * 100).toFixed(0)}%`} sub={`1 vend. ogni ${Math.round(1 / liveRoi.params.conversionRate)} click`} />
+              <KpiCard label="Costo/vendita ads" value={`${liveRoi.costPerAdSale.toFixed(2)}`} sub="CPC ÷ conversione" />
+              <KpiCard label="Royalty libro" value={`${liveRoi.newBookRoyalty.toFixed(2)}`} sub="per copia" />
             </div>
-            {report.cpc && (
-              <div className="mt-3 flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2">
-                <span className="font-semibold">CPC Amazon Ads: ${report.cpc.toFixed(2)}</span>
-                <span className="text-zinc-400">·</span>
-                <span>Con il budget ads di ${fmt(roi.suggestedAdsMonthly, 0)}/mese puoi acquistare circa <strong>~{Math.round(roi.suggestedAdsMonthly / report.cpc).toLocaleString('it-IT')} click/mese</strong></span>
+            {!liveRoi.adSaleIsProfitable ? (
+              <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+                <strong>Vendite pubblicitarie al lancio in perdita</strong> — il costo per vendita ({liveRoi.costPerAdSale.toFixed(2)}) supera la royalty ({liveRoi.newBookRoyalty.toFixed(2)}). È normale: la pubblicità al lancio compra ranking e recensioni, non profitto immediato. La profittabilità cresce con l&apos;organico.
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs text-emerald-700">
+                Ogni vendita pubblicitaria è sostenibile: costo ({liveRoi.costPerAdSale.toFixed(2)}) &lt; royalty ({liveRoi.newBookRoyalty.toFixed(2)}).
               </div>
             )}
           </SubCard>
 
+          {/* 4. Pannello costi e parametri — ricalcolo live */}
+          <SubCard title="Costi e parametri — ricalcolo live" accent="indigo">
+            {(() => {
+              const paramFields = [
+                { key: 'costoScrittura'     as const, label: 'Costo scrittura',    hint: '0 = scrivi in proprio' },
+                { key: 'costoCopertina'     as const, label: 'Costo copertina',    hint: 'es. 50' },
+                { key: 'costoPerRecensione' as const, label: 'Costo/recensione',   hint: 'ARC, es. 6' },
+                { key: 'arcReviews'         as const, label: 'Recensioni lancio',  hint: 'es. 30' },
+                { key: 'conversionRate'     as const, label: 'Tasso conversione',  hint: '0.10 = 1 vendita/10 click' },
+                { key: 'cpc'               as const, label: 'CPC ads',            hint: '$/€ per click' },
+              ]
+              return (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {paramFields.map(({ key, label, hint }) => (
+                      <div key={key} className="space-y-1">
+                        <label className="text-xs font-medium text-zinc-500">{label}</label>
+                        <input
+                          type="number" step="any"
+                          value={roiLocalParams[key]}
+                          onChange={e => setRoiLocalParams(p => ({ ...p, [key]: parseFloat(e.target.value) || 0 }))}
+                          className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                        <p className="text-[10px] text-zinc-400">{hint}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-indigo-100">
+                    <p className="text-xs text-zinc-600">
+                      Budget produzione: <strong>{fmt(liveRoi.params.budgetProduzione, 0)}</strong>
+                      <span className="text-zinc-400 ml-1">= {roiLocalParams.costoScrittura} + {roiLocalParams.costoCopertina} + {roiLocalParams.costoPerRecensione}×{roiLocalParams.arcReviews}</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setRoiLocalParams({
+                        costoScrittura: roi.params.costoScrittura, costoCopertina: roi.params.costoCopertina,
+                        costoPerRecensione: roi.params.costoPerRecensione, arcReviews: roi.params.arcReviews,
+                        conversionRate: roi.params.conversionRate, cpc: roi.params.cpc,
+                      })}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 underline underline-offset-2 transition-colors"
+                    >
+                      Ripristina default
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+          </SubCard>
+
+          {/* 5. Note sul calcolo */}
+          {(liveRoi.warnings.length > 0 || !roi.anchoredOnTarget) && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 space-y-1.5">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Note sul calcolo</p>
+              {!roi.anchoredOnTarget && (
+                <p className="text-xs text-amber-700">Stima non ancorata al bersaglio. Esegui la valutazione dal Target Finder per ottenere il ramp ancorato alle recensioni reali.</p>
+              )}
+              {liveRoi.warnings.map((w, i) => (
+                <p key={i} className="text-xs text-zinc-500">— {w}</p>
+              ))}
+            </div>
+          )}
+
+          {/* 6. Narrativa AI */}
           <SubCard title="Narrativa" accent="zinc">
+            {narrativeIsStale && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+                I valori nei pannelli sono stati aggiornati. La narrativa testuale si riferisce ai parametri dell&apos;analisi originale.
+              </p>
+            )}
             <div className="grid sm:grid-cols-2 print:grid-cols-1 gap-3">
               {[
                 { label: 'Scenario',  text: report.roiNarrative.blocco_scenario },
@@ -1205,7 +1338,7 @@ export default function ReportView({ report }: { report: FullReport }) {
 
         </div>
         <SectionNote>
-          Questa sezione traduce tutta l&apos;analisi qualitativa in numeri concreti. Le stime di vendita (copie al giorno, ricavo mensile) partono dal BSR dei competitor: un BSR basso indica un libro che vende molte copie al giorno, uno alto poche copie. Vengono mostrate fasce min-max perché le vendite reali dipendono da molte variabili — considera il valore minimo come scenario prudente e il massimo come scenario ottimistico. Il Break-even indica dopo quanti mesi recupereresti l&apos;investimento iniziale con le sole vendite organiche, senza pubblicità. Verde (entro 3 mesi) è un ottimo segnale: la nicchia ha domanda sufficiente a rientrare rapidamente. Giallo (3–6 mesi) è nella norma per molte nicchie. Rosso (oltre 6 mesi) non significa necessariamente che non valga la pena, ma che ci vorrà più tempo e forse più pubblicità per vedere i ritorni. Il budget indicato è una stima realistica dei costi di avvio: scrittura (se la esternalizzi), grafica della copertina, revisione del testo e un periodo iniziale di pubblicità. Il budget pubblicitario consigliato è il minimo per rendere visibile il libro su Amazon nei primi mesi, quando ancora non ha abbastanza recensioni per emergere organicamente. Usa queste cifre come riferimento, non come garanzia: le vendite reali dipendono dalla qualità del libro, dalla copertina, dalle recensioni che riesci a raccogliere nelle prime settimane, e dalla costanza della tua campagna pubblicitaria.
+          Il modello ROI è ancorato al libro bersaglio selezionato dal Target Finder: le vendite stimate non sono la media dei top 5 ma la posizione di mercato che il tuo libro punta a occupare. Il ramp-up riflette il tempo necessario per pareggiare le recensioni del bersaglio. I tre scenari modellano la frazione di vendite catturata: pessimistico (40%) se ti posizioni sotto di lui, base (70%) se lo affianci, ottimistico (100%) se lo raggiungi. Il costo ads al lancio spesso supera la royalty — è normale: la pubblicità nei primi mesi compra ranking e recensioni, non profitto. Il budget di produzione copre solo i costi una-tantum (scrittura + copertina + recensioni lancio); gli ads sono modellati come costo mensile ricorrente separato. I parametri del pannello &quot;Costi e parametri&quot; sono modificabili con effetto immediato sugli scenari.
         </SectionNote>
       </Section>
 

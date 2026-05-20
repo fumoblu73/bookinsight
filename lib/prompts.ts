@@ -343,9 +343,9 @@ DATI DI MERCATO:
 - Entry Difficulty: ${scoring.entryDifficulty}
 - Trend: ${scoring.trendSignal}
 - Prezzo medio: $${scoring.avgPrice.toFixed(2)} (${scoring.minPrice.toFixed(2)}–${scoring.maxPrice.toFixed(2)}) · Pagine medie: ${scoring.avgPages} (${scoring.minPages}–${scoring.maxPages})
-- Vendite stimate/giorno: ${roi.avgDailySalesMin}-${roi.avgDailySalesMax}
-- Break-even: ${roi.breakEvenMonths} mesi (${roi.bepSignal})
-- ROI proiettato 12m: $${roi.roiCluster12mMin.toFixed(0)}-$${roi.roiCluster12mMax.toFixed(0)}
+- Vendite stimate/giorno (bersaglio): ${roi.targetDailySalesMin}-${roi.targetDailySalesMax}
+- Break-even (scenario base): ${roi.scenarios[1].breakEvenMonths} mesi (${roi.bepSignal})
+- ROI netto 12m: $${roi.scenarios[0].netProfit12m.toFixed(0)}-$${roi.scenarios[2].netProfit12m.toFixed(0)} (pessimistico–ottimistico)
 - Sub-nicchie disponibili: ${amazon.subNiches.map(s => `"${s.keyword}"`).join(', ') || 'nessuna'}
 
 Rispondi SOLO con un oggetto JSON valido:
@@ -381,27 +381,63 @@ export function promptRoiNarrative(
   market: string,
   roi: RoiEstimate,
   scoring: ProfitabilityBreakdown,
-  budget: number,
 ): string {
+  const base = roi.scenarios[1]
+  const pess = roi.scenarios[0]
+  const ott  = roi.scenarios[2]
   return `Sei un consulente finanziario KDP. Scrivi una narrativa di investimento per la nicchia "${keyword}" (${market}).
 
 DATI CALCOLATI (NON modificare i numeri):
-- Budget totale stimato: $${budget}
-- Vendite/giorno stimate: ${roi.avgDailySalesMin}-${roi.avgDailySalesMax} copie
-- Ricavo mensile stimato: $${roi.avgMonthlyRevenueMin.toFixed(0)}-$${roi.avgMonthlyRevenueMax.toFixed(0)}
-- Break-even: ${roi.breakEvenMonths} mesi
-- Segnale BEP: ${roi.bepSignal}
-- Budget ads mensile suggerito: $${roi.suggestedAdsMonthly.toFixed(0)}
-- Cashflow buffer consigliato: $${roi.cashflowBuffer.toFixed(0)} (= budget ads × 2)
-- ROI cluster 12 mesi: $${roi.roiCluster12mMin.toFixed(0)}-$${roi.roiCluster12mMax.toFixed(0)}
-- Verdetto: ${roi.investVerdict}
-- Profitability Score: ${scoring.score}/100
+- Bersaglio: ${roi.targetDailySalesMin}-${roi.targetDailySalesMax} vendite/giorno
+- Royalty libro pianificato: ${roi.newBookRoyalty.toFixed(2)} per copia
+- Budget di produzione: ${roi.params.budgetProduzione} (scrittura ${roi.params.costoScrittura} + copertina ${roi.params.costoCopertina} + recensioni lancio ${roi.params.costoPerRecensione}×${roi.params.arcReviews})
+- Ramp-up: ${roi.rampMonths} mesi
+- Costo per vendita pubblicitaria: ${roi.costPerAdSale.toFixed(2)} (CPC ${roi.params.cpc} / tasso conversione ${roi.params.conversionRate})
+- Ads sostenibili: ${roi.adSaleIsProfitable ? 'sì (costo ads < royalty)' : 'no al lancio (costo ads > royalty — normale, compra ranking)'}
+- Scenario pessimistico: netto 12m ${pess.netProfit12m.toFixed(0)}, break-even ${pess.breakEvenMonths === 999 ? 'mai entro 12m' : `mese ${pess.breakEvenMonths}`}
+- Scenario base: netto 12m ${base.netProfit12m.toFixed(0)}, break-even ${base.breakEvenMonths === 999 ? 'mai entro 12m' : `mese ${base.breakEvenMonths}`}
+- Scenario ottimistico: netto 12m ${ott.netProfit12m.toFixed(0)}, break-even ${ott.breakEvenMonths === 999 ? 'mai entro 12m' : `mese ${ott.breakEvenMonths}`}
+- Verdetto: ${roi.investVerdict} · Profitability Score: ${scoring.score}/100
 
 Rispondi SOLO con un oggetto JSON valido con 4 blocchi narrativi:
 {
-  "blocco_scenario": "Descrivi lo scenario realistico di guadagno usando i numeri forniti (3-4 righe)",
-  "blocco_budget": "Spiega come distribuire il budget (scrittura, copertina, ads) e perché il buffer cashflow è necessario (2-3 righe)",
-  "blocco_timeline": "Timeline mese per mese fino al break-even, con milestone concrete (3-4 righe)",
-  "blocco_verdetto": "Verdetto finale con raccomandazione d'azione specifica, tono diretto (2-3 righe)"
+  "blocco_scenario": "Descrivi la forbice pessimistico-base-ottimistico con i numeri forniti; spiega cosa determina ciascuno scenario (3-4 righe)",
+  "blocco_budget": "Spiega la composizione del budget di produzione (scrittura + copertina + recensioni lancio). Spiega perché il costo ads al lancio può essere in perdita e che cosa compra (ranking e recensioni, non profitto immediato). (2-3 righe)",
+  "blocco_timeline": "Timeline mese per mese fino al break-even nello scenario base, con le milestone concrete legate al ramp (${roi.rampMonths} mesi). (3-4 righe)",
+  "blocco_verdetto": "Verdetto finale con raccomandazione d'azione specifica basata su ${roi.investVerdict}, tono diretto. (2-3 righe)"
 }`
+}
+
+// ─── Target Weaknesses (Haiku) ────────────────────────────────────────────────
+// Milestone 5: analisi difetti exploitabili da recensioni Amazon del competitor
+
+export function promptTargetWeaknesses(
+  bookTitle: string,
+  reviews: AmazonReview[],
+): string {
+  const reviewList = reviews
+    .slice(0, 15)
+    .map((r, i) => `[${i + 1}] Rating:${r.rating}/5 — "${r.title}"\n${r.body}`)
+    .join('\n\n')
+
+  return `Analizza le recensioni del libro "${bookTitle}" su Amazon per identificare difetti exploitabili da un competitor KDP.
+
+RECENSIONI (${reviews.length} totali, prime ${Math.min(15, reviews.length)} mostrate):
+${reviewList}
+
+Identifica i difetti concreti del libro che un competitor può sfruttare scrivendo un libro migliore. Considera: contenuto incompleto o superficiale, struttura confusa, esempi poveri, promesse non mantenute, formato scadente, errori fattuali.
+
+NON includere difetti generici (es. "prezzo alto") o recensioni di servizio (spedizione, packaging). Solo difetti del contenuto/formato del libro stesso.
+
+Restituisci un array JSON (vuoto [] se non emergono difetti chiari da almeno 2 recensioni):
+[
+  {
+    "difetto": "descrizione concisa del difetto (max 12 parole)",
+    "gravita": "ALTA | MEDIA | BASSA",
+    "frequenza": numero intero 1-10 che stima quante recensioni menzionano il problema,
+    "evidence": "citazione breve da una recensione (max 15 parole)"
+  }
+]
+
+Max 5 difetti. Ordina per gravità decrescente. JSON puro senza markdown.`
 }
