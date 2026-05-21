@@ -15,11 +15,13 @@ function reviewsCacheKey(market: Market, asin: string): string {
 }
 
 function prefetchCacheKey(asin: string, market: Market): string {
-  return `prefetch:${asin}:${market}`
+  // v2: aligned with target cache version bump
+  return `prefetch:v2:${asin}:${market}`
 }
 
 function targetCacheKey(market: Market, keyword: string): string {
-  return `target:${market}:${keyword.toLowerCase().trim()}`
+  // v2: must match the key written by app/api/target/route.ts
+  return `target:v2:${market}:${keyword.toLowerCase().trim()}`
 }
 
 export async function POST(req: NextRequest) {

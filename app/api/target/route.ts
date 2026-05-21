@@ -9,7 +9,8 @@ export const maxDuration = 60
 const CACHE_TTL_SECONDS = 60 * 60 * 24  // 24h
 
 function cacheKey(market: Market, keyword: string): string {
-  return `target:${market}:${keyword.toLowerCase().trim()}`
+  // v2: invalidates all pre-paperback-filter cache entries (target:... without v2 prefix)
+  return `target:v2:${market}:${keyword.toLowerCase().trim()}`
 }
 
 function rawBookToCandidate(book: RawBook, market: Market): RawCandidate {
@@ -50,8 +51,11 @@ export async function POST(req: NextRequest) {
 
     // Fetch SERP + product details (nessun cap, prima pagina)
     let rawBooks: RawBook[]
+    let unknownFormatCount = 0
     try {
-      rawBooks = await fetchTargetFinderCandidates(kw, market!)
+      const fetched = await fetchTargetFinderCandidates(kw, market!)
+      rawBooks = fetched.books
+      unknownFormatCount = fetched.unknownFormatCount
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('Nessun risultato')) {
@@ -69,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const rawCandidates: RawCandidate[] = rawBooks.map(b => rawBookToCandidate(b, market!))
 
-    const result = buildTargetFinderResult(rawCandidates, kw, market!, new Date().toISOString())
+    const result = buildTargetFinderResult(rawCandidates, kw, market!, new Date().toISOString(), unknownFormatCount)
 
     // Salva in cache 24h (fire-and-forget, non blocca risposta)
     cacheSet(key, result, CACHE_TTL_SECONDS).catch(() => {})

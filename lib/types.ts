@@ -266,6 +266,7 @@ export interface TargetFinderResult {
   nicheReviewVelocity: number
   medians: { revenue: number; defense: number }
   warning?: string
+  unknownFormatCount?: number  // libri scartati per formato non identificabile (possibili hardcover o dati incompleti)
 }
 
 export interface TargetWeakness {

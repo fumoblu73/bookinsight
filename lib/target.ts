@@ -135,6 +135,7 @@ export function buildTargetFinderResult(
   keyword: string,
   market: Market,
   scrapedAt: string,
+  unknownFormatCount: number = 0,
 ): TargetFinderResult {
   const warnings: string[] = []
 
@@ -292,6 +293,7 @@ export function buildTargetFinderResult(
     nicheReviewVelocity,
     medians: { revenue: medianRevenue, defense: medianDefense },
     warning: warnings.length > 0 ? warnings.join(' | ') : undefined,
+    unknownFormatCount: unknownFormatCount > 0 ? unknownFormatCount : undefined,
   }
 }
 

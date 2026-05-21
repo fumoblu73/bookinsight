@@ -381,7 +381,7 @@ export default function TargetFinder() {
 // ─── Risultati ────────────────────────────────────────────────────────────────
 
 function ResultsView({ result }: { result: TargetFinderResult }) {
-  const { keyword, market, candidates, suggested, nicheReviewVelocity, warning } = result
+  const { keyword, market, candidates, suggested, nicheReviewVelocity, warning, unknownFormatCount } = result
 
   const attackable    = candidates.filter(c => c.attackability === 'ATTACCABILE' || c.attackability === 'ATTACCABILE_SE_PROMOSSO')
   const nonAttackable = candidates.filter(c => c.attackability === 'NON_ATTACCABILE' || c.attackability === 'NON_PROMOSSO')
@@ -403,6 +403,11 @@ function ResultsView({ result }: { result: TargetFinderResult }) {
         {warning && (
           <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5">
             ⚠ {warning}
+          </span>
+        )}
+        {unknownFormatCount != null && unknownFormatCount > 0 && (
+          <span className="text-xs text-zinc-500 bg-zinc-100 border border-zinc-200 rounded-full px-2.5 py-0.5">
+            {unknownFormatCount} {unknownFormatCount === 1 ? 'libro escluso' : 'libri esclusi'} per formato non identificabile (possibili hardcover o dati incompleti)
           </span>
         )}
       </div>

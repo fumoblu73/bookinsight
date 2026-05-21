@@ -28,6 +28,24 @@ const MARKET_BOOKS_CATEGORY: Record<Market, string> = {
   ES: '599364031',
 }
 
+// SerpApi book-format refinement filter for paperback, combined with the Books category node
+// via the `rh` parameter (rh=n:{categoryId},{filterValue}).
+// Values retrieved live from SerpApi filters.book_format response — 2025-05-21.
+// DO NOT move category_id back as a separate param: combining rh+category_id causes
+// unpredictable behavior (verified empirically).
+const MARKET_PAPERBACK_FILTER: Record<Market, string> = {
+  // US uses p_n_feature_browse-bin — NOT p_n_binding_browse-bin like the other markets.
+  // Verified empirically: NOT a typo. Using p_n_binding_browse-bin on US returns 0 results.
+  US: 'p_n_feature_browse-bin:2656022011',
+  UK: 'p_n_binding_browse-bin:492564011',
+  DE: 'p_n_binding_browse-bin:492559011',   // Taschenbuch
+  // FR: "Couverture brochée" only — "Poche" (492481011) excluded: different sub-market
+  // (mass-market fiction, low-price novels), not aligned with KDP non-fiction books.
+  FR: 'p_n_binding_browse-bin:3973586031',  // Couverture brochée
+  IT: 'p_n_binding_browse-bin:509802031',   // Copertina flessibile
+  ES: 'p_n_binding_browse-bin:831435031',   // Tapa blanda
+}
+
 const KDP_PRINT_COST: Record<Market, { fixed: number; perPage: number }> = {
   US: { fixed: 1.00, perPage: 0.012 },
   UK: { fixed: 0.85, perPage: 0.010 },
@@ -50,6 +68,19 @@ const BOOK_FORMATS = new Set([
   'Perfect Paperback', 'Illustrated', 'Pocket Book', 'Audio CD',
   'Broché', 'Relié', 'Taschenbuch', 'Gebundene Ausgabe',
   'Tapa blanda', 'Tapa dura', 'Copertina flessibile', 'Copertina rigida',
+])
+
+// Only paperback format names — used as safety net in applyFilters after the SerpApi filter.
+// item_form is never returned by SerpApi amazon_product (verified empirically 2025-05-21):
+// format is derived from best_sellers_rank categories instead, so values here should match
+// what fetchProductDetails assigns when it detects a physical (non-Kindle) book.
+const PAPERBACK_FORMATS = new Set([
+  'Paperback', 'Mass Market Paperback', 'Perfect Paperback', 'Pocket Book',
+  'Broché',               // FR
+  'Taschenbuch',          // DE
+  'Broschiert',           // DE (brossura, sottotipo paperback)
+  'Tapa blanda',          // ES
+  'Copertina flessibile', // IT
 ])
 const MIN_AGE_DAYS = 30
 const MAX_BOOKS = 5
@@ -87,12 +118,16 @@ interface SerpBook {
 async function fetchSerpData(keyword: string, market: Market): Promise<SerpBook[]> {
   const domain = MARKET_AMAZON_DOMAIN[market]
 
+  // Combine Books category node + paperback binding filter in a single `rh` param.
+  // category_id is NOT passed separately: mixing rh + category_id yields unpredictable results.
+  const rh = `n:${MARKET_BOOKS_CATEGORY[market]},${MARKET_PAPERBACK_FILTER[market]}`
+
   // SerpApi Amazon engine uses `k` (not `q`) for the search keyword
   const data = await serpApiFetch({
     engine: 'amazon',
     k: keyword,
     amazon_domain: domain,
-    category_id: MARKET_BOOKS_CATEGORY[market],
+    rh,
   }) as {
     organic_results?: Array<{
       asin?: string
@@ -157,6 +192,7 @@ interface SerpBsrEntry {
   extracted_rank?: number
   rank?: string | number
   link_text?: string
+  text?: string
 }
 
 interface SerpProductDetails {
@@ -184,20 +220,55 @@ async function fetchProductDetails(asin: string, market: Market): Promise<Produc
 
     const det = data.product_details ?? {}
 
-    // BSR — best rank in the "Books" category (highest-level = largest rank number,
-    // but we want the best BSR = lowest number in Books root category)
-    // SerpApi returns extracted_rank for each subcategory; we take the largest
-    // value (Books root rank) which is the overall BSR
-    let bsr = 0
+    // item_form is never returned by SerpApi amazon_product (verified empirically 2025-05-21).
+    // Derive format and BSR from best_sellers_rank categories instead.
     const ranks = det.best_sellers_rank ?? []
+
+    // Detect Kindle: any rank entry that mentions "Kindle Store"
+    const isKindle = ranks.some(r => {
+      const t = String(r.link_text ?? r.text ?? '')
+      return t.includes('Kindle Store')
+    })
+    // Detect physical book: any rank entry that mentions "Books" but not "Kindle"
+    const hasBooksBsr = ranks.some(r => {
+      const t = String(r.link_text ?? r.text ?? '')
+      return t.includes('Books') && !t.includes('Kindle')
+    })
+
+    let format: string
+    if (isKindle) {
+      format = 'Kindle Edition'
+    } else if (hasBooksBsr) {
+      // Physical book confirmed by Books BSR + SerpApi paperback filter upstream.
+      // Assigning 'Paperback' here; the PAPERBACK_FORMATS safety net in applyFilters
+      // will catch any non-paperback physicals that slipped through the SerpApi filter.
+      format = 'Paperback'
+    } else {
+      format = ''  // UNKNOWN: no BSR data — could be paperback with incomplete data or other format
+    }
+
+    // BSR — take the root "Books" category rank (link_text contains "See Top 100 in Books").
+    // Fallback: largest rank among non-Kindle entries (subcategory ranks are smaller numbers).
+    // Using Math.max directly was wrong for Kindle: Kindle Store rank is a large number too.
+    let bsr = 0
     if (ranks.length > 0) {
-      const nums = ranks.map(r => {
-        if (typeof r.extracted_rank === 'number') return r.extracted_rank
-        const raw = String(r.rank ?? '').replace(/[^0-9]/g, '')
-        return raw ? parseInt(raw) : 0
-      }).filter(n => n > 0)
-      // The largest rank number is the root Books BSR (overall rank)
-      if (nums.length > 0) bsr = Math.max(...nums)
+      const rootEntry = ranks.find(r => {
+        const t = String(r.link_text ?? r.text ?? '')
+        return t.includes('See Top 100') && !t.includes('Kindle')
+      })
+      if (rootEntry) {
+        bsr = rootEntry.extracted_rank ?? 0
+      } else {
+        const nonKindleNums = ranks
+          .filter(r => !String(r.link_text ?? r.text ?? '').includes('Kindle'))
+          .map(r => {
+            if (typeof r.extracted_rank === 'number') return r.extracted_rank
+            const raw = String(r.rank ?? '').replace(/[^0-9]/g, '')
+            return raw ? parseInt(raw) : 0
+          })
+          .filter(n => n > 0)
+        if (nonKindleNums.length > 0) bsr = Math.max(...nonKindleNums)
+      }
     }
 
     // Pages: "432 pages" → 432
@@ -210,8 +281,6 @@ async function fetchProductDetails(asin: string, market: Market): Promise<Produc
     const selfPublished =
       publisher.toLowerCase().includes('independently published') ||
       publisher.toLowerCase().includes('auto-pubblicato')
-
-    const format = (det.item_form ?? '').trim()
 
     return { bsr, pages, publisher, publishedDate, selfPublished, format }
   } catch {
@@ -327,20 +396,33 @@ export function detectSubNiches(raw15: RawBook[], mainKeyword: string): SubNiche
 
 // ─── Filtri ───────────────────────────────────────────────────────────────────
 
-function applyFilters(books: RawBook[]): RawBook[] {
+// Returns filtered books and the count of UNKNOWN-format books that were discarded.
+// Three format states:
+//   PAPERBACK — format in PAPERBACK_FORMATS → keep
+//   KINDLE    — format === 'Kindle Edition'  → discard silently
+//   UNKNOWN   — format is empty              → discard but count (incomplete SerpApi data,
+//                                              possible paperback with missing BSR)
+function applyFilters(books: RawBook[]): { books: RawBook[]; unknownFormatCount: number } {
   const now = Date.now()
-  return books.filter(b => {
+  let unknownFormatCount = 0
+
+  const filtered = books.filter(b => {
     if (b.sponsored) return false
     if (b.reviewCount < 1) return false
-    if (b.format && !BOOK_FORMATS.has(b.format)) return false
-    // Esclude prodotti fisici non-libro: nessun formato noto E nessun metadato editoriale
-    if (!b.format && !b.publisher && !b.publishedDate) return false
+    if (b.format === 'Kindle Edition') return false  // KINDLE → discard
+    if (!b.format) {
+      unknownFormatCount++
+      return false                                   // UNKNOWN → discard, tracked
+    }
+    if (!PAPERBACK_FORMATS.has(b.format)) return false  // hardcover or other non-paperback
     if (b.publishedDate) {
       const ageMs = now - new Date(b.publishedDate).getTime()
       if (ageMs / (1000 * 60 * 60 * 24) < MIN_AGE_DAYS) return false
     }
     return true
   })
+
+  return { books: filtered, unknownFormatCount }
 }
 
 // ─── Competitor target ────────────────────────────────────────────────────────
@@ -451,7 +533,10 @@ export function helium10Link(asin: string): string {
 
 // ─── Target Finder: fetch candidati prima pagina (nessun cap) ────────────────
 
-export async function fetchTargetFinderCandidates(keyword: string, market: Market): Promise<RawBook[]> {
+export async function fetchTargetFinderCandidates(
+  keyword: string,
+  market: Market,
+): Promise<{ books: RawBook[]; unknownFormatCount: number }> {
   const serpResults = await fetchSerpData(keyword, market)
 
   if (serpResults.length === 0) {
@@ -530,7 +615,11 @@ export async function fetchAmazonData(keyword: string, market: Market, targetAsi
   })
 
   // Filtri e ordinamento
-  const filtered = applyFilters(rawBooks)
+  const { books: preFiltered, unknownFormatCount } = applyFilters(rawBooks)
+  if (unknownFormatCount > 0) {
+    console.warn(`[amazon] fetchAmazonData: ${unknownFormatCount} libri scartati per formato sconosciuto`)
+  }
+  const filtered = preFiltered
     .filter(b => b.bsr > 0)
     .sort((a, b) => a.bsr - b.bsr)
     .slice(0, MAX_BOOKS)
