@@ -2,7 +2,7 @@ import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, Book
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
-const MARKET_CURRENCY: Record<Market, string> = {
+export const MARKET_CURRENCY: Record<Market, string> = {
   US: 'USD', UK: 'GBP', DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EUR',
 }
 
@@ -270,7 +270,7 @@ export function calcRoyalty(price: number, pages: number, market: Market): numbe
   return Math.max(0, price * royaltyRate - printCost)
 }
 
-function bsrToSales(bsr: number, market: Market): { min: number; max: number } {
+export function bsrToSales(bsr: number, market: Market): { min: number; max: number } {
   const B = -0.778151
   const marketMult: Record<Market, number> = {
     US: 1.00, UK: 0.35, DE: 0.25, FR: 0.20, IT: 0.15, ES: 0.12,
@@ -445,9 +445,49 @@ export function helium10Link(asin: string): string {
   return `https://www.helium10.com/tools/xray/?asin=${asin}`
 }
 
+// ─── Target Finder: fetch candidati prima pagina (nessun cap) ────────────────
+
+export async function fetchTargetFinderCandidates(keyword: string, market: Market): Promise<RawBook[]> {
+  const serpResults = await fetchSerpData(keyword, market)
+
+  if (serpResults.length === 0) {
+    throw new Error(`Nessun risultato per "${keyword}" su ${market}. Prova una keyword più generica.`)
+  }
+
+  // Pre-filtro su dati SERP: rimuove sponsored e senza recensioni, nessun cap
+  const serpCandidates = serpResults.filter(s => !s.sponsored && s.reviewCount >= 1)
+
+  const productDetails = await Promise.all(
+    serpCandidates.map(s => fetchProductDetails(s.asin, market))
+  )
+
+  const rawBooks: RawBook[] = serpCandidates.map((s, i) => {
+    const d = productDetails[i]
+    return {
+      asin:          s.asin,
+      title:         s.title,
+      bsr:           d.bsr,
+      bsrTimestamp:  new Date().toISOString(),
+      price:         s.price,
+      currency:      MARKET_CURRENCY[market],
+      reviewCount:   s.reviewCount,
+      rating:        s.rating,
+      publishedDate: d.publishedDate || undefined,
+      pages:         d.pages || undefined,
+      publisher:     d.publisher || undefined,
+      selfPublished: d.selfPublished,
+      sponsored:     s.sponsored,
+      format:        d.format,
+      imageUrl:      s.imageUrl,
+    }
+  })
+
+  return applyFilters(rawBooks)
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-export async function fetchAmazonData(keyword: string, market: Market): Promise<AmazonData> {
+export async function fetchAmazonData(keyword: string, market: Market, targetAsin?: string): Promise<AmazonData> {
   // Step 1: SERP
   const serpResults = await fetchSerpData(keyword, market)
 
@@ -512,7 +552,10 @@ export async function fetchAmazonData(keyword: string, market: Market): Promise<
   })
 
   const subNiches = detectSubNiches(rawBooks, keyword)
-  const competitorTarget = selectCompetitorTarget(topBooks, subNiches)
+  const targetOverride = targetAsin
+    ? topBooks.find(b => b.asin === targetAsin.toUpperCase())
+    : undefined
+  const competitorTarget = targetOverride ?? selectCompetitorTarget(topBooks, subNiches)
 
   // Recensioni: tutti i top 5 libri, deduplicati per ASIN
   const reviewCandidatesMap = new Map<string, FilteredBook>()

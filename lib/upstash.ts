@@ -15,6 +15,28 @@ function getRedis(): Redis {
   return _redis
 }
 
+// ─── Cache generica ──────────────────────────────────────────────────────────
+
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  try {
+    const redis = getRedis()
+    const raw = await redis.get<string>(key)
+    if (!raw) return null
+    return (typeof raw === 'string' ? JSON.parse(raw) : raw) as T
+  } catch {
+    return null
+  }
+}
+
+export async function cacheSet(key: string, value: unknown, exSeconds: number): Promise<void> {
+  try {
+    const redis = getRedis()
+    await redis.set(key, JSON.stringify(value), { ex: exSeconds })
+  } catch {
+    // cache failure non blocca la risposta
+  }
+}
+
 // ─── Chiavi Redis ─────────────────────────────────────────────────────────────
 // report:{id}         → JSON del ReportRecord completo
 // reports:index       → ZSET scored by createdAt (timestamp ms) → id
