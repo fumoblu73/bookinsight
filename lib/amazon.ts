@@ -15,6 +15,10 @@ const MARKET_AMAZON_DOMAIN: Record<Market, string> = {
   ES: 'amazon.es',
 }
 
+export function amazonProductUrl(asin: string, market: Market): string {
+  return `https://www.${MARKET_AMAZON_DOMAIN[market]}/dp/${asin}`
+}
+
 const MARKET_BOOKS_CATEGORY: Record<Market, string> = {
   US: '283155',
   UK: '266239',

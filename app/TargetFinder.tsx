@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Market, TargetFinderResult, TargetCandidate, TargetViability } from '@/lib/types'
 import { PARITY_COMFORTABLE, PARITY_CHALLENGE } from '@/lib/target'
+import { amazonProductUrl } from '@/lib/amazon'
 
 // ─── Costanti UI ─────────────────────────────────────────────────────────────
 
@@ -81,6 +82,25 @@ function notAttackableReason(c: TargetCandidate): string {
 
 function analysisUrl(keyword: string, market: Market, asin: string) {
   return `/analyze?keyword=${encodeURIComponent(keyword)}&market=${market}&target=${asin}`
+}
+
+function AmazonLink({ asin, market, className = '' }: { asin: string; market: Market; className?: string }) {
+  return (
+    <a
+      href={amazonProductUrl(asin, market)}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Apri su Amazon"
+      onClick={e => e.stopPropagation()}
+      className={`shrink-0 text-zinc-300 hover:text-zinc-600 transition-colors ${className}`}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+        <polyline points="15 3 21 3 21 9"/>
+        <line x1="10" y1="14" x2="21" y2="3"/>
+      </svg>
+    </a>
+  )
 }
 
 // ─── Schermata principale ────────────────────────────────────────────────────
@@ -320,6 +340,7 @@ function ResultsView({ result }: { result: TargetFinderResult }) {
                     {c.reviewCount} rec. · ★{c.rating.toFixed(1)} · {notAttackableReason(c)}
                   </p>
                 </div>
+                <AmazonLink asin={c.asin} market={market} />
               </div>
             ))}
           </div>
@@ -386,9 +407,12 @@ function SuggestedCard({ candidate: c, rank, keyword, market }: {
           className="rounded shrink-0 object-cover bg-zinc-100 border border-zinc-200"
           onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
         />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-zinc-800 line-clamp-2 leading-snug">{c.title}</p>
-          <p className="text-[11px] font-mono text-zinc-400 mt-0.5">{c.asin}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <p className="text-[11px] font-mono text-zinc-400">{c.asin}</p>
+            <AmazonLink asin={c.asin} market={market} />
+          </div>
         </div>
       </div>
 
@@ -682,6 +706,12 @@ function ManualAsinSection({ keyword, market }: { keyword: string; market: Marke
             {viError}
           </div>
         )}
+        {viState === 'done' && viability && asin.trim() && (
+          <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+            <span className="font-mono">{asin.trim().toUpperCase()}</span>
+            <AmazonLink asin={asin.trim().toUpperCase()} market={market} />
+          </div>
+        )}
         {viState === 'done' && viability && (
           <ViabilityDisplay
             viability={viability}
@@ -746,21 +776,24 @@ function CandidateChip({ candidate: c, keyword, market }: {
   market: Market
 }) {
   return (
-    <a
-      href={analysisUrl(keyword, market, c.asin)}
-      title={`${c.title}\n${c.reviewCount} rec · ★${c.rating.toFixed(1)} · ${Math.round(c.monthsToParity)} mesi parità`}
-      className="flex items-center gap-1.5 bg-zinc-50 hover:bg-indigo-50 border border-zinc-200 hover:border-indigo-300 rounded-lg px-2 py-1 transition-colors"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={coverUrl(c.asin, c.imageUrl)}
-        alt=""
-        width={18}
-        height={26}
-        className="rounded object-cover bg-zinc-100 border border-zinc-200 shrink-0"
-        onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
-      />
-      <span className="text-[11px] text-zinc-600 max-w-[100px] truncate">{c.title}</span>
-    </a>
+    <div className="flex items-center bg-zinc-50 hover:bg-indigo-50 border border-zinc-200 hover:border-indigo-300 rounded-lg transition-colors group">
+      <a
+        href={analysisUrl(keyword, market, c.asin)}
+        title={`${c.title}\n${c.reviewCount} rec · ★${c.rating.toFixed(1)} · ${Math.round(c.monthsToParity)} mesi parità`}
+        className="flex items-center gap-1.5 px-2 py-1 min-w-0"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={coverUrl(c.asin, c.imageUrl)}
+          alt=""
+          width={18}
+          height={26}
+          className="rounded object-cover bg-zinc-100 border border-zinc-200 shrink-0"
+          onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
+        />
+        <span className="text-[11px] text-zinc-600 max-w-[100px] truncate">{c.title}</span>
+      </a>
+      <AmazonLink asin={c.asin} market={market} className="pr-1.5 opacity-0 group-hover:opacity-100" />
+    </div>
   )
 }
