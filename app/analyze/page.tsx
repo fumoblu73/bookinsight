@@ -1,0 +1,885 @@
+'use client'
+
+import { useState, useCallback, useRef, useEffect } from 'react'
+import ReportView from '@/components/ReportView'
+import type { FullReport } from '@/components/ReportView'
+import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData } from '@/lib/types'
+
+// Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
+type Stage =
+  | 'idle'
+  | 'loading_amazon'        // fetch /api/amazon in corso
+  | 'awaiting_validation'   // Amazon done, utente sceglie competitor target
+  | 'loading_signals'       // attesa trends+reddit (già avviati in background)
+  | 'loading_passo0'        // server: passo0 + pain points (stream event: passo0)
+  | 'loading_insights'      // server: insights + trend + gap (stream event: insights)
+  | 'loading_strategy'      // server: strategy + ROI (stream event: strategy)
+  | 'done'
+  | 'error'
+
+const STAGE_LABELS: Record<Stage, string> = {
+  idle:                 '',
+  loading_amazon:       'Raccolta dati Amazon…',
+  awaiting_validation:  'Scegli il competitor target',
+  loading_signals:      'Raccolta segnali (trend + Reddit)…',
+  loading_passo0:       'Analisi competitor e pain points…',
+  loading_insights:     'Analisi insight, trend e gap…',
+  loading_strategy:     'Strategia di serie e ROI…',
+  done:                 'Report completato',
+  error:                'Errore',
+}
+
+const SERVER_STAGE_MAP: Record<string, Stage> = {
+  passo0:   'loading_passo0',
+  insights: 'loading_insights',
+  strategy: 'loading_strategy',
+}
+
+const MARKETS: { value: Market; label: string }[] = [
+  { value: 'US', label: 'US' },
+  { value: 'UK', label: 'UK' },
+  { value: 'DE', label: 'DE' },
+  { value: 'FR', label: 'FR' },
+  { value: 'IT', label: 'IT' },
+  { value: 'ES', label: 'ES' },
+]
+
+const AMAZON_AUTOCOMPLETE_MID: Record<Market, string> = {
+  US: 'ATVPDKIKX0DER',
+  UK: 'A1F83G8C2ARO7P',
+  DE: 'A1PA6795UKMFR9',
+  FR: 'A13V1IB3VIYZZH',
+  IT: 'APJ6JRA9NG5V4',
+  ES: 'A1RKKUPIHCS9HS',
+}
+
+async function postJSON(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const msg = await res.text()
+    throw new Error(`${url}: ${msg}`)
+  }
+  return res.json()
+}
+
+export default function AnalyzePage() {
+  const [keyword, setKeyword]             = useState('')
+  const [market, setMarket]               = useState<Market>('US')
+  const [cpc, setCpc]                     = useState('')
+  const [stage, setStage]                 = useState<Stage>('idle')
+  const [targetAsinFromUrl, setTargetAsinFromUrl] = useState<string | null>(null)
+  const [report, setReport]   = useState<FullReport | null>(null)
+  const [reportId, setReportId] = useState<string | null>(null)
+  const [error, setError]     = useState<string | null>(null)
+
+  // Credits state
+  const [credits, setCredits] = useState<CreditsData | null>(null)
+  const [creditsLoading, setCreditsLoading] = useState(true)
+
+  // User notes (Sessione 4)
+  const [userNotes, setUserNotes] = useState('')
+  const [showNotes, setShowNotes] = useState(false)
+  const [showCpc, setShowCpc] = useState(false)
+  const [plannedPrice, setPlannedPrice] = useState('')
+  const [plannedPages, setPlannedPages] = useState('')
+  const [showPlannedParams, setShowPlannedParams] = useState(false)
+
+  // Autocomplete suggestions (Sessione 8)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
+  const suggestionsRef = useRef<HTMLDivElement>(null)
+
+  // Leggi URL params da Target Finder (?keyword=&market=&target=)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const kw  = params.get('keyword')
+    const mkt = params.get('market') as Market | null
+    const tgt = params.get('target')
+    if (kw) setKeyword(kw)
+    if (mkt && ['US', 'UK', 'DE', 'FR', 'IT', 'ES'].includes(mkt)) setMarket(mkt)
+    if (tgt) setTargetAsinFromUrl(tgt.toUpperCase())
+  }, [])
+
+  // Fetch credits on mount
+  useEffect(() => {
+    fetch('/api/credits')
+      .then(r => r.ok ? r.json() as Promise<CreditsData> : Promise.reject())
+      .then(data => setCredits(data))
+      .catch(() => setCredits(null))
+      .finally(() => setCreditsLoading(false))
+  }, [])
+
+  // Autocomplete: fetch suggestions via proxy
+  const fetchSuggestions = useCallback(async (value: string, mkt: Market) => {
+    if (value.length < 2) { setSuggestions([]); return }
+    const mid = AMAZON_AUTOCOMPLETE_MID[mkt]
+    setLoadingSuggestions(true)
+    try {
+      const res = await fetch(`/api/autocomplete?mid=${mid}&prefix=${encodeURIComponent(value)}&market=${mkt}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json() as { suggestions?: Array<{ value: string }> }
+      setSuggestions(data.suggestions?.map(s => s.value) ?? [])
+      setShowSuggestions(true)
+    } catch {
+      setSuggestions([])
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }, [])
+
+  // Debounce 300ms sul typing della keyword
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (keyword.trim().length >= 2) fetchSuggestions(keyword.trim(), market)
+      else setSuggestions([])
+    }, 300)
+    return () => clearTimeout(t)
+  }, [keyword, market, fetchSuggestions])
+
+  // Reset dropdown al cambio mercato
+  useEffect(() => {
+    setSuggestions([])
+    setShowSuggestions(false)
+  }, [market])
+
+  // Chiudi dropdown al click fuori
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Validation phase state
+  const [amazonDataState, setAmazonDataState] = useState<AmazonData | null>(null)
+  const [selectedTargetAsin, setSelectedTargetAsin] = useState<string>('')
+  const [customAsinInput, setCustomAsinInput]   = useState('')
+  const [customAsinProduct, setCustomAsinProduct] = useState<FilteredBook | null>(null)
+  const [customAsinError, setCustomAsinError]   = useState<string | null>(null)
+  const [customAsinLoading, setCustomAsinLoading] = useState(false)
+
+  // Background signals promise (started during phase 1, awaited in phase 2)
+  const signalsRef = useRef<Promise<[unknown, unknown, unknown]> | null>(null)
+  const kwRef           = useRef<string>('')
+  const cpcRef          = useRef<number | undefined>(undefined)
+  const plannedPriceRef = useRef<number | undefined>(undefined)
+  const plannedPagesRef = useRef<number | undefined>(undefined)
+
+  // ── Phase 1: fetch Amazon, start signals in background ───────────────────────
+  const handlePhase1 = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!keyword.trim()) return
+
+    const kw       = keyword.trim()
+    const cpcValue = cpc.trim() ? parseFloat(cpc.trim().replace(',', '.')) : undefined
+
+    setReport(null)
+    setReportId(null)
+    setError(null)
+    setAmazonDataState(null)
+    setSelectedTargetAsin('')
+    setCustomAsinInput('')
+    setCustomAsinProduct(null)
+    setCustomAsinError(null)
+    setStage('loading_amazon')
+
+    try {
+      const amazon = await postJSON('/api/amazon', { keyword: kw, market, targetAsin: targetAsinFromUrl || undefined }) as AmazonData
+
+      kwRef.current           = kw
+      cpcRef.current          = cpcValue
+      plannedPriceRef.current = plannedPrice.trim() ? parseFloat(plannedPrice.trim().replace(',', '.')) : undefined
+      plannedPagesRef.current = plannedPages.trim() ? parseInt(plannedPages.trim(), 10) : undefined
+
+      // Fire-and-forget signals fetch — runs during validation pause
+      signalsRef.current = Promise.all([
+        fetch('/api/trends', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw, market }),
+        }).then(r => r.ok ? r.json() : { available: false, yoyGrowth: 0, relatedQueries: [], timelineData: [], keyword: kw }),
+        fetch('/api/reddit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw }),
+        }).then(r => r.ok ? r.json() : { posts: [], totalComments: 0, subredditsUsed: [], threadCount: 0, available: false, insufficientCorpus: true, keyword: kw }),
+        fetch('/api/youtube', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: kw, market }),
+        }).then(r => r.ok ? r.json() : { videos: [], totalComments: 0, available: false, insufficientCorpus: true, keyword: kw }),
+      ]) as Promise<[unknown, unknown, unknown]>
+
+      setAmazonDataState(amazon)
+      setSelectedTargetAsin(amazon.competitorTarget.asin)
+
+      // Se l'ASIN da Target Finder non è in topBooks, precompila il campo custom ASIN
+      if (targetAsinFromUrl && !amazon.topBooks.some(b => b.asin === targetAsinFromUrl)) {
+        setCustomAsinInput(targetAsinFromUrl)
+      }
+
+      setStage('awaiting_validation')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setStage('error')
+    }
+  }, [keyword, market, cpc])
+
+  // ── Fetch custom ASIN ─────────────────────────────────────────────────────────
+  const handleFetchCustomAsin = useCallback(async () => {
+    const asin = customAsinInput.trim().toUpperCase()
+    if (asin.length !== 10) {
+      setCustomAsinError('ASIN deve essere di 10 caratteri')
+      return
+    }
+    setCustomAsinLoading(true)
+    setCustomAsinError(null)
+    setCustomAsinProduct(null)
+    try {
+      const res = await fetch('/api/amazon/product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asin, market }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Prodotto non trovato')
+      const product = json as FilteredBook
+      setCustomAsinProduct(product)
+      setSelectedTargetAsin(asin)
+    } catch (err) {
+      setCustomAsinError(err instanceof Error ? err.message : 'Errore nel recupero del prodotto')
+    } finally {
+      setCustomAsinLoading(false)
+    }
+  }, [customAsinInput, market])
+
+  // ── Phase 2: await signals, run AI pipeline ───────────────────────────────────
+  const handlePhase2 = useCallback(async () => {
+    if (!amazonDataState || !signalsRef.current) return
+
+    const kw       = kwRef.current
+    const cpcValue = cpcRef.current
+
+    // Apply selected competitor target
+    let finalAmazonData: AmazonData = { ...amazonDataState }
+    if (selectedTargetAsin !== amazonDataState.competitorTarget.asin) {
+      const newTarget =
+        customAsinProduct?.asin === selectedTargetAsin
+          ? customAsinProduct
+          : amazonDataState.topBooks.find(b => b.asin === selectedTargetAsin)
+      if (newTarget) finalAmazonData = { ...finalAmazonData, competitorTarget: newTarget }
+    }
+
+    setStage('loading_signals')
+
+    try {
+      const [trendsData, redditData, youtubeData] = await signalsRef.current
+
+      setStage('loading_passo0')
+
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, youtubeData,
+          cpc: cpcValue, userNotes: userNotes.trim() || undefined,
+          plannedPrice: plannedPriceRef.current,
+          plannedPages: plannedPagesRef.current,
+        }),
+      })
+      if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
+      if (!res.body) throw new Error('Stream non supportato dal browser')
+
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer    = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const event = JSON.parse(line) as { type: string; stage?: string; report?: FullReport; message?: string }
+
+          if (event.type === 'progress' && event.stage) {
+            const next = SERVER_STAGE_MAP[event.stage]
+            if (next) setStage(next)
+          } else if (event.type === 'done' && event.report) {
+            setReport(event.report)
+            setReportId((event.report as { id?: string }).id ?? null)
+            setStage('done')
+          } else if (event.type === 'error') {
+            if ((event as { errorType?: string }).errorType === 'billing_anthropic') {
+              setError('BILLING_ANTHROPIC')
+              setStage('error')
+              return
+            }
+            throw new Error(event.message ?? 'Errore sconosciuto dal server')
+          }
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setStage('error')
+    }
+  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market, userNotes])
+
+  const isLoading = !['idle', 'awaiting_validation', 'done', 'error'].includes(stage)
+  const creditsBlocked = credits !== null && credits.available && credits.analysesMain < 1
+
+  return (
+    <div className="min-h-screen bg-zinc-50 print:bg-white">
+      <header className="bg-white border-b border-zinc-200 no-print">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-zinc-900">
+              BookInsight
+              <span className="ml-2 text-sm font-normal text-zinc-400">v6.8</span>
+            </h1>
+            <p className="text-xs text-zinc-500">Analisi nicchie Amazon KDP con AI</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <a href="/" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              Trova il bersaglio
+            </a>
+            <a href="/history" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              Storico report
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        <div className="no-print">
+          {/* ── Credits banner ────────────────────────────────────────────── */}
+          {!creditsLoading && credits?.available && (
+            <div className={`mb-4 rounded-xl border px-5 py-3 no-print ${
+              credits.analysesMain === 0
+                ? 'bg-red-50 border-red-200'
+                : credits.analysesMain <= 3
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-zinc-50 border-zinc-200'
+            }`}>
+              <div className="flex items-center justify-between gap-4">
+                {/* Left: label + big number */}
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-xs font-semibold uppercase tracking-wider ${
+                    credits.analysesMain === 0 ? 'text-red-400' :
+                    credits.analysesMain <= 3  ? 'text-amber-500' : 'text-zinc-400'
+                  }`}>Analisi disponibili</span>
+                  <span className={`text-2xl font-black tabular-nums leading-none ${
+                    credits.analysesMain === 0 ? 'text-red-600' :
+                    credits.analysesMain <= 3  ? 'text-amber-600' : 'text-zinc-800'
+                  }`}>{credits.analysesMain}</span>
+                  {credits.analysesMain === 0 && (
+                    <span className="text-xs font-medium text-red-500 ml-1">
+                      {credits.analysesAvailable === 0 ? '— SerpApi esaurito' : '— Apify insufficiente'}
+                    </span>
+                  )}
+                  {credits.analysesMain > 0 && credits.analysesMain <= 3 && (
+                    <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
+                  )}
+                </div>
+                {/* Right: SerpApi + Apify + Anthropic detail */}
+                <div className="text-right text-xs text-zinc-400 space-y-0.5 shrink-0">
+                  <div>
+                    <a href="https://serpapi.com/manage-api-key" target="_blank" rel="noreferrer"
+                      className="inline-flex items-center justify-end gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                      SerpApi — <span className="font-medium text-zinc-600">{credits.total_searches_left.toLocaleString('it-IT')} ricerche rimanenti</span>
+                    </a>
+                  </div>
+                  {credits.apifyAvailable && (
+                    <div>
+                      <a href="https://console.apify.com/billing" target="_blank" rel="noreferrer"
+                        className="inline-flex items-center justify-end gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                        Apify — <span className="font-medium text-zinc-600">${credits.apifyBalanceUsd.toFixed(2)} credito rimanente</span>
+                      </a>
+                    </div>
+                  )}
+                  <div>
+                    <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noreferrer"
+                      className="inline-flex items-center justify-end gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                      Anthropic — <span className="font-medium text-zinc-600">verifica crediti</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handlePhase1} className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
+            <h2 className="text-lg font-semibold text-zinc-800 mb-4">Analizza una nicchia KDP</h2>
+            {targetAsinFromUrl && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2 text-xs text-indigo-700">
+                <span className="font-semibold">Bersaglio da Target Finder:</span>
+                <span className="font-mono">{targetAsinFromUrl}</span>
+                <button
+                  type="button"
+                  onClick={() => setTargetAsinFromUrl(null)}
+                  className="ml-auto text-indigo-400 hover:text-indigo-700 transition-colors"
+                  title="Rimuovi bersaglio pre-selezionato"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1" ref={suggestionsRef}>
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={e => {
+                    setKeyword(e.target.value)
+                    if (e.target.value.length < 2) setShowSuggestions(false)
+                  }}
+                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                  onKeyDown={e => { if (e.key === 'Escape') setShowSuggestions(false) }}
+                  placeholder="es. stoicism for beginners"
+                  disabled={isLoading || stage === 'awaiting_validation'}
+                  className="w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:bg-zinc-50"
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white rounded-xl border border-zinc-200 shadow-lg overflow-hidden">
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setKeyword(s)
+                          setShowSuggestions(false)
+                          setSuggestions([])
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors flex items-center gap-2"
+                      >
+                        <span className="text-zinc-300 text-xs">⌕</span>
+                        {s}
+                      </button>
+                    ))}
+                    <div className="px-4 py-1.5 text-xs text-zinc-300 border-t border-zinc-100 flex items-center gap-1">
+                      <span>Suggerimenti Amazon {market}</span>
+                      {loadingSuggestions && <span className="animate-pulse">…</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <select
+                value={market}
+                onChange={e => setMarket(e.target.value as Market)}
+                disabled={isLoading || stage === 'awaiting_validation'}
+                className="rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 bg-white"
+              >
+                {MARKETS.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation' || creditsBlocked}
+                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={
+                  credits?.analysesAvailable === 0 ? 'Crediti SerpApi insufficienti — ricarica su serpapi.com' :
+                  (credits?.apifyAvailable && (credits?.apifyAnalysesAvailable ?? 1) < 1) ? 'Crediti Apify insufficienti — ricarica su console.apify.com' :
+                  undefined
+                }
+              >
+                {isLoading ? 'Analisi…' : 'Analizza'}
+              </button>
+            </div>
+
+            {/* CPC Amazon Ads — campo opzionale con box esplicativo collassabile */}
+            <div className="mt-4 border-t border-zinc-100 pt-4 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-xs font-medium text-zinc-500 whitespace-nowrap">CPC Amazon Ads stimato (opzionale):</label>
+                <input
+                  type="text"
+                  value={cpc}
+                  onChange={e => setCpc(e.target.value)}
+                  placeholder="es. 0.85"
+                  disabled={isLoading || stage === 'awaiting_validation'}
+                  className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
+                />
+                <span className="text-xs text-zinc-400">$/€ per click · usato per stimare il costo ads nel modello ROI §7</span>
+                <button
+                  type="button"
+                  onClick={() => setShowCpc(v => !v)}
+                  className="ml-auto flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 transition-colors"
+                >
+                  <span className={`transition-transform inline-block ${showCpc ? 'rotate-90' : ''}`}>▶</span>
+                  Come stimare il CPC
+                </button>
+              </div>
+              {showCpc && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed space-y-2">
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <span className="shrink-0 font-bold text-amber-600">①</span>
+                      <p>
+                        <strong>Amazon Ads (gratuito, diretto):</strong> accedi ad{' '}
+                        <em>Amazon Ads → Sponsored Products → crea campagna manuale</em>.
+                        Aggiungi la keyword nella sezione <em>Targeting per keyword</em> e leggi il{' '}
+                        <em>Bid suggerito</em> che appare accanto — non serve pubblicare la campagna.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="shrink-0 font-bold text-amber-600">②</span>
+                      <p>
+                        <strong>Helium10 Adtomic:</strong> nel modulo Adtomic cerca la keyword e leggi la colonna{' '}
+                        <em>Suggested Bid</em>. Offre anche la fascia min/max (bid basso / bid alto) per calibrare meglio il budget.
+                        Richiede piano Platinum o superiore.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="shrink-0 font-bold text-amber-600">③</span>
+                      <p>
+                        <strong>Publisher Rocket:</strong> nella scheda <em>AMS Keyword</em> inserisci la keyword
+                        e ottieni direttamente il <em>Avg. CPC</em> stimato insieme al volume di ricerca Amazon.
+                        È il metodo più rapido se hai già Publisher Rocket attivo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Parametri libro pianificato — collassabile, opzionale */}
+            <div className="mt-4 border-t border-zinc-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowPlannedParams(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <span className={`transition-transform ${showPlannedParams ? 'rotate-90' : ''} inline-block`}>▶</span>
+                Parametri del libro pianificato (opzionale — usati nel calcolo ROI §7)
+              </button>
+              {showPlannedParams && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-zinc-500">Prezzo di vendita pianificato</label>
+                    <input
+                      type="text"
+                      value={plannedPrice}
+                      onChange={e => setPlannedPrice(e.target.value)}
+                      placeholder={`es. 14.99`}
+                      disabled={isLoading || stage === 'awaiting_validation'}
+                      className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
+                    />
+                    <p className="text-xs text-zinc-400">Se assente: usato il prezzo del bersaglio</p>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-zinc-500">Pagine pianificate</label>
+                    <input
+                      type="text"
+                      value={plannedPages}
+                      onChange={e => setPlannedPages(e.target.value)}
+                      placeholder="es. 180"
+                      disabled={isLoading || stage === 'awaiting_validation'}
+                      className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
+                    />
+                    <p className="text-xs text-zinc-400">Influisce sulla royalty (costo di stampa KDP). Se assente: usate le pagine del bersaglio</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User notes — collapsible */}
+            <div className="mt-4 border-t border-zinc-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowNotes(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <span className={`transition-transform ${showNotes ? 'rotate-90' : ''} inline-block`}>▶</span>
+                Osservazioni personali sulla nicchia (opzionale)
+              </button>
+              {showNotes && (
+                <div className="mt-2">
+                  <textarea
+                    value={userNotes}
+                    onChange={e => setUserNotes(e.target.value)}
+                    maxLength={1000}
+                    rows={4}
+                    placeholder="Es. ho notato che i libri esistenti ignorano il target over 50 · il formato workbook sembra mancante · la keyword X sembra emergente…"
+                    disabled={isLoading || stage === 'awaiting_validation'}
+                    className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50 resize-y"
+                  />
+                  <p className="text-xs text-zinc-400 mt-1 text-right">{userNotes.length}/1000</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">I dati oggettivi (recensioni, Reddit, trends) hanno priorità. Le tue osservazioni vengono usate come segnale integrativo nella Gap Analysis.</p>
+                </div>
+              )}
+            </div>
+
+            {(isLoading || stage === 'awaiting_validation') && (
+              <div className="mt-4">
+                <PipelineProgress stage={stage} />
+              </div>
+            )}
+
+            {stage === 'error' && error && (
+              error === 'BILLING_ANTHROPIC' ? (
+                <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm">
+                  <p className="font-semibold text-red-700">Crediti Anthropic esauriti</p>
+                  <a
+                    href="https://console.anthropic.com/settings/billing"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-red-600 underline underline-offset-2 text-xs"
+                  >
+                    Ricarica crediti Anthropic →
+                  </a>
+                </div>
+              ) : (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                  <strong>Errore:</strong> {error}
+                </div>
+              )
+            )}
+          </form>
+
+          {/* ── Validation panel ──────────────────────────────────────────────── */}
+          {stage === 'awaiting_validation' && amazonDataState && (
+            <ValidationPanel
+              amazonData={amazonDataState}
+              market={market}
+              selectedTargetAsin={selectedTargetAsin}
+              onSelectTarget={setSelectedTargetAsin}
+              suggestedTargetAsin={targetAsinFromUrl ?? undefined}
+              customAsinInput={customAsinInput}
+              onCustomAsinChange={v => setCustomAsinInput(v)}
+              onFetchCustomAsin={handleFetchCustomAsin}
+              customAsinLoading={customAsinLoading}
+              customAsinProduct={customAsinProduct}
+              customAsinError={customAsinError}
+              onProceed={handlePhase2}
+            />
+          )}
+        </div>
+
+        {report && <ReportView report={report} />}
+        {stage === 'done' && reportId && (
+          <div className="mt-4 text-center no-print">
+            <a href={`/log/${reportId}`} className="text-sm text-zinc-400 hover:text-indigo-600 underline transition-colors">
+              Vedi log dell&apos;analisi
+            </a>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+// ─── Validation Panel ─────────────────────────────────────────────────────────
+
+function coverUrl(asin: string, imageUrl?: string) {
+  return imageUrl || `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SX85_.jpg`
+}
+
+function ValidationPanel({
+  amazonData, market, selectedTargetAsin, onSelectTarget,
+  suggestedTargetAsin,
+  customAsinInput, onCustomAsinChange, onFetchCustomAsin,
+  customAsinLoading, customAsinProduct, customAsinError, onProceed,
+}: {
+  amazonData: AmazonData
+  market: string
+  selectedTargetAsin: string
+  onSelectTarget: (asin: string) => void
+  suggestedTargetAsin?: string
+  customAsinInput: string
+  onCustomAsinChange: (v: string) => void
+  onFetchCustomAsin: () => void
+  customAsinLoading: boolean
+  customAsinProduct: FilteredBook | null
+  customAsinError: string | null
+  onProceed: () => void
+}) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 className="text-base font-semibold text-zinc-800">Verifica competitor target</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            L&apos;algoritmo ha suggerito un competitor di riferimento. Confermalo o scegli un altro — poi avvia l&apos;analisi.
+          </p>
+        </div>
+        <button
+          onClick={onProceed}
+          className="shrink-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-sm font-medium transition-colors"
+        >
+          Avvia analisi →
+        </button>
+      </div>
+
+      {/* Book cards with radio */}
+      <div className="space-y-2 mb-5">
+        {amazonData.topBooks.map(b => {
+          const isSelected    = selectedTargetAsin === b.asin
+          const isDefault     = b.asin === amazonData.competitorTarget.asin
+          const isFromFinder  = suggestedTargetAsin === b.asin
+          return (
+            <label
+              key={b.asin}
+              className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${isSelected ? 'border-indigo-300 bg-indigo-50' : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50'}`}
+            >
+              <input
+                type="radio"
+                name="target"
+                value={b.asin}
+                checked={isSelected}
+                onChange={() => onSelectTarget(b.asin)}
+                className="shrink-0 accent-indigo-600"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={coverUrl(b.asin, b.imageUrl)}
+                alt=""
+                width={28}
+                height={40}
+                className="rounded shrink-0 object-cover bg-zinc-100 border border-zinc-200"
+                onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-zinc-800 leading-snug line-clamp-1">{b.title}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  BSR {b.bsr.toLocaleString('it-IT')} · {b.reviewCount.toLocaleString('it-IT')} rec.
+                  {' '}· ★{b.rating.toFixed(1)}
+                  {b.selfPublished && <span className="ml-2 text-emerald-600 font-medium">SP</span>}
+                </p>
+              </div>
+              <div className="shrink-0 flex items-center gap-1.5">
+                {isFromFinder && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-semibold border border-indigo-200">Target Finder</span>
+                )}
+                {isDefault && !isSelected && !isFromFinder && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium">Suggerito</span>
+                )}
+                {isSelected && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-semibold">Target</span>
+                )}
+              </div>
+            </label>
+          )
+        })}
+      </div>
+
+      {/* Custom ASIN */}
+      <div className="border-t border-zinc-100 pt-4">
+        <p className="text-xs font-medium text-zinc-500 mb-2">
+          {suggestedTargetAsin && !amazonData.topBooks.some(b => b.asin === suggestedTargetAsin)
+            ? <>Bersaglio da Target Finder (<span className="font-mono">{suggestedTargetAsin}</span>) non trovato nella SERP — cercalo come ASIN personalizzato:</>
+            : 'Oppure inserisci un ASIN personalizzato da usare come competitor target:'}
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={customAsinInput}
+            onChange={e => onCustomAsinChange(e.target.value.toUpperCase())}
+            placeholder="es. B08XXXXXXXXXX"
+            maxLength={10}
+            className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase"
+          />
+          <button
+            onClick={onFetchCustomAsin}
+            disabled={customAsinLoading || customAsinInput.trim().length !== 10}
+            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {customAsinLoading ? '…' : 'Cerca'}
+          </button>
+        </div>
+
+        {customAsinError && (
+          <p className="text-xs text-rose-600 mt-1.5">{customAsinError}</p>
+        )}
+
+        {customAsinProduct && (
+          <label
+            className={`flex items-center gap-3 p-3 mt-2 rounded-xl border cursor-pointer transition-colors ${selectedTargetAsin === customAsinProduct.asin ? 'border-indigo-300 bg-indigo-50' : 'border-zinc-200 hover:border-zinc-300'}`}
+          >
+            <input
+              type="radio"
+              name="target"
+              value={customAsinProduct.asin}
+              checked={selectedTargetAsin === customAsinProduct.asin}
+              onChange={() => onSelectTarget(customAsinProduct.asin)}
+              className="shrink-0 accent-indigo-600"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-zinc-800 leading-snug">{customAsinProduct.title}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {customAsinProduct.asin}
+                {customAsinProduct.bsr > 0 && ` · BSR ${customAsinProduct.bsr.toLocaleString('it-IT')}`}
+                {customAsinProduct.reviewCount > 0 && ` · ${customAsinProduct.reviewCount.toLocaleString('it-IT')} rec.`}
+                {customAsinProduct.rating > 0 && ` · ★${customAsinProduct.rating.toFixed(1)}`}
+              </p>
+            </div>
+            {selectedTargetAsin === customAsinProduct.asin && (
+              <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-semibold">Target</span>
+            )}
+          </label>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Pipeline Progress ─────────────────────────────────────────────────────────
+
+const STEPS: { key: Stage; label: string }[] = [
+  { key: 'loading_amazon',      label: 'Amazon' },
+  { key: 'awaiting_validation', label: 'Validazione' },
+  { key: 'loading_signals',     label: 'Segnali' },
+  { key: 'loading_passo0',      label: 'Competitor' },
+  { key: 'loading_insights',    label: 'Insight & Gap' },
+  { key: 'loading_strategy',    label: 'Strategia' },
+]
+
+function PipelineProgress({ stage }: { stage: Stage }) {
+  const activeIdx = STEPS.findIndex(s => s.key === stage)
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {STEPS.map((step, i) => {
+          const isDone       = activeIdx > i
+          const isActive     = activeIdx === i
+          const isPending    = activeIdx < i
+          const isValidation = step.key === 'awaiting_validation'
+
+          return (
+            <div key={step.key} className="flex items-center gap-1.5">
+              <div className={[
+                'w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+                isDone    ? 'bg-green-500 text-white' : '',
+                isActive  ? `bg-indigo-600 text-white ${isValidation ? '' : 'animate-pulse'}` : '',
+                isPending ? 'bg-zinc-200 text-zinc-400' : '',
+              ].join(' ')}>
+                {isDone ? '✓' : i + 1}
+              </div>
+              <span className={`text-xs whitespace-nowrap ${isActive ? 'text-indigo-700 font-medium' : isDone ? 'text-green-600' : 'text-zinc-400'}`}>
+                {step.label}
+              </span>
+              {i < STEPS.length - 1 && (
+                <div className={`w-6 h-px shrink-0 ${isDone ? 'bg-green-400' : 'bg-zinc-200'}`} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-xs text-zinc-400 italic">{STAGE_LABELS[stage]}</p>
+    </div>
+  )
+}

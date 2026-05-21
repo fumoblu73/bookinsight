@@ -80,7 +80,7 @@ function notAttackableReason(c: TargetCandidate): string {
 }
 
 function analysisUrl(keyword: string, market: Market, asin: string) {
-  return `/?keyword=${encodeURIComponent(keyword)}&market=${market}&target=${asin}`
+  return `/analyze?keyword=${encodeURIComponent(keyword)}&market=${market}&target=${asin}`
 }
 
 // ─── Schermata principale ────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ type UiState = 'idle' | 'loading' | 'results' | 'error'
 
 export default function TargetFinder() {
   const [keyword, setKeyword] = useState('')
-  const [market, setMarket]   = useState<Market>('IT')
+  const [market, setMarket]   = useState<Market>('US')
   const [uiState, setUiState] = useState<UiState>('idle')
   const [result, setResult]   = useState<TargetFinderResult | null>(null)
   const [error, setError]     = useState<string | null>(null)
@@ -127,8 +127,8 @@ export default function TargetFinder() {
             </h1>
             <p className="text-xs text-zinc-500">Scegli il bersaglio giusto prima di analizzare</p>
           </div>
-          <a href="/" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-            ← Analisi nicchia
+          <a href="/history" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+            Storico report
           </a>
         </div>
       </header>
@@ -166,6 +166,16 @@ export default function TargetFinder() {
             </button>
           </div>
         </form>
+
+        {/* ── Link analisi diretta ──────────────────────────────────────────── */}
+        <div className="text-center">
+          <a
+            href="/analyze"
+            className="text-sm text-zinc-400 hover:text-indigo-600 transition-colors"
+          >
+            Analizza direttamente senza scegliere un bersaglio →
+          </a>
+        </div>
 
         {/* ── Loading ───────────────────────────────────────────────────────── */}
         {uiState === 'loading' && (
