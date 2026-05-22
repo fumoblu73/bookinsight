@@ -383,6 +383,67 @@ export default function TargetFinder() {
 function ResultsView({ result }: { result: TargetFinderResult }) {
   const { keyword, market, candidates, suggested, nicheReviewVelocity, warning, unknownFormatCount } = result
 
+  const [interpretation, setInterpretation] = useState<string | null>(null)
+  const [interpretationLoading, setInterpretationLoading] = useState(true)
+  const [interpretationError, setInterpretationError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setInterpretationLoading(true)
+    setInterpretationError(null)
+    setInterpretation(null)
+
+    const att = result.candidates.filter(c => c.attackability === 'ATTACCABILE' || c.attackability === 'ATTACCABILE_SE_PROMOSSO')
+    const nonAtt = result.candidates.filter(c => c.attackability === 'NON_ATTACCABILE' || c.attackability === 'NON_PROMOSSO')
+    const excluded = att.filter(c => c.quadrant === 'DATI_INSUFFICIENTI')
+
+    const summary = {
+      totalCandidates: result.candidates.length,
+      attackableCount: att.length,
+      suggestedCount: result.suggested.length,
+      quadrantCounts: {
+        IDEALE:            att.filter(c => c.quadrant === 'IDEALE').length,
+        TROPPO_DURO:       att.filter(c => c.quadrant === 'TROPPO_DURO').length,
+        FACILE_BASSA_RESA: att.filter(c => c.quadrant === 'FACILE_BASSA_RESA').length,
+        ANOMALO:           att.filter(c => c.quadrant === 'ANOMALO').length,
+      },
+      nonAttackableCount: nonAtt.length,
+      nonAttackableReasons: {
+        over150Reviews: nonAtt.filter(c => c.reviewCount > 150).length,
+        nonPromosso:    nonAtt.filter(c => c.attackability === 'NON_PROMOSSO').length,
+      },
+      excludedFromQuadrantsCount: excluded.length,
+      excludedReasons: {
+        bsrZero:      excluded.filter(c => c.bsr === 0).length,
+        outOfBsrRange: excluded.filter(c => c.outOfBsrRange).length,
+        ageUnknown:   excluded.filter(c => c.ageMonths === null).length,
+      },
+      unknownFormatCount: result.unknownFormatCount ?? 0,
+      nicheReviewVelocity: result.nicheReviewVelocity,
+      warnings: result.warning ? result.warning.split(' | ') : [],
+    }
+
+    let cancelled = false
+
+    fetch('/api/target/interpretation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: result.keyword, market: result.market, resultSummary: summary }),
+    })
+      .then(r => r.json())
+      .then((json: { interpretation?: string; error?: string }) => {
+        if (cancelled) return
+        if (json.error) throw new Error(json.error)
+        setInterpretation(json.interpretation ?? null)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setInterpretationError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => { if (!cancelled) setInterpretationLoading(false) })
+
+    return () => { cancelled = true }
+  }, [result])
+
   const attackable    = candidates.filter(c => c.attackability === 'ATTACCABILE' || c.attackability === 'ATTACCABILE_SE_PROMOSSO')
   const nonAttackable = candidates.filter(c => c.attackability === 'NON_ATTACCABILE' || c.attackability === 'NON_PROMOSSO')
 
@@ -411,6 +472,33 @@ function ResultsView({ result }: { result: TargetFinderResult }) {
           </span>
         )}
       </div>
+
+      {/* ── Interpretazione AI ──────────────────────────────────────────── */}
+      <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-base">📊</span>
+          <h2 className="text-sm font-semibold text-amber-900">Lettura del risultato</h2>
+          {interpretationLoading && (
+            <span className="ml-auto text-[11px] text-amber-400 animate-pulse">Analisi in corso…</span>
+          )}
+        </div>
+        {interpretationLoading && (
+          <div className="space-y-2">
+            <div className="h-3.5 bg-amber-100 rounded animate-pulse w-full" />
+            <div className="h-3.5 bg-amber-100 rounded animate-pulse w-11/12" />
+            <div className="h-3.5 bg-amber-100 rounded animate-pulse w-full" />
+            <div className="h-3.5 bg-amber-100 rounded animate-pulse w-4/5" />
+            <div className="h-3.5 bg-amber-100 rounded animate-pulse w-full" />
+            <div className="h-3.5 bg-amber-100 rounded animate-pulse w-3/4" />
+          </div>
+        )}
+        {interpretationError && !interpretationLoading && (
+          <p className="text-xs text-rose-600">Impossibile generare l&apos;interpretazione: {interpretationError}</p>
+        )}
+        {interpretation && !interpretationLoading && (
+          <p className="text-sm text-amber-950 leading-relaxed whitespace-pre-line">{interpretation}</p>
+        )}
+      </section>
 
       {/* ── 1. Bersagli suggeriti ────────────────────────────────────────── */}
       <section>

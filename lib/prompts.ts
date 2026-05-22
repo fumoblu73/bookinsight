@@ -1,4 +1,4 @@
-import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market } from './types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, TargetInterpretationSummary } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -406,6 +406,63 @@ Rispondi SOLO con un oggetto JSON valido con 4 blocchi narrativi:
   "blocco_timeline": "Timeline mese per mese fino al break-even nello scenario base, con le milestone concrete legate al ramp (${roi.rampMonths} mesi). (3-4 righe)",
   "blocco_verdetto": "Verdetto finale con raccomandazione d'azione specifica basata su ${roi.investVerdict}, tono diretto. (2-3 righe)"
 }`
+}
+
+// ─── Target Interpretation (Sonnet — prosa) ──────────────────────────────────
+
+export function promptTargetInterpretation(
+  keyword: string,
+  market: string,
+  s: TargetInterpretationSummary,
+): string {
+  const warningsBlock = s.warnings.length > 0
+    ? `- Avvisi del sistema: ${s.warnings.join('; ')}\n`
+    : ''
+
+  const excludedBlock = s.excludedFromQuadrantsCount > 0
+    ? `- Esclusi dai quadranti (dati insufficienti): ${s.excludedFromQuadrantsCount}
+  · BSR mancante: ${s.excludedReasons.bsrZero}
+  · BSR fuori soglia di mercato: ${s.excludedReasons.outOfBsrRange}
+  · Età sconosciuta (data pubblicazione assente): ${s.excludedReasons.ageUnknown}\n`
+    : `- Esclusi dai quadranti (dati insufficienti): 0\n`
+
+  return `Sei un analista KDP. Scrivi una lettura ragionata della seguente analisi Target Finder.
+
+KEYWORD: "${keyword}"
+MERCATO: ${market}
+
+DATI:
+- Candidati totali analizzati: ${s.totalCandidates}
+- Attaccabili (≤100 rec, o 101-150 con fattori promozione): ${s.attackableCount}
+- Bersagli suggeriti: ${s.suggestedCount}
+- Quadranti degli attaccabili:
+  · IDEALE (alta resa, poco difeso): ${s.quadrantCounts.IDEALE}
+  · TROPPO DURO (alta resa, ben difeso): ${s.quadrantCounts.TROPPO_DURO}
+  · BASSA RESA (bassa resa, poco difeso): ${s.quadrantCounts.FACILE_BASSA_RESA}
+  · ANOMALO (bassa resa, ben difeso): ${s.quadrantCounts.ANOMALO}
+- Non attaccabili: ${s.nonAttackableCount}
+  · Muro recensioni >150: ${s.nonAttackableReasons.over150Reviews}
+  · Non promossi (101-150 rec, mancano fattori promozione): ${s.nonAttackableReasons.nonPromosso}
+${excludedBlock}- Libri scartati per formato non identificabile (possibili hardcover): ${s.unknownFormatCount}
+- Velocità nicchia stimata: ~${s.nicheReviewVelocity.toFixed(1)} recensioni/mese
+${warningsBlock}
+ISTRUZIONI:
+Scrivi una lettura ragionata in prosa italiana, tra 200 e 400 parole. NON usare JSON. NON usare elenchi puntati. Scrivi paragrafi di prosa fluida. Tono: consulente diretto, niente retorica, niente "forse" o "potrebbe essere" — di' le cose chiaramente.
+
+La lettura deve coprire questi punti nell'ordine indicato:
+
+1. STATO DELLA NICCHIA: Una frase netta che sintetizza lo stato (es. "nicchia satura", "nicchia salutare con opportunità concrete", "nicchia debole o keyword da rivedere").
+
+2. COSA DICONO I NUMERI: Interpreta i dati — non limitarti a ripeterli. Se molti non-attaccabili sono per >150 recensioni, di' "muro consolidato di bestseller". Se i suggeriti vengono da BASSA RESA (perché IDEALE = 0), avverti che sono ripieghi. Se ci sono molti esclusi per BSR fuori soglia, commenta il profilo di mercato.
+
+3. RACCOMANDAZIONE: Sii propositivo e concreto.
+   - Se la nicchia è difficile o deludente: suggerisci 2-3 keyword alternative più strette, o un cambio di angolo tematico specifico (es. sub-nicchie, target reader più preciso, formato diverso).
+   - Se la nicchia è promettente: indica chiaramente su quali suggeriti puntare e perché (in base alla distribuzione nei quadranti).
+
+REGOLE ASSOLUTE:
+- Commenta SOLO i dati ricevuti. Zero invenzioni.
+- NON usare JSON, bullet point, o markdown formattato. Solo prosa.
+- Tra 200 e 400 parole.`
 }
 
 // ─── Target Weaknesses (Haiku) ────────────────────────────────────────────────

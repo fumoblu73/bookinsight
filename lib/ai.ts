@@ -22,6 +22,8 @@ function getClient(): Anthropic {
 
 const SYSTEM_SONNET = `Sei un esperto analista di mercato KDP (Kindle Direct Publishing) con 10 anni di esperienza. Analizzi nicchie Amazon per identificare opportunità editoriali. Rispondi sempre in italiano. Produci output in formato JSON valido come richiesto, senza testo aggiuntivo prima o dopo il JSON.`
 
+const SYSTEM_SONNET_TEXT = `Sei un esperto analista di mercato KDP (Kindle Direct Publishing) con 10 anni di esperienza. Analizzi nicchie Amazon per identificare opportunità editoriali. Rispondi sempre in italiano con testo in prosa naturale, diretta e consulenziale.`
+
 const SYSTEM_HAIKU = `Sei un assistente di estrazione dati per analisi KDP. Il tuo compito è leggere testi e strutturare informazioni in JSON valido. Rispondi sempre con JSON puro, senza testo aggiuntivo.`
 
 // ─── Riconoscimento errori billing Anthropic ─────────────────────────────────
@@ -108,6 +110,34 @@ export async function callSonnet<T>(userPrompt: string): Promise<T> {
   return parseJSON<T>(block.text)
 }
 
+// ─── callSonnetText ───────────────────────────────────────────────────────────
+
+async function callSonnetText(userPrompt: string): Promise<string> {
+  const client = getClient()
+
+  const response = await callWithRetry(() => client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 1024,
+    system: [
+      {
+        type: 'text',
+        text: SYSTEM_SONNET_TEXT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [
+      { role: 'user', content: userPrompt },
+    ],
+  }))
+
+  const block = response.content.find(b => b.type === 'text')
+  if (!block || block.type !== 'text') {
+    throw new Error('Sonnet: risposta vuota o formato inatteso')
+  }
+
+  return block.text.trim()
+}
+
 // ─── callHaiku ────────────────────────────────────────────────────────────────
 
 export async function callHaiku<T>(userPrompt: string, options?: { temperature?: number }): Promise<T> {
@@ -148,6 +178,7 @@ import {
   promptSeriesStrategy,
   promptRoiNarrative,
   promptTargetWeaknesses,
+  promptTargetInterpretation,
 } from './prompts'
 
 import {
@@ -159,6 +190,7 @@ import {
   AmazonReview,
   Market,
   TargetWeakness,
+  TargetInterpretationSummary,
 } from './types'
 
 import {
@@ -375,6 +407,15 @@ export async function runTargetWeaknesses(
   } catch {
     return []
   }
+}
+
+// Target Interpretation (Sonnet — prosa libera)
+export async function runTargetInterpretation(
+  keyword: string,
+  market: string,
+  summary: TargetInterpretationSummary,
+): Promise<string> {
+  return callSonnetText(promptTargetInterpretation(keyword, market, summary))
 }
 
 // §7 — ROI Narrativa (Haiku)

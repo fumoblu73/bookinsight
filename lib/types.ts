@@ -269,6 +269,32 @@ export interface TargetFinderResult {
   unknownFormatCount?: number  // libri scartati per formato non identificabile (possibili hardcover o dati incompleti)
 }
 
+export interface TargetInterpretationSummary {
+  totalCandidates: number
+  attackableCount: number
+  suggestedCount: number
+  quadrantCounts: {
+    IDEALE: number
+    TROPPO_DURO: number
+    FACILE_BASSA_RESA: number
+    ANOMALO: number
+  }
+  nonAttackableCount: number
+  nonAttackableReasons: {
+    over150Reviews: number
+    nonPromosso: number
+  }
+  excludedFromQuadrantsCount: number
+  excludedReasons: {
+    bsrZero: number
+    outOfBsrRange: number
+    ageUnknown: number
+  }
+  unknownFormatCount: number
+  nicheReviewVelocity: number
+  warnings: string[]
+}
+
 export interface TargetWeakness {
   difetto: string
   gravita: 'ALTA' | 'MEDIA' | 'BASSA'
