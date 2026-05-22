@@ -36,6 +36,10 @@ function fmtRevenue(min: number, max: number, currency: string) {
   return `${sym}${Math.round(min).toLocaleString('it-IT')}–${Math.round(max).toLocaleString('it-IT')}/mese`
 }
 
+function fmtBsr(bsr: number): string {
+  return bsr > 0 ? bsr.toLocaleString('it-IT') : 'n/d'
+}
+
 function parityLabel(months: number): { text: string; color: string } {
   if (months <= PARITY_COMFORTABLE) return { text: 'comodo',  color: 'bg-emerald-100 text-emerald-700' }
   if (months <= PARITY_CHALLENGE)   return { text: 'sfida',   color: 'bg-amber-100 text-amber-700' }
@@ -586,7 +590,7 @@ function ResultsView({ result }: { result: TargetFinderResult }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-600 line-clamp-1">{c.title}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    {c.reviewCount} rec. · ★{c.rating.toFixed(1)} · {notAttackableReason(c)}
+                    BSR: {fmtBsr(c.bsr)} · {c.reviewCount} rec. · ★{c.rating.toFixed(1)} · {notAttackableReason(c)}
                   </p>
                 </div>
                 <AmazonLink asin={c.asin} market={market} />
@@ -670,8 +674,7 @@ function SuggestedCard({ candidate: c, rank, keyword, market }: {
         Vende ~{fmtRevenue(c.estMonthlyRevenueMin, c.estMonthlyRevenueMax, c.currency)}
       </div>
       <div className="text-xs text-zinc-500">
-        {c.reviewCount} rec. · ★{c.rating.toFixed(1)}
-        {c.bsr > 0 && ` · BSR ${c.bsr.toLocaleString('it-IT')}`}
+        BSR: {fmtBsr(c.bsr)} · {c.reviewCount} rec. · ★{c.rating.toFixed(1)}
       </div>
 
       {/* Badge */}
@@ -1028,7 +1031,7 @@ function CandidateChip({ candidate: c, keyword, market }: {
     <div className="flex items-center bg-zinc-50 hover:bg-indigo-50 border border-zinc-200 hover:border-indigo-300 rounded-lg transition-colors group">
       <a
         href={analysisUrl(keyword, market, c.asin)}
-        title={`${c.title}\n${c.reviewCount} rec · ★${c.rating.toFixed(1)} · ${Math.round(c.monthsToParity)} mesi parità`}
+        title={`${c.title}\nBSR: ${fmtBsr(c.bsr)} · ${c.reviewCount} rec · ★${c.rating.toFixed(1)} · ${Math.round(c.monthsToParity)} mesi parità`}
         className="flex items-center gap-1.5 px-2 py-1 min-w-0"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1040,7 +1043,10 @@ function CandidateChip({ candidate: c, keyword, market }: {
           className="rounded object-cover bg-zinc-100 border border-zinc-200 shrink-0"
           onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
         />
-        <span className="text-[11px] text-zinc-600 max-w-[100px] truncate">{c.title}</span>
+        <div className="min-w-0">
+          <span className="text-[11px] text-zinc-600 max-w-[100px] truncate block leading-tight">{c.title}</span>
+          <span className="text-[10px] text-zinc-400 block">BSR: {fmtBsr(c.bsr)} · {c.reviewCount} rec.</span>
+        </div>
       </a>
       <AmazonLink asin={c.asin} market={market} className="pr-1.5 opacity-0 group-hover:opacity-100" />
     </div>
