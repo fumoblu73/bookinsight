@@ -1046,6 +1046,9 @@ function CandidateChip({ candidate: c, keyword, market }: {
         <div className="min-w-0">
           <span className="text-[11px] text-zinc-600 max-w-[100px] truncate block leading-tight">{c.title}</span>
           <span className="text-[10px] text-zinc-400 block">BSR: {fmtBsr(c.bsr)} · {c.reviewCount} rec.</span>
+          {c.exclusionReason && (
+            <span className="text-[10px] text-zinc-400 italic block">{c.exclusionReason}</span>
+          )}
         </div>
       </a>
       <AmazonLink asin={c.asin} market={market} className="pr-1.5 opacity-0 group-hover:opacity-100" />

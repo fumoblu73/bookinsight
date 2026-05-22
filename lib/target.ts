@@ -244,6 +244,14 @@ export function buildTargetFinderResult(
     } else {
       c.quadrant = 'ANOMALO'
     }
+
+    if (c.quadrant === 'DATI_INSUFFICIENTI') {
+      const reasons: string[] = []
+      if (c.bsr === 0)          reasons.push('BSR non disponibile')
+      if (c.outOfBsrRange)      reasons.push('BSR fuori soglia di mercato')
+      if (c.ageMonths === null)  reasons.push('Età sconosciuta')
+      c.exclusionReason = reasons.join(' · ') || undefined
+    }
   }
 
   // Selezione suggeriti (§6.2)

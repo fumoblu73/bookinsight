@@ -255,6 +255,7 @@ export interface TargetCandidate {
   quadrant: TargetQuadrant
   dataComplete: boolean
   outOfBsrRange: boolean
+  exclusionReason?: string
 }
 
 export interface TargetFinderResult {
