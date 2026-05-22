@@ -9,8 +9,8 @@ export const maxDuration = 60
 const CACHE_TTL_SECONDS = 60 * 60 * 24  // 24h
 
 function cacheKey(market: Market, keyword: string): string {
-  // v2: invalidates all pre-paperback-filter cache entries (target:... without v2 prefix)
-  return `target:v2:${market}:${keyword.toLowerCase().trim()}`
+  // v3: aggiunge exclusionReason ai candidati DATI_INSUFFICIENTI
+  return `target:v3:${market}:${keyword.toLowerCase().trim()}`
 }
 
 function rawBookToCandidate(book: RawBook, market: Market): RawCandidate {
