@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
     const kw = keyword.trim()
     const key = cacheKey(market, kw)
 
-    const cached = await cacheGet<string>(key)
-    if (cached) {
-      return NextResponse.json({ interpretation: cached, cached: true })
+    const cached = await cacheGet<{ interpretation: string }>(key)
+    if (cached?.interpretation) {
+      return NextResponse.json({ interpretation: cached.interpretation, cached: true })
     }
 
     const interpretation = await runTargetInterpretation(kw, market, resultSummary)
 
-    cacheSet(key, interpretation, CACHE_TTL_SECONDS).catch(() => {})
+    cacheSet(key, { interpretation }, CACHE_TTL_SECONDS).catch(() => {})
 
     return NextResponse.json({ interpretation })
   } catch (err) {
