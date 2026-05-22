@@ -136,7 +136,9 @@ export function buildTargetFinderResult(
   market: Market,
   scrapedAt: string,
   unknownFormatCount: number = 0,
+  bsrMax?: number,
 ): TargetFinderResult {
+  const effectiveBsrMax = (bsrMax !== undefined && bsrMax > 0) ? bsrMax : MARKET_BSR_MAX[market]
   const warnings: string[] = []
 
   const { velocity: nicheReviewVelocity, warning: velocityWarning } =
@@ -146,7 +148,7 @@ export function buildTargetFinderResult(
   // Prima passata: costruisce candidati con gate, scoring base, quadrante placeholder
   const candidates: TargetCandidate[] = rawCandidates.map(raw => {
     const ageMonths = calcAgeMonths(raw.publishedDate)
-    const outOfBsrRange = raw.bsr > MARKET_BSR_MAX[market]
+    const outOfBsrRange = raw.bsr > effectiveBsrMax
     let dataComplete = raw.bsr > 0 && ageMonths !== null
 
     let estMonthlySalesMin = 0

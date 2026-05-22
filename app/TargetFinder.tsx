@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { Market, TargetFinderResult, TargetCandidate, TargetViability, CreditsData } from '@/lib/types'
-import { PARITY_COMFORTABLE, PARITY_CHALLENGE } from '@/lib/target'
+import { PARITY_COMFORTABLE, PARITY_CHALLENGE, MARKET_BSR_MAX } from '@/lib/target'
 import { amazonProductUrl } from '@/lib/amazon'
 
 // ─── Costanti UI ─────────────────────────────────────────────────────────────
@@ -116,6 +116,95 @@ function AmazonLink({ asin, market, className = '' }: { asin: string; market: Ma
   )
 }
 
+// ─── Ricalcolo lato client con BSR max custom ────────────────────────────────
+
+function clientMedian(values: number[]): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid]
+}
+
+function recalcTargetResult(base: TargetFinderResult, newBsrMax: number): TargetFinderResult {
+  const candidates = base.candidates.map(c => ({
+    ...c,
+    outOfBsrRange: c.bsr > 0 ? c.bsr > newBsrMax : false,
+  }))
+
+  const attackableValid = candidates.filter(c =>
+    (c.attackability === 'ATTACCABILE' || c.attackability === 'ATTACCABILE_SE_PROMOSSO') &&
+    c.dataComplete && !c.outOfBsrRange,
+  )
+
+  const revMids = attackableValid.map(c => (c.estMonthlyRevenueMin + c.estMonthlyRevenueMax) / 2)
+  const minRev  = revMids.length > 0 ? Math.min(...revMids) : 0
+  const maxRev  = revMids.length > 0 ? Math.max(...revMids) : 0
+  const medianRevenue = clientMedian(revMids)
+  const medianDefense = clientMedian(attackableValid.map(c => c.defenseScore))
+
+  const updated = candidates.map(c => {
+    const revMid = (c.estMonthlyRevenueMin + c.estMonthlyRevenueMax) / 2
+    const isAttackableValid =
+      (c.attackability === 'ATTACCABILE' || c.attackability === 'ATTACCABILE_SE_PROMOSSO') &&
+      c.dataComplete && !c.outOfBsrRange
+
+    const sellsScore = (isAttackableValid && maxRev > minRev)
+      ? Math.round((revMid - minRev) / (maxRev - minRev) * 100) : 0
+    const attractiveness = (sellsScore / 100) * (1 - c.defenseScore / 100)
+
+    let quadrant: TargetCandidate['quadrant']
+    if (c.attackability === 'NON_ATTACCABILE' || c.attackability === 'NON_PROMOSSO') {
+      quadrant = 'NON_ATTACCABILE'
+    } else if (!c.dataComplete || c.outOfBsrRange) {
+      quadrant = 'DATI_INSUFFICIENTI'
+    } else if (revMid >= medianRevenue && c.defenseScore < medianDefense) {
+      quadrant = 'IDEALE'
+    } else if (revMid >= medianRevenue && c.defenseScore >= medianDefense) {
+      quadrant = 'TROPPO_DURO'
+    } else if (revMid < medianRevenue && c.defenseScore < medianDefense) {
+      quadrant = 'FACILE_BASSA_RESA'
+    } else {
+      quadrant = 'ANOMALO'
+    }
+
+    let exclusionReason: string | undefined
+    if (quadrant === 'DATI_INSUFFICIENTI') {
+      const reasons: string[] = []
+      if (c.bsr === 0)         reasons.push('BSR non disponibile')
+      if (c.outOfBsrRange)     reasons.push('BSR fuori soglia di mercato')
+      if (c.ageMonths === null) reasons.push('Età sconosciuta')
+      exclusionReason = reasons.join(' · ') || undefined
+    }
+
+    return { ...c, sellsScore, attractiveness, quadrant, exclusionReason }
+  })
+
+  let suggested = updated
+    .filter(c => c.quadrant === 'IDEALE')
+    .sort((a, b) => b.attractiveness - a.attractiveness)
+    .slice(0, 3)
+
+  if (suggested.length < 3) {
+    const fallbacks = updated
+      .filter(c => c.quadrant === 'FACILE_BASSA_RESA')
+      .sort((a, b) => b.attractiveness - a.attractiveness)
+      .slice(0, 3 - suggested.length)
+    suggested = [...suggested, ...fallbacks]
+  }
+
+  const sortedCandidates = [...updated].sort((a, b) => {
+    const aAtt = a.attackability === 'ATTACCABILE' || a.attackability === 'ATTACCABILE_SE_PROMOSSO'
+    const bAtt = b.attackability === 'ATTACCABILE' || b.attackability === 'ATTACCABILE_SE_PROMOSSO'
+    if (aAtt && !bAtt) return -1
+    if (!aAtt && bAtt) return 1
+    return b.attractiveness - a.attractiveness
+  })
+
+  return { ...base, candidates: sortedCandidates, suggested, medians: { revenue: medianRevenue, defense: medianDefense } }
+}
+
 // ─── Schermata principale ────────────────────────────────────────────────────
 
 type UiState = 'idle' | 'loading' | 'results' | 'error'
@@ -123,6 +212,7 @@ type UiState = 'idle' | 'loading' | 'results' | 'error'
 export default function TargetFinder() {
   const [keyword, setKeyword] = useState('')
   const [market, setMarket]   = useState<Market>('US')
+  const [bsrMax, setBsrMax]   = useState<number>(MARKET_BSR_MAX['US'])
   const [uiState, setUiState] = useState<UiState>('idle')
   const [result, setResult]   = useState<TargetFinderResult | null>(null)
   const [error, setError]     = useState<string | null>(null)
@@ -197,7 +287,7 @@ export default function TargetFinder() {
       const res = await fetch('/api/target', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: keyword.trim(), market }),
+        body: JSON.stringify({ keyword: keyword.trim(), market, bsrMax }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Errore sconosciuto')
@@ -331,12 +421,27 @@ export default function TargetFinder() {
             </div>
             <select
               value={market}
-              onChange={e => setMarket(e.target.value as Market)}
+              onChange={e => {
+                const m = e.target.value as Market
+                setMarket(m)
+                setBsrMax(MARKET_BSR_MAX[m])
+              }}
               disabled={uiState === 'loading'}
               className="rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 bg-white"
             >
               {MARKETS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
+            <label className="flex items-center gap-1.5 shrink-0">
+              <span className="text-xs text-zinc-500 whitespace-nowrap">BSR max</span>
+              <input
+                type="number"
+                min={1}
+                value={bsrMax}
+                onChange={e => setBsrMax(Number(e.target.value))}
+                disabled={uiState === 'loading'}
+                className="w-24 rounded-lg border border-zinc-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+              />
+            </label>
             <button
               type="submit"
               disabled={uiState === 'loading' || !keyword.trim() || creditsBlocked}
@@ -375,7 +480,7 @@ export default function TargetFinder() {
 
         {/* ── Risultati ─────────────────────────────────────────────────────── */}
         {uiState === 'results' && result && (
-          <ResultsView result={result} />
+          <ResultsView result={result} initialBsrMax={bsrMax} />
         )}
       </main>
     </div>
@@ -384,8 +489,20 @@ export default function TargetFinder() {
 
 // ─── Risultati ────────────────────────────────────────────────────────────────
 
-function ResultsView({ result }: { result: TargetFinderResult }) {
-  const { keyword, market, candidates, suggested, nicheReviewVelocity, warning, unknownFormatCount } = result
+function ResultsView({ result, initialBsrMax }: { result: TargetFinderResult; initialBsrMax: number }) {
+  const [displayResult, setDisplayResult] = useState<TargetFinderResult>(result)
+  const [localBsrMax, setLocalBsrMax]     = useState<number>(initialBsrMax)
+  const [recalcInput, setRecalcInput]     = useState<number>(initialBsrMax)
+
+  // reset when a new result arrives (new search)
+  useEffect(() => {
+    setDisplayResult(result)
+    setLocalBsrMax(initialBsrMax)
+    setRecalcInput(initialBsrMax)
+  }, [result, initialBsrMax])
+
+  const { keyword, market, candidates, suggested, nicheReviewVelocity, warning, unknownFormatCount } =
+    displayResult
 
   const [interpretation, setInterpretation] = useState<string | null>(null)
   const [interpretationLoading, setInterpretationLoading] = useState(true)
@@ -475,6 +592,27 @@ function ResultsView({ result }: { result: TargetFinderResult }) {
             {unknownFormatCount} {unknownFormatCount === 1 ? 'libro escluso' : 'libri esclusi'} per formato non identificabile (possibili hardcover o dati incompleti)
           </span>
         )}
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <span className="text-xs text-zinc-400 whitespace-nowrap">BSR max</span>
+          <input
+            type="number"
+            min={1}
+            value={recalcInput}
+            onChange={e => setRecalcInput(Number(e.target.value))}
+            className="w-24 rounded-lg border border-zinc-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <button
+            onClick={() => {
+              const updated = recalcTargetResult(result, recalcInput)
+              setDisplayResult(updated)
+              setLocalBsrMax(recalcInput)
+            }}
+            disabled={recalcInput === localBsrMax}
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:text-zinc-300 disabled:cursor-default transition-colors whitespace-nowrap"
+          >
+            Ricalcola
+          </button>
+        </div>
       </div>
 
       {/* ── Interpretazione AI ──────────────────────────────────────────── */}
@@ -908,7 +1046,7 @@ function ManualAsinSection({ keyword, market }: { keyword: string; market: Marke
     <section>
       <h2 className="text-base font-semibold text-zinc-800 mb-1">Analizza un ASIN specifico</h2>
       <p className="text-xs text-zinc-400 mb-3">
-        Incolla l'ASIN di un competitor dalla SERP per l'analisi viability completa con debolezze.
+        Incolla l'ASIN di un competitor dalla SERP per l'analisi fattibilità completa con debolezze.
       </p>
       <form onSubmit={handleAnalyze} className="bg-white rounded-2xl border border-zinc-200 p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
