@@ -558,7 +558,7 @@ function ResultsView({ result }: { result: TargetFinderResult }) {
         </div>
         {attackable.filter(c => c.quadrant === 'DATI_INSUFFICIENTI').length > 0 && (
           <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-            <p className="text-xs font-medium text-zinc-500 mb-1.5">Dati incompleti (esclusi dalle mediane)</p>
+            <p className="text-xs font-medium text-zinc-500 mb-1.5">Esclusi dai quadranti</p>
             <div className="flex flex-wrap gap-2">
               {attackable.filter(c => c.quadrant === 'DATI_INSUFFICIENTI').map(c => (
                 <CandidateChip key={c.asin} candidate={c} keyword={keyword} market={market} />
