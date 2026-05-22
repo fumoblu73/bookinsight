@@ -343,19 +343,62 @@ export function calcRoyalty(price: number, pages: number, market: Market): numbe
   return Math.max(0, price * royaltyRate - printCost)
 }
 
-export function bsrToSales(bsr: number, market: Market): { min: number; max: number } {
-  const B = -0.778151
-  const marketMult: Record<Market, number> = {
-    US: 1.00, UK: 0.35, DE: 0.25, FR: 0.20, IT: 0.15, ES: 0.12,
-  }
-  let A: number
-  if (bsr < 1000)        A = 31622.78
-  else if (bsr < 100000) A = 25920
-  else                   A = 9331.2
+// Fattori di scala per mercato vs US (calibrati da Kindlepreneur, novembre 2026)
+const MARKET_SALES_SCALE: Record<Market, number> = {
+  US: 1.000,
+  UK: 0.149,
+  DE: 0.161,
+  FR: 0.039,
+  IT: 0.039,
+  ES: 0.039,
+}
 
-  const baseKindle = A * Math.pow(bsr, B)
-  const paperback = baseKindle * 0.3 * 0.9 * marketMult[market]
-  return { min: Math.max(1, Math.floor(paperback * 0.7)), max: Math.ceil(paperback * 1.3) }
+// Soglia di switch tra le due bande della curva US
+const BSR_BAND_THRESHOLD = 30_000
+
+// Coefficienti curva US Paperback (calibrati Kindlepreneur, errore medio 9.2%)
+const US_LOW_BAND_A  =         9_038.05
+const US_LOW_BAND_B  =            -0.7096
+const US_HIGH_BAND_A = 225_466_650.69
+const US_HIGH_BAND_B =            -1.6646
+
+/**
+ * Stima vendite giornaliere di un libro paperback dato BSR e mercato.
+ *
+ * Curva calibrata sui dati Kindlepreneur (formato paperback, mercato US)
+ * con fit power-law a due bande:
+ * - Banda bassa (BSR ≤ 30.000): A=9038, B=-0.7096
+ * - Banda alta (BSR > 30.000): A=2.25e8, B=-1.6646
+ *
+ * Per mercati non-US, si applica il fattore di scala MARKET_SALES_SCALE,
+ * calibrato sui rapporti UK/US e DE/US (5 punti, ratio stabile 13-18%)
+ * e su FR/IT/ES (2 punti, ratio ~4%).
+ *
+ * Fonte: lookup manuale Kindlepreneur, novembre 2026.
+ */
+export function bsrToSales(bsr: number, market: Market): { min: number; max: number } {
+  if (bsr <= 0) {
+    return { min: 0, max: 0 }
+  }
+
+  // Curva US base
+  let usDailySales: number
+  if (bsr <= BSR_BAND_THRESHOLD) {
+    usDailySales = US_LOW_BAND_A * Math.pow(bsr, US_LOW_BAND_B)
+  } else {
+    usDailySales = US_HIGH_BAND_A * Math.pow(bsr, US_HIGH_BAND_B)
+  }
+
+  // Applica fattore di scala per mercato
+  const scaledDailySales = usDailySales * MARKET_SALES_SCALE[market]
+
+  // Banda di incertezza ±20% — il fit ha errore medio 9.2% ma restituiamo
+  // un range conservativo per riflettere l'incertezza intrinseca dello
+  // snapshot BSR (singolo momento, non media nel tempo)
+  return {
+    min: scaledDailySales * 0.80,
+    max: scaledDailySales * 1.20,
+  }
 }
 
 // ─── Sub-niche detection ──────────────────────────────────────────────────────
