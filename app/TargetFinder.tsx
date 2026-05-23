@@ -727,6 +727,11 @@ function ResultsView({ result, initialBsrMax }: { result: TargetFinderResult; in
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-600 line-clamp-1">{c.title}</p>
+                  <p className="text-sm text-zinc-700 font-medium mt-0.5">
+                    {c.estMonthlyRevenueMin === 0 && c.estMonthlyRevenueMax === 0
+                      ? 'Stima non disponibile'
+                      : `Vende ~${fmtRevenue(c.estMonthlyRevenueMin, c.estMonthlyRevenueMax, c.currency)}`}
+                  </p>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     BSR: {fmtBsr(c.bsr)} · {c.reviewCount} rec. · ★{c.rating.toFixed(1)} · {notAttackableReason(c)}
                   </p>
@@ -1183,6 +1188,11 @@ function CandidateChip({ candidate: c, keyword, market }: {
         />
         <div className="min-w-0">
           <span className="text-[11px] text-zinc-600 max-w-[100px] truncate block leading-tight">{c.title}</span>
+          <span className="text-[10px] text-zinc-500 font-medium block">
+            {c.estMonthlyRevenueMin === 0 && c.estMonthlyRevenueMax === 0
+              ? 'Stima n/d'
+              : `~${fmtRevenue(c.estMonthlyRevenueMin, c.estMonthlyRevenueMax, c.currency)}`}
+          </span>
           <span className="text-[10px] text-zinc-400 block">BSR: {fmtBsr(c.bsr)} · {c.reviewCount} rec.</span>
           {c.exclusionReason && (
             <span className="text-[10px] text-zinc-400 italic block">{c.exclusionReason}</span>
