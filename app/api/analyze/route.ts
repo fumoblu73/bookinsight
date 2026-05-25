@@ -255,6 +255,7 @@ export async function POST(req: NextRequest) {
     let passo0: Awaited<ReturnType<typeof runPasso0>>
     let painPoints: Awaited<ReturnType<typeof runPainPointsReddit>>
     let aiSubNiches: Awaited<ReturnType<typeof runSubNicheDetection>>
+    let unifiedSubNiches: SubNiche[] = amazonData.subNiches  // default fallback
     try {
       ;[passo0, painPoints, aiSubNiches] = await Promise.all([
         runPasso0(amazonData),
@@ -289,6 +290,24 @@ export async function POST(req: NextRequest) {
           list: painPoints.map(p => ({ pain_point: p.pain_point, score: p.score, fonte: p.fonte, criticalSignal: !!p.criticalSignal })),
         },
       })
+      // Sub-nicchie: mappa AI → SubNiche (con BSR/reviewCount da rawTop15), fallback su algoritmiche
+      if (aiSubNiches.length > 0) {
+        unifiedSubNiches = aiSubNiches
+          .map(s => {
+            const book = amazonData.rawTop15.find(b => b.asin === s.asin)
+            if (!book || book.bsr === 0) return null
+            return { keyword: s.keyword, bsr: book.bsr, reviewCount: book.reviewCount, vulnerable: book.reviewCount < 100 }
+          })
+          .filter((s): s is SubNiche => s !== null)
+          .sort((a, b) => a.bsr - b.bsr)
+      } else {
+        logEntries.push({
+          step: 'subNiches', label: 'Sub-nicchie',
+          status: 'warn',
+          summary: 'AI sub-niche detection vuota: fallback su detectSubNiches algoritmica',
+          details: { fallbackCount: amazonData.subNiches.length, fallbackKeywords: amazonData.subNiches.map(s => s.keyword) },
+        })
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logEntries.push({ step: 'passo0', label: 'Analisi competitor (AI)', status: 'error', summary: msg, durationMs: Date.now() - t1, details: {}, error: msg })
@@ -304,7 +323,7 @@ export async function POST(req: NextRequest) {
     let gapAnalysis: Awaited<ReturnType<typeof runGapAnalysis>>
     try {
       ;[keyInsights, trendForecast, gapAnalysis] = await Promise.all([
-        runKeyInsights(amazonData, trendsData, redditData, scoring, painPoints),
+        runKeyInsights(amazonData, trendsData, redditData, scoring, painPoints, unifiedSubNiches),
         runTrendForecast(keyword, trendsData, scoring.trendSignal),
         runGapAnalysis(amazonData, painPoints, redditData, userNotes, youtubeData),
       ])
@@ -359,18 +378,6 @@ export async function POST(req: NextRequest) {
       completedAt: new Date().toISOString(),
     }
 
-    // ── Sub-nicchie: mappa risultato AI → SubNiche con BSR/reviewCount ───────
-    const subNiches: SubNiche[] = aiSubNiches.length > 0
-      ? aiSubNiches
-          .map(s => {
-            const book = amazonData.rawTop15.find(b => b.asin === s.asin)
-            if (!book || book.bsr === 0) return null
-            return { keyword: s.keyword, bsr: book.bsr, reviewCount: book.reviewCount, vulnerable: book.reviewCount < 100 }
-          })
-          .filter((s): s is SubNiche => s !== null)
-          .sort((a, b) => a.bsr - b.bsr)
-      : amazonData.subNiches
-
     // ── Assembla + salva ──────────────────────────────────────────────────────
     const report = {
       id: reportId, keyword, market,
@@ -401,7 +408,7 @@ export async function POST(req: NextRequest) {
       competitiveDynamism,
       complianceCategory,
       complianceRisk,
-      subNiches,
+      subNiches: unifiedSubNiches,
       voice_data: {
         reddit: {
           posts: redditData.posts.map(p => ({

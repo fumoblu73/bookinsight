@@ -189,6 +189,7 @@ import {
   PainPoint,
   AmazonReview,
   Market,
+  SubNiche,
   TargetWeakness,
   TargetInterpretationSummary,
 } from './types'
@@ -272,9 +273,10 @@ export async function runKeyInsights(
   reddit: RedditData,
   scoring: ProfitabilityBreakdown,
   painPoints: PainPoint[],
+  overrideSubNiches?: SubNiche[],
 ): Promise<KeyInsight[]> {
   return callSonnet<KeyInsight[]>(
-    promptKeyInsights(amazon, trends, reddit, scoring, painPoints)
+    promptKeyInsights(amazon, trends, reddit, scoring, painPoints, overrideSubNiches)
   )
 }
 
@@ -356,7 +358,7 @@ export async function runSeriesStrategy(
 export type SubNicheAI = { keyword: string; asin: string }
 
 export async function runSubNicheDetection(
-  rawBooks: Array<{ asin: string; title: string; subtitle?: string; bsr: number; reviewCount: number }>,
+  rawBooks: Array<{ asin: string; title: string; subtitle?: string; bsr: number; reviewCount: number; price: number; pages?: number; rating: number }>,
   mainKeyword: string,
   market: Market,
 ): Promise<SubNicheAI[]> {
@@ -364,17 +366,27 @@ export async function runSubNicheDetection(
     .filter(b => b.bsr > 0)
     .slice(0, 15)
     .map(b => {
-      const sub = b.subtitle ? ` — ${b.subtitle}` : ''
-      return `${b.asin} | BSR ${b.bsr.toLocaleString()} | ${b.title}${sub}`
+      const sub   = b.subtitle ? ` — ${b.subtitle}` : ''
+      const price = b.price > 0 ? ` | $${b.price.toFixed(2)}` : ''
+      const pages = b.pages    ? ` | ${b.pages} pag` : ''
+      return `${b.asin} | BSR ${b.bsr.toLocaleString()} | ${b.reviewCount} rec | ${b.rating.toFixed(1)} ★${price}${pages} | ${b.title}${sub}`
     })
     .join('\n')
 
   const prompt = `Stai analizzando i libri più venduti su Amazon per la keyword principale: "${mainKeyword}" (mercato ${market}).
 
-Libri nella SERP (ASIN | BSR | Titolo — Sottotitolo):
+Libri nella SERP (ASIN | BSR | Recensioni | Rating | Prezzo | Pagine | Titolo — Sottotitolo):
 ${bookList}
 
 Identifica 3-5 sub-nicchie semantiche DISTINTE — varianti tematiche, angoli specifici o target reader specifici che emergono da questi titoli e sottotitoli, ma che sono DIVERSI dalla keyword principale.
+
+Usa tutti i dati disponibili per identificare le sub-nicchie:
+- Titolo e sottotitolo rivelano il tema esplicito.
+- Prezzo e pagine distinguono tra varianti dello stesso tema (es. manuale corposo per esperti vs guida snella per principianti possono essere sub-nicchie diverse pur con titoli simili).
+- Rating medio segnala sub-nicchie "ben servite" (rating alti, lettori soddisfatti) vs "mal servite" (rating bassi, opportunità).
+- Numero di recensioni indica l'affollamento della sub-nicchia: libri con poche recensioni in una sub-nicchia sono segnale che quella variante può essere ancora aggredibile.
+
+Priorizza sub-nicchie con almeno un libro a basso numero di recensioni (< 100) — sono quelle dove un nuovo entrante può posizionarsi più facilmente.
 
 Regole:
 - Ogni sub-nicchia: keyword di 2-4 parole, concreta e ricercabile su Amazon

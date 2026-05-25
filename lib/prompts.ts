@@ -1,4 +1,4 @@
-import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, TargetInterpretationSummary } from './types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, SubNiche, TargetInterpretationSummary } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -162,13 +162,15 @@ export function promptKeyInsights(
   reddit: RedditData,
   scoring: ProfitabilityBreakdown,
   painPoints: PainPoint[],
+  overrideSubNiches?: SubNiche[],
 ): string {
   const topPains = painPoints.slice(0, 5).map(p => `"${p.pain_point}" (score ${p.score})`).join(', ')
   const trendSummary = trends.available
     ? `YoY ${trends.yoyGrowth > 0 ? '+' : ''}${trends.yoyGrowth}%, trend: ${scoring.trendSignal}`
     : 'dati trend non disponibili'
-  const subNicheSummary = amazon.subNiches.length > 0
-    ? amazon.subNiches.map(s => `"${s.keyword}" (BSR ${s.bsr.toLocaleString()}, ${s.vulnerable ? 'vulnerabile' : 'competitiva'})`).join(', ')
+  const subNichesSource = overrideSubNiches ?? amazon.subNiches
+  const subNicheSummary = subNichesSource.length > 0
+    ? subNichesSource.map(s => `"${s.keyword}" (BSR ${s.bsr.toLocaleString()}, ${s.vulnerable ? 'vulnerabile' : 'competitiva'})`).join(', ')
     : 'nessuna sub-nicchia identificata'
 
   return `Sei un analista KDP esperto. Genera 6 Key Insights per la nicchia "${amazon.keyword}" sul mercato ${amazon.market}.
