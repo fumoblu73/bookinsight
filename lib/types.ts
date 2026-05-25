@@ -398,13 +398,12 @@ export interface CreditsData {
   searches_per_month: number
   plan_name: string
   account_email: string
-  available: boolean        // false se la chiamata SerpApi ha fallito
-  cached: boolean           // true se il dato viene da Redis
-  cached_at?: string        // ISO timestamp del caching
-  // Derived
-  analysesAvailable: number        // floor(total_searches_left / CREDITS_PER_ANALYSIS)
-  apifyBalanceUsd: number          // saldo Apify in USD
-  apifyAnalysesAvailable: number   // floor(apifyBalanceUsd / APIFY_COST_PER_ANALYSIS)
-  apifyAvailable: boolean          // false se la chiamata Apify ha fallito
-  analysesMain: number             // min(analysesAvailable, apifyAnalysesAvailable) — collo di bottiglia
+  available: boolean
+  cached: boolean
+  cached_at?: string
+  // Derived — due contatori distinti per flusso
+  analyzesAvailable: number        // flusso /analyze (solo SerpApi): floor(total / ANALYZE_COST)
+  targetFinderAvailable: number    // flusso /api/target + viability (SerpApi + Apify): min(serp, apify)
+  apifyBalanceUsd: number
+  apifyAvailable: boolean
 }

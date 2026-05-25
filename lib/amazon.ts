@@ -83,8 +83,8 @@ const PAPERBACK_FORMATS = new Set([
   'Copertina flessibile', // IT
 ])
 const MIN_AGE_DAYS = 30
-const MAX_BOOKS = 5
-const MAX_PRODUCT_CALLS = 8  // cap product calls per contenere i crediti SerpApi nel free tier
+export const MAX_BOOKS = 5
+export const MAX_PRODUCT_CALLS = 8  // cap product calls per contenere i crediti SerpApi nel free tier
 
 // ─── SerpApi fetch ────────────────────────────────────────────────────────────
 

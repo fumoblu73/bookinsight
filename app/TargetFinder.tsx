@@ -275,7 +275,7 @@ export default function TargetFinder() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const creditsBlocked = credits !== null && credits.available && credits.analysesMain < 1
+  const targetFinderBlocked = credits !== null && credits.available && credits.targetFinderAvailable < 1
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -320,30 +320,50 @@ export default function TargetFinder() {
         {/* ── Credits banner ────────────────────────────────────────────────── */}
         {!creditsLoading && credits?.available && (
           <div className={`rounded-xl border px-5 py-3 ${
-            credits.analysesMain === 0
+            credits.targetFinderAvailable === 0
               ? 'bg-red-50 border-red-200'
-              : credits.analysesMain <= 3
+              : credits.targetFinderAvailable <= 3
               ? 'bg-amber-50 border-amber-200'
               : 'bg-zinc-50 border-zinc-200'
           }`}>
             <div className="flex items-center justify-between gap-4">
-              <div className="flex items-baseline gap-2">
-                <span className={`text-xs font-semibold uppercase tracking-wider ${
-                  credits.analysesMain === 0 ? 'text-red-400' :
-                  credits.analysesMain <= 3  ? 'text-amber-500' : 'text-zinc-400'
-                }`}>Analisi disponibili</span>
-                <span className={`text-2xl font-black tabular-nums leading-none ${
-                  credits.analysesMain === 0 ? 'text-red-600' :
-                  credits.analysesMain <= 3  ? 'text-amber-600' : 'text-zinc-800'
-                }`}>{credits.analysesMain}</span>
-                {credits.analysesMain === 0 && (
-                  <span className="text-xs font-medium text-red-500 ml-1">
-                    {credits.analysesAvailable === 0 ? '— SerpApi esaurito' : '— Apify insufficiente'}
-                  </span>
-                )}
-                {credits.analysesMain > 0 && credits.analysesMain <= 3 && (
-                  <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
-                )}
+              <div className="space-y-1">
+                {/* Analisi complete */}
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-xs font-semibold uppercase tracking-wider ${
+                    credits.analyzesAvailable === 0 ? 'text-red-400' :
+                    credits.analyzesAvailable <= 3  ? 'text-amber-500' : 'text-zinc-400'
+                  }`}>Analisi disponibili</span>
+                  <span className={`text-xl font-black tabular-nums leading-none ${
+                    credits.analyzesAvailable === 0 ? 'text-red-600' :
+                    credits.analyzesAvailable <= 3  ? 'text-amber-600' : 'text-zinc-800'
+                  }`}>{credits.analyzesAvailable}</span>
+                  {credits.analyzesAvailable === 0 && (
+                    <span className="text-xs font-medium text-red-500 ml-1">— SerpApi esaurito</span>
+                  )}
+                  {credits.analyzesAvailable > 0 && credits.analyzesAvailable <= 3 && (
+                    <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
+                  )}
+                </div>
+                {/* Scouting Target Finder */}
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-xs font-semibold uppercase tracking-wider ${
+                    credits.targetFinderAvailable === 0 ? 'text-red-400' :
+                    credits.targetFinderAvailable <= 3  ? 'text-amber-500' : 'text-zinc-400'
+                  }`}>Scouting disponibili</span>
+                  <span className={`text-xl font-black tabular-nums leading-none ${
+                    credits.targetFinderAvailable === 0 ? 'text-red-600' :
+                    credits.targetFinderAvailable <= 3  ? 'text-amber-600' : 'text-zinc-800'
+                  }`}>{credits.targetFinderAvailable}</span>
+                  {credits.targetFinderAvailable === 0 && (
+                    <span className="text-xs font-medium text-red-500 ml-1">
+                      {credits.apifyAvailable && credits.apifyBalanceUsd < 0.10 ? '— Apify insufficiente' : '— SerpApi esaurito'}
+                    </span>
+                  )}
+                  {credits.targetFinderAvailable > 0 && credits.targetFinderAvailable <= 3 && (
+                    <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
+                  )}
+                </div>
               </div>
               <div className="text-right text-xs text-zinc-400 space-y-0.5 shrink-0">
                 <div>
@@ -444,7 +464,7 @@ export default function TargetFinder() {
             </label>
             <button
               type="submit"
-              disabled={uiState === 'loading' || !keyword.trim() || creditsBlocked}
+              disabled={uiState === 'loading' || !keyword.trim() || targetFinderBlocked}
               className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {uiState === 'loading' ? 'Analisi…' : 'Trova bersaglio'}

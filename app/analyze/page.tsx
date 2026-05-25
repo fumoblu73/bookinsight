@@ -337,7 +337,7 @@ export default function AnalyzePage() {
   }, [amazonDataState, selectedTargetAsin, customAsinProduct, market, userNotes])
 
   const isLoading = !['idle', 'awaiting_validation', 'done', 'error'].includes(stage)
-  const creditsBlocked = credits !== null && credits.available && credits.analysesMain < 1
+  const analyzeBlocked = credits !== null && credits.available && credits.analyzesAvailable < 1
 
   return (
     <div className="min-h-screen bg-zinc-50 print:bg-white">
@@ -366,31 +366,51 @@ export default function AnalyzePage() {
           {/* ── Credits banner ────────────────────────────────────────────── */}
           {!creditsLoading && credits?.available && (
             <div className={`mb-4 rounded-xl border px-5 py-3 no-print ${
-              credits.analysesMain === 0
+              credits.analyzesAvailable === 0
                 ? 'bg-red-50 border-red-200'
-                : credits.analysesMain <= 3
+                : credits.analyzesAvailable <= 3
                 ? 'bg-amber-50 border-amber-200'
                 : 'bg-zinc-50 border-zinc-200'
             }`}>
               <div className="flex items-center justify-between gap-4">
-                {/* Left: label + big number */}
-                <div className="flex items-baseline gap-2">
-                  <span className={`text-xs font-semibold uppercase tracking-wider ${
-                    credits.analysesMain === 0 ? 'text-red-400' :
-                    credits.analysesMain <= 3  ? 'text-amber-500' : 'text-zinc-400'
-                  }`}>Analisi disponibili</span>
-                  <span className={`text-2xl font-black tabular-nums leading-none ${
-                    credits.analysesMain === 0 ? 'text-red-600' :
-                    credits.analysesMain <= 3  ? 'text-amber-600' : 'text-zinc-800'
-                  }`}>{credits.analysesMain}</span>
-                  {credits.analysesMain === 0 && (
-                    <span className="text-xs font-medium text-red-500 ml-1">
-                      {credits.analysesAvailable === 0 ? '— SerpApi esaurito' : '— Apify insufficiente'}
-                    </span>
-                  )}
-                  {credits.analysesMain > 0 && credits.analysesMain <= 3 && (
-                    <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
-                  )}
+                {/* Left: due righe */}
+                <div className="space-y-1">
+                  {/* Analisi complete */}
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-xs font-semibold uppercase tracking-wider ${
+                      credits.analyzesAvailable === 0 ? 'text-red-400' :
+                      credits.analyzesAvailable <= 3  ? 'text-amber-500' : 'text-zinc-400'
+                    }`}>Analisi disponibili</span>
+                    <span className={`text-xl font-black tabular-nums leading-none ${
+                      credits.analyzesAvailable === 0 ? 'text-red-600' :
+                      credits.analyzesAvailable <= 3  ? 'text-amber-600' : 'text-zinc-800'
+                    }`}>{credits.analyzesAvailable}</span>
+                    {credits.analyzesAvailable === 0 && (
+                      <span className="text-xs font-medium text-red-500 ml-1">— SerpApi esaurito</span>
+                    )}
+                    {credits.analyzesAvailable > 0 && credits.analyzesAvailable <= 3 && (
+                      <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
+                    )}
+                  </div>
+                  {/* Scouting Target Finder */}
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-xs font-semibold uppercase tracking-wider ${
+                      credits.targetFinderAvailable === 0 ? 'text-red-400' :
+                      credits.targetFinderAvailable <= 3  ? 'text-amber-500' : 'text-zinc-400'
+                    }`}>Scouting disponibili</span>
+                    <span className={`text-xl font-black tabular-nums leading-none ${
+                      credits.targetFinderAvailable === 0 ? 'text-red-600' :
+                      credits.targetFinderAvailable <= 3  ? 'text-amber-600' : 'text-zinc-800'
+                    }`}>{credits.targetFinderAvailable}</span>
+                    {credits.targetFinderAvailable === 0 && (
+                      <span className="text-xs font-medium text-red-500 ml-1">
+                        {credits.apifyAvailable && credits.apifyBalanceUsd < 0.10 ? '— Apify insufficiente' : '— SerpApi esaurito'}
+                      </span>
+                    )}
+                    {credits.targetFinderAvailable > 0 && credits.targetFinderAvailable <= 3 && (
+                      <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
+                    )}
+                  </div>
                 </div>
                 {/* Right: SerpApi + Apify + Anthropic detail */}
                 <div className="text-right text-xs text-zinc-400 space-y-0.5 shrink-0">
@@ -489,11 +509,10 @@ export default function AnalyzePage() {
               </select>
               <button
                 type="submit"
-                disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation' || creditsBlocked}
+                disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation' || analyzeBlocked}
                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title={
-                  credits?.analysesAvailable === 0 ? 'Crediti SerpApi insufficienti — ricarica su serpapi.com' :
-                  (credits?.apifyAvailable && (credits?.apifyAnalysesAvailable ?? 1) < 1) ? 'Crediti Apify insufficienti — ricarica su console.apify.com' :
+                  credits?.analyzesAvailable === 0 ? 'Crediti SerpApi insufficienti — ricarica su serpapi.com' :
                   undefined
                 }
               >
