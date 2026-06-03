@@ -5,208 +5,166 @@ const MAX_POSTS = 15
 const MAX_COMMENTS_PER_POST = 20
 const COMMENT_AGE_MONTHS = 18
 
-const GENERIC_WORDS = new Set([
-  'for', 'beginners', 'beginner', 'guide', 'book', 'complete', 'easy', 'simple',
-  'how', 'to', 'the', 'a', 'an', 'and', 'or', 'with', 'your', 'my',
-  'introduction', 'intro', 'basics', 'basic', 'advanced', 'ultimate', 'best',
-  'step', 'steps', 'tips', 'tricks', 'secrets', 'made', 'fast', 'quick',
-  'starter', 'dummies', 'everyone', 'anyone', 'all', 'top', 'great',
-  'over', 'under', 'learn', 'learning', 'master', 'mastering',
-])
-
-function shortVariant(keyword: string): string {
-  const words = keyword.toLowerCase().split(/\s+/)
-  const core = words.filter(w => !GENERIC_WORDS.has(w))
-  if (core.length === 0) return keyword.toLowerCase()
-  return core.slice(0, 2).join(' ')
-}
-
-// ─── SerpApi fetch ────────────────────────────────────────────────────────────
-
-async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
-  const apiKey = process.env.SERPAPI_KEY
-  if (!apiKey) throw new Error('SERPAPI_KEY non configurata')
-  const qs = new URLSearchParams({ ...params, api_key: apiKey }).toString()
-  const res = await fetch(`https://serpapi.com/search?${qs}`)
-  if (!res.ok) throw new Error(`SerpApi ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  return res.json()
-}
-
-// ─── Google search su Reddit ──────────────────────────────────────────────────
-
-interface GoogleResult {
-  title?: string
-  link?: string
-  snippet?: string
-}
-
-async function searchRedditViaGoogle(query: string): Promise<GoogleResult[]> {
-  try {
-    const data = await serpApiFetch({
-      engine: 'google',
-      q: `site:reddit.com ${query}`,
-      num: '15',
-    }) as { organic_results?: GoogleResult[] }
-    return (data.organic_results ?? [])
-      .filter(r => r.link?.includes('reddit.com/r/') && r.link.includes('/comments/'))
-  } catch (err) {
-    console.error(`[reddit] Google search failed for "${query}":`, err)
-    return []
-  }
-}
-
-function extractSubreddit(link: string): string {
-  const m = link.match(/reddit\.com\/r\/([^/]+)/)
-  return m ? m[1] : 'reddit'
-}
-
 function extractPostId(link: string): string | null {
   const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
   return m ? m[1] : null
 }
 
-// ─── Apify Reddit scraper ─────────────────────────────────────────────────────
-
 type ApifyItem = Record<string, unknown>
 
-async function fetchCommentsViaApify(
-  postUrl: string,
+async function fetchRedditDataViaApifySearch(
+  keyword: string,
   token: string,
-): Promise<{ comments: RedditComment[]; postBody: string }> {
-  const postId = extractPostId(postUrl) ?? 'unknown'
-  try {
-    const res = await fetch(
-      `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/run-sync-get-dataset-items?token=${token}&timeout=25`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          startUrls: [{ url: postUrl }],
-          maxComments: MAX_COMMENTS_PER_POST,
-          maxItems: MAX_COMMENTS_PER_POST * 2 + 5,
-        }),
-        signal: AbortSignal.timeout(28000),
-      }
-    )
+): Promise<{ posts: RedditPost[]; success: boolean }> {
 
-    console.log(`[reddit-comments] id:${postId} status:${res.status}`)
-    if (!res.ok) return { comments: [], postBody: '' }
-
-    const items = await res.json() as ApifyItem[]
-    console.log(`[reddit-comments] id:${postId} items:${items.length}`)
-
-    // Log struttura primo item per diagnostica (solo prima analisi)
-    if (items.length > 0 && postId !== 'unknown') {
-      console.log(`[reddit-comments] sample:${JSON.stringify(items[0]).slice(0, 150)}`)
-    }
-
-    const now = Math.floor(Date.now() / 1000)
-    const ageLimit = now - COMMENT_AGE_MONTHS * 30 * 24 * 3600
-
-    // Estrai corpo del post originale (dataType === 'post')
-    const postItem = items.find(item => (item.dataType as string) === 'post')
-    const postBody = String(postItem?.selftext ?? postItem?.body ?? '')
-      .replace(/\[deleted\]|\[removed\]/g, '').trim()
-
-    const comments = items
-      .filter(item => {
-        const dataType = item.dataType as string | undefined
-        const body = String(item.body ?? '')
-        const score = Number(item.upVotes ?? 0)
-        const isoDate = item.createdAt as string | undefined
-        const createdUtc = isoDate ? Math.floor(new Date(isoDate).getTime() / 1000) : now
-        return dataType === 'comment' &&
-          body.length > 0 &&
-          body !== '[deleted]' &&
-          body !== '[removed]' &&
-          !/^https?:\/\//.test(body.trim()) &&
-          !/^[\s\p{Emoji}\p{P}]+$/u.test(body) &&
-          score >= -1 &&
-          createdUtc >= ageLimit
-      })
-      .slice(0, MAX_COMMENTS_PER_POST)
-      .map((item, i) => {
-        const body     = String(item.body ?? '')
-        const isoDate  = item.createdAt as string | undefined
-        const createdUtc = isoDate ? Math.floor(new Date(isoDate).getTime() / 1000) : now
-        return {
-          id:       String(item.id ?? `apify_${postId}_${i}`),
-          body,
-          score:    Number(item.upVotes ?? 0),
-          author:   String(item.username ?? ''),
-          createdUtc,
-          month:    new Date(createdUtc * 1000).toISOString().slice(0, 7),
+  async function tryFetch(attempt: 1 | 2): Promise<{ items: ApifyItem[]; success: boolean }> {
+    try {
+      const res = await fetch(
+        `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/run-sync-get-dataset-items?token=${token}&timeout=90`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            searches: [keyword],
+            searchPosts: true,
+            searchComments: false,
+            searchCommunities: false,
+            searchUsers: false,
+            searchMedia: false,
+            sort: 'top',
+            time: 'all',
+            maxPostCount: MAX_POSTS,
+            maxComments: MAX_COMMENTS_PER_POST,
+            maxItems: MAX_POSTS * (MAX_COMMENTS_PER_POST + 5) + 10,
+            includeNSFW: false,
+            skipComments: false,
+            scrollTimeout: 40,
+            proxy: { useApifyProxy: true },
+          }),
+          signal: AbortSignal.timeout(120000),
         }
-      })
+      )
 
-    return { comments, postBody }
-  } catch (err) {
-    console.log(`[reddit-comments] FAILED id:${postId} error:${err}`)
-    return { comments: [], postBody: '' }
+      console.log(`[reddit-apify] attempt:${attempt} status:${res.status} keyword:"${keyword}"`)
+      if (!res.ok) return { items: [], success: false }
+
+      const items = await res.json() as ApifyItem[]
+      console.log(`[reddit-apify] attempt:${attempt} items:${items.length}`)
+
+      return { items, success: items.length > 0 }
+    } catch (err) {
+      console.log(`[reddit-apify] FAILED attempt:${attempt} keyword:"${keyword}" error:${err}`)
+      return { items: [], success: false }
+    }
   }
+
+  let { items, success } = await tryFetch(1)
+
+  if (!success) {
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    const second = await tryFetch(2)
+    items = second.items
+    success = second.success
+  }
+
+  if (!success || items.length === 0) {
+    return { posts: [], success: false }
+  }
+
+  const postsRaw = items.filter(it => (it.dataType as string) === 'post')
+  const commentsRaw = items.filter(it => (it.dataType as string) === 'comment')
+
+  const now = Math.floor(Date.now() / 1000)
+  const ageLimit = now - COMMENT_AGE_MONTHS * 30 * 24 * 3600
+
+  // Raggruppa commenti per post (parentId è "t3_<postId>")
+  const commentsByPostId = new Map<string, RedditComment[]>()
+  for (const c of commentsRaw) {
+    const parentIdRaw = c.parentId as string | undefined
+    if (!parentIdRaw) continue
+    const postId = parentIdRaw.replace(/^t3_/, '')
+    const createdUtc = c.createdAt
+      ? Math.floor(new Date(c.createdAt as string).getTime() / 1000)
+      : 0
+    if (createdUtc > 0 && createdUtc < ageLimit) continue
+
+    if (!commentsByPostId.has(postId)) commentsByPostId.set(postId, [])
+    const bucket = commentsByPostId.get(postId)!
+    bucket.push({
+      id: String(c.id ?? `c_${postId}_${bucket.length}`),
+      body: (c.body as string) ?? '',
+      score: (c.upVotes as number) ?? 0,
+      author: (c.username as string) ?? '',
+      createdUtc,
+      month: new Date(createdUtc * 1000).toISOString().slice(0, 7),
+    })
+  }
+
+  const sortedPosts = postsRaw
+    .sort((a, b) => ((b.upVotes as number) ?? 0) - ((a.upVotes as number) ?? 0))
+    .slice(0, MAX_POSTS)
+
+  const posts: RedditPost[] = sortedPosts.map((p, i) => {
+    const postUrl = (p.url as string) ?? ''
+    const postId = (p.parsedId as string) ?? extractPostId(postUrl) ?? `g_${i}`
+    const postComments = commentsByPostId.get(postId) ?? []
+    const createdUtc = p.createdAt
+      ? Math.floor(new Date(p.createdAt as string).getTime() / 1000)
+      : Math.floor(Date.now() / 1000)
+
+    return {
+      id: postId,
+      title: (p.title as string) ?? '',
+      selftext: (p.body as string) ?? '',
+      score: (p.upVotes as number) ?? 0,
+      subreddit: ((p.parsedCommunityName as string) ?? (p.communityName as string) ?? 'reddit').replace(/^r\//, ''),
+      createdUtc,
+      month: new Date(createdUtc * 1000).toISOString().slice(0, 7),
+      comments: postComments
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MAX_COMMENTS_PER_POST),
+      link: postUrl,
+    }
+  })
+
+  return { posts, success: true }
 }
 
-// ─── Entry point ──────────────────────────────────────────────────────────────
-
 export async function fetchRedditData(keyword: string): Promise<RedditData> {
-  const short = shortVariant(keyword)
-  const queries = [keyword.toLowerCase()]
-  if (short !== keyword.toLowerCase()) queries.push(short)
+  const apifyToken = process.env.APIFY_TOKEN
 
-  const resultSets = await Promise.all(queries.map(q => searchRedditViaGoogle(q)))
-
-  const seen = new Set<string>()
-  const allResults: GoogleResult[] = []
-  for (const results of resultSets) {
-    for (const r of results) {
-      if (r.link && !seen.has(r.link)) {
-        seen.add(r.link)
-        allResults.push(r)
-      }
-    }
-  }
-
-  console.log(`[reddit] "${keyword}" → queries: ${queries.join(', ')} → ${allResults.length} risultati Google`)
-
-  if (allResults.length === 0) {
+  if (!apifyToken) {
+    console.log(`[reddit] APIFY_TOKEN mancante, skipping`)
     return {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
     }
   }
 
-  const posts: RedditPost[] = allResults.slice(0, MAX_POSTS).map((r, i) => ({
-    id: `g_${i}`,
-    title: r.title ?? '',
-    selftext: r.snippet ?? '',
-    score: 5,
-    subreddit: r.link ? extractSubreddit(r.link) : 'reddit',
-    createdUtc: Math.floor(Date.now() / 1000),
-    month: new Date().toISOString().slice(0, 7),
-    comments: [],
-    link: r.link ?? '',
-  }))
+  const { posts, success } = await fetchRedditDataViaApifySearch(keyword, apifyToken)
 
-  // Fetch commenti via Apify (parallelo, fallback silenzioso se token assente)
-  const apifyToken = process.env.APIFY_TOKEN
-  if (apifyToken) {
-    await Promise.all(
-      posts.map(async (post, i) => {
-        if (!post.link) return
-        const { comments, postBody } = await fetchCommentsViaApify(post.link, apifyToken)
-        post.comments = comments
-        // Sostituisce lo snippet Google con il corpo reale del post se disponibile
-        if (postBody) posts[i].selftext = postBody
-      })
-    )
-  } else {
-    console.log('[reddit] APIFY_TOKEN non configurata — comments: []')
+  if (!success || posts.length === 0) {
+    console.log(`[reddit-summary] keyword:"${keyword}" status:NO_RESULTS`)
+    return {
+      keyword, posts: [], totalComments: 0, subredditsUsed: [],
+      threadCount: 0, available: false, insufficientCorpus: true,
+    }
   }
 
-  const subredditsUsed  = [...new Set(posts.map(p => p.subreddit))]
-  const totalComments   = posts.reduce((acc, p) => acc + p.comments.length, 0)
+  const subredditsUsed = [...new Set(posts.map(p => p.subreddit))]
+  const totalComments = posts.reduce((acc, p) => acc + p.comments.length, 0)
+  const postsWithComments = posts.filter(p => p.comments.length > 0).length
+  const postsEmpty = posts.length - postsWithComments
 
-  console.log(`[reddit] "${keyword}" → ${posts.length} post · ${totalComments} commenti caricati`)
+  console.log(
+    `[reddit-summary] keyword:"${keyword}" ` +
+    `posts:${posts.length} ` +
+    `withComments:${postsWithComments} ` +
+    `empty:${postsEmpty} ` +
+    `totalComments:${totalComments} ` +
+    `subreddits:${subredditsUsed.length} ` +
+    `sortedByUpvotes:true`
+  )
 
   return {
     keyword,
