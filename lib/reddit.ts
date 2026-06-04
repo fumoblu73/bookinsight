@@ -181,58 +181,80 @@ async function searchRedditMulti(queries: string[]): Promise<RankedCandidate[]> 
   return candidates
 }
 
-// ─── Componente 3: Scrape Apify in modalità startUrls ────────────────────────
+// ─── Componente 3: Scrape Apify — URL singola batched ────────────────────────
 
-async function fetchPostsViaApify(
-  urls: string[],
+async function fetchSinglePostViaApify(
+  url: string,
   token: string,
 ): Promise<{ items: ApifyItem[]; success: boolean }> {
+  try {
+    const res = await fetch(
+      `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/run-sync-get-dataset-items?token=${token}&timeout=30`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startUrls: [{ url }],
+          maxComments: MAX_COMMENTS_PER_POST,
+          maxItems: MAX_COMMENTS_PER_POST + 5,
+          skipComments: false,
+          skipCommunity: true,
+          skipUserPosts: true,
+          includeNSFW: false,
+          scrollTimeout: 40,
+          proxy: {
+            useApifyProxy: true,
+            apifyProxyGroups: ['RESIDENTIAL'],
+          },
+        }),
+        signal: AbortSignal.timeout(35000),
+      }
+    )
 
-  async function tryFetch(attempt: 1 | 2): Promise<{ items: ApifyItem[]; success: boolean }> {
-    try {
-      const startUrls = urls.map(url => ({ url }))
-      const res = await fetch(
-        `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/run-sync-get-dataset-items?token=${token}&timeout=120`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            startUrls,
-            maxComments: MAX_COMMENTS_PER_POST,
-            maxItems: urls.length * (MAX_COMMENTS_PER_POST + 5) + 10,
-            skipComments: false,
-            skipCommunity: true,
-            skipUserPosts: true,
-            includeNSFW: false,
-            scrollTimeout: 40,
-            proxy: {
-              useApifyProxy: true,
-              apifyProxyGroups: ['RESIDENTIAL'],
-            },
-          }),
-          signal: AbortSignal.timeout(140000),
-        }
-      )
-
-      console.log(`[reddit-apify] attempt:${attempt} status:${res.status} urls:${urls.length}`)
-      if (!res.ok) return { items: [], success: false }
-
-      const items = await res.json() as ApifyItem[]
-      console.log(`[reddit-apify] attempt:${attempt} items:${items.length}`)
-
-      return { items, success: items.length > 0 }
-    } catch (err) {
-      console.log(`[reddit-apify] FAILED attempt:${attempt} error:${err}`)
+    if (!res.ok) {
+      console.log(`[reddit-apify] singleUrl status:${res.status} url:${url.substring(0, 80)}`)
       return { items: [], success: false }
     }
+
+    const items = await res.json() as ApifyItem[]
+    return { items, success: items.length > 0 }
+  } catch (err) {
+    console.log(`[reddit-apify] singleUrl FAILED url:${url.substring(0, 80)} error:${err}`)
+    return { items: [], success: false }
+  }
+}
+
+async function fetchPostsViaApifyBatched(
+  urls: string[],
+  token: string,
+): Promise<{ allItems: ApifyItem[]; successCount: number; failureCount: number }> {
+  const BATCH_SIZE = 3
+  const allItems: ApifyItem[] = []
+  let successCount = 0
+  let failureCount = 0
+
+  for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+    const batch = urls.slice(i, i + BATCH_SIZE)
+    const batchResults = await Promise.all(
+      batch.map(url => fetchSinglePostViaApify(url, token))
+    )
+
+    for (const result of batchResults) {
+      if (result.success) {
+        allItems.push(...result.items)
+        successCount++
+      } else {
+        failureCount++
+      }
+    }
+
+    console.log(
+      `[reddit-apify] batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(urls.length / BATCH_SIZE)} ` +
+      `done, totalSuccess:${successCount} totalFailure:${failureCount}`
+    )
   }
 
-  let result = await tryFetch(1)
-  if (!result.success) {
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    result = await tryFetch(2)
-  }
-  return result
+  return { allItems, successCount, failureCount }
 }
 
 // ─── Componente 4: fetchRedditData (flusso ibrido) ───────────────────────────
@@ -262,16 +284,16 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
   }
 
-  // STEP 3: Top 20 candidati per Apify
-  const APIFY_FETCH_COUNT = 20
+  // STEP 3: Top 15 candidati per Apify (15 URL ÷ 3 paralleli = 5 batch × ~15s ≈ 75s)
+  const APIFY_FETCH_COUNT = 15
   const topCandidates = candidates.slice(0, APIFY_FETCH_COUNT)
   const urlsToFetch = topCandidates.map(c => c.url)
 
-  // STEP 4: Apify scrape unico
-  const { items, success } = await fetchPostsViaApify(urlsToFetch, apifyToken)
+  // STEP 4: Apify scrape batched (3 URL paralleli alla volta)
+  const { allItems, successCount, failureCount } = await fetchPostsViaApifyBatched(urlsToFetch, apifyToken)
 
-  if (!success || items.length === 0) {
-    console.log(`[reddit-summary] keyword:"${keyword}" status:APIFY_FAILED`)
+  if (allItems.length === 0) {
+    console.log(`[reddit-summary] keyword:"${keyword}" status:APIFY_ALL_FAILED successCount:0 failureCount:${failureCount}`)
     return {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
@@ -279,8 +301,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   }
 
   // STEP 5: Mapping Apify items → RedditPost
-  const postsRaw = items.filter(it => (it.dataType as string) === 'post')
-  const commentsRaw = items.filter(it => (it.dataType as string) === 'comment')
+  const postsRaw = allItems.filter(it => (it.dataType as string) === 'post')
+  const commentsRaw = allItems.filter(it => (it.dataType as string) === 'comment')
 
   // Raggruppa commenti per postId estratto dall'URL del commento
   const commentsByPostId = new Map<string, RedditComment[]>()
@@ -362,7 +384,9 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     `[reddit-summary] keyword:"${keyword}" ` +
     `translatedQueries:${queries.length} ` +
     `googleCandidates:${candidates.length} ` +
-    `apifyFetched:${urlsToFetch.length} ` +
+    `apifyAttempted:${urlsToFetch.length} ` +
+    `apifySuccess:${successCount} ` +
+    `apifyFailure:${failureCount} ` +
     `apifyReturnedPosts:${postsRaw.length} ` +
     `finalPosts:${posts.length} ` +
     `withComments:${postsWithComments} ` +
@@ -370,7 +394,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     `subreddits:${subredditsUsed.length} ` +
     `commentsScrapedTotal:${commentsRaw.length} ` +
     `commentsKept:${totalComments} ` +
-    `flow:hybrid_v3_unfiltered`
+    `flow:hybrid_v4_single_url_batched`
   )
 
   return {
