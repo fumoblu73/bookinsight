@@ -189,23 +189,15 @@ async function fetchSinglePostViaApify(
 ): Promise<{ items: ApifyItem[]; success: boolean }> {
   try {
     const res = await fetch(
-      `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/run-sync-get-dataset-items?token=${token}&timeout=30`,
+      `https://api.apify.com/v2/acts/fatihtahta~reddit-scraper-search-fast/run-sync-get-dataset-items?token=${token}&timeout=30`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          startUrls: [{ url }],
+          urls: [url],
+          scrapeComments: true,
           maxComments: MAX_COMMENTS_PER_POST,
-          maxItems: MAX_COMMENTS_PER_POST + 5,
-          skipComments: false,
-          skipCommunity: true,
-          skipUserPosts: true,
-          includeNSFW: false,
-          scrollTimeout: 40,
-          proxy: {
-            useApifyProxy: true,
-            apifyProxyGroups: ['RESIDENTIAL'],
-          },
+          includeNsfw: false,
         }),
         signal: AbortSignal.timeout(35000),
       }
@@ -301,27 +293,25 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   }
 
   // STEP 5: Mapping Apify items → RedditPost
-  const postsRaw = allItems.filter(it => (it.dataType as string) === 'post')
-  const commentsRaw = allItems.filter(it => (it.dataType as string) === 'comment')
+  const postsRaw = allItems.filter(it => (it.kind as string) === 'post')
+  const commentsRaw = allItems.filter(it => (it.kind as string) === 'comment')
 
   // Raggruppa commenti per postId estratto dall'URL del commento
   const commentsByPostId = new Map<string, RedditComment[]>()
   for (const c of commentsRaw) {
-    const commentUrl = (c.url as string) ?? ''
-    const m = commentUrl.match(/\/comments\/([a-z0-9]+)\//)
-    if (!m) continue
-    const postId = m[1]
+    const postId = (c.postId as string) ?? ''
+    if (!postId) continue
 
-    const createdAt = c.createdAt
-      ? Math.floor(new Date(c.createdAt as string).getTime() / 1000)
+    const createdAt = c.created_utc
+      ? Math.floor(new Date(c.created_utc as string).getTime() / 1000)
       : 0
     if (!commentsByPostId.has(postId)) commentsByPostId.set(postId, [])
     const bucket = commentsByPostId.get(postId)!
     bucket.push({
       id: String(c.id ?? `c_${postId}_${bucket.length}`),
       body: (c.body as string) ?? '',
-      score: (c.upVotes as number) ?? 0,
-      author: (c.username as string) ?? '',
+      score: (c.score as number) ?? 0,
+      author: (c.author as string) ?? '',
       createdUtc: createdAt,
       month: createdAt > 0
         ? new Date(createdAt * 1000).toISOString().slice(0, 7)
@@ -330,13 +320,13 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   }
 
   // STEP 6: Re-ranking finale con upVotes reali integrati
-  const maxUpVotes = Math.max(1, ...postsRaw.map(p => (p.upVotes as number) ?? 0))
+  const maxUpVotes = Math.max(1, ...postsRaw.map(p => (p.score as number) ?? 0))
 
   const enrichedPosts = postsRaw.map(p => {
     const postUrl = (p.url as string) ?? ''
-    const postId = extractPostId(postUrl) ?? ''
+    const postId = (p.id as string) ?? extractPostId(postUrl) ?? ''
     const candidate = topCandidates.find(c => c.postId === postId)
-    const upVotes = (p.upVotes as number) ?? 0
+    const upVotes = (p.score as number) ?? 0
 
     const appearancesScore = candidate
       ? (candidate.appearancesInQueries / queries.length) * 30
@@ -356,8 +346,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const posts: RedditPost[] = selected.map((e, i) => {
     const p = e.rawPost
     const postUrl = (p.url as string) ?? ''
-    const createdUtc = p.createdAt
-      ? Math.floor(new Date(p.createdAt as string).getTime() / 1000)
+    const createdUtc = p.created_utc
+      ? Math.floor(new Date(p.created_utc as string).getTime() / 1000)
       : Math.floor(Date.now() / 1000)
     const postComments = (commentsByPostId.get(e.postId) ?? [])
       .sort((a, b) => b.score - a.score)
@@ -368,7 +358,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       title: (p.title as string) ?? '',
       selftext: (p.body as string) ?? '',
       score: e.upVotes,
-      subreddit: ((p.parsedCommunityName as string) ?? (p.communityName as string) ?? 'reddit').replace(/^r\//, ''),
+      subreddit: (p.subreddit as string) ?? 'reddit',
       createdUtc,
       month: new Date(createdUtc * 1000).toISOString().slice(0, 7),
       comments: postComments,
@@ -394,7 +384,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     `subreddits:${subredditsUsed.length} ` +
     `commentsScrapedTotal:${commentsRaw.length} ` +
     `commentsKept:${totalComments} ` +
-    `flow:hybrid_v4_single_url_batched`
+    `flow:hybrid_v5_fatihtahta`
   )
 
   return {
