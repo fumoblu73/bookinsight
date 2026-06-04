@@ -223,7 +223,7 @@ interface RawPainPoint {
   S: number
   num_fonti?: number
   evidence: string
-  fonte: 'reddit'
+  fonte?: 'reddit' | 'youtube'
   tipo?: 'gap_esecuzione' | 'job_confermato'
   linguaggio?: string | null
   evidence_quotes?: string[]
@@ -267,13 +267,28 @@ export async function runPainPointsReddit(
       ? r.emotional_register as PainPoint['emotional_register']
       : undefined
 
+    const redditAvailable = reddit.available && !reddit.insufficientCorpus
+    const youtubeAvailable = youtube?.available && !youtube.insufficientCorpus
+    let fonte: 'reddit' | 'youtube'
+    if (r.fonte === 'youtube' || r.fonte === 'reddit') {
+      if (r.fonte === 'reddit' && !redditAvailable && youtubeAvailable) {
+        fonte = 'youtube'
+      } else if (r.fonte === 'youtube' && !youtubeAvailable && redditAvailable) {
+        fonte = 'reddit'
+      } else {
+        fonte = r.fonte
+      }
+    } else {
+      fonte = !redditAvailable && youtubeAvailable ? 'youtube' : 'reddit'
+    }
+
     return {
       pain_point: r.pain_point,
       F,
       I: Math.min(10, Math.max(1, Math.round(r.I))),
       S: Math.min(10, Math.max(1, Math.round(r.S))),
       evidence: r.evidence,
-      fonte: 'reddit' as const,
+      fonte,
       tipo: r.tipo,
       linguaggio: r.linguaggio ?? undefined,
       evidence_quotes: cleanEvidenceQuotes.length > 0 ? cleanEvidenceQuotes : undefined,
