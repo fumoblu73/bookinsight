@@ -155,6 +155,12 @@ export interface PainPoint {
   vocalMinority?: boolean
   vocalMinoritySuspect?: boolean
   weakSignal?: boolean   // fonte singola
+
+  // Voice-of-customer — per copywriting del libro
+  evidence_quotes?: string[]
+  voice_phrases?: string[]
+  emotional_register?: 'frustrazione' | 'rabbia' | 'ansia' | 'rassegnazione' | 'desiderio' | 'confusione' | 'orgoglio' | 'neutro'
+  context?: string
 }
 
 // ─── Data Quality ─────────────────────────────────────────────────────────────

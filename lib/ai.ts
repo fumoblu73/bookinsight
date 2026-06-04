@@ -215,7 +215,7 @@ export async function runPasso0(amazon: AmazonData): Promise<Passo0Result> {
   return callSonnet<Passo0Result>(promptPasso0(amazon))
 }
 
-// §5A — Pain Points da Reddit (Haiku)
+// §5A — Pain Points da Reddit (Sonnet)
 interface RawPainPoint {
   pain_point: string
   F: number
@@ -226,6 +226,10 @@ interface RawPainPoint {
   fonte: 'reddit'
   tipo?: 'gap_esecuzione' | 'job_confermato'
   linguaggio?: string | null
+  evidence_quotes?: string[]
+  voice_phrases?: string[]
+  emotional_register?: string
+  context?: string
 }
 
 export async function runPainPointsReddit(
@@ -236,16 +240,33 @@ export async function runPainPointsReddit(
 ): Promise<PainPoint[]> {
   if ((!reddit.available || reddit.insufficientCorpus) && (!youtube?.available || youtube.insufficientCorpus)) return []
 
-  const raw = await callHaiku<RawPainPoint[]>(
+  const raw = await callSonnet<RawPainPoint[]>(
     promptPainPointsReddit(keyword, reddit, youtube, market),
-    { temperature: 0.2 },
   )
+
+  const validRegisters = ['frustrazione', 'rabbia', 'ansia', 'rassegnazione', 'desiderio', 'confusione', 'orgoglio', 'neutro']
 
   // Normalizza i campi opzionali e calcola score
   const normalized = raw.map(r => {
     const F_raw = Math.min(10, Math.max(1, Math.round(r.F)))
     // Hard cap: se fonte singola, F non può superare 4
     const F = (r.num_fonti ?? 1) <= 1 ? Math.min(F_raw, 4) : F_raw
+
+    const cleanVoicePhrases = (r.voice_phrases ?? [])
+      .filter(p => typeof p === 'string' && p.trim().length >= 2 && p.trim().length <= 100)
+      .map(p => p.trim())
+      .filter((p, i, arr) => arr.indexOf(p) === i)
+      .slice(0, 5)
+
+    const cleanEvidenceQuotes = (r.evidence_quotes ?? [])
+      .filter(q => typeof q === 'string' && q.trim().length >= 10 && q.trim().length <= 200)
+      .map(q => q.trim())
+      .slice(0, 4)
+
+    const emotional_register = (r.emotional_register && validRegisters.includes(r.emotional_register))
+      ? r.emotional_register as PainPoint['emotional_register']
+      : undefined
+
     return {
       pain_point: r.pain_point,
       F,
@@ -255,6 +276,10 @@ export async function runPainPointsReddit(
       fonte: 'reddit' as const,
       tipo: r.tipo,
       linguaggio: r.linguaggio ?? undefined,
+      evidence_quotes: cleanEvidenceQuotes.length > 0 ? cleanEvidenceQuotes : undefined,
+      voice_phrases: cleanVoicePhrases.length > 0 ? cleanVoicePhrases : undefined,
+      emotional_register,
+      context: r.context?.trim() || undefined,
     }
   })
 

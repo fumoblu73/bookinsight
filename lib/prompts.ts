@@ -128,27 +128,70 @@ CALIBRAZIONE I (Intensità emotiva) — scala obbligatoria:
 
 ISTRUZIONI:
 - Identifica 5-12 pain point distinti e concreti espressi dagli utenti
-- Per ogni pain point assegna:
-  - F (Frequenza): quante volte appare nel corpus, rispetta la calibrazione sopra
-  - I (Intensità emotiva): quanto è forte il disagio espresso, rispetta la calibrazione sopra
-  - S (Specificità/Solvibilità con un libro): quanto può essere risolto con contenuto scritto, scala 1-10
-  - num_fonti: numero di thread/video DISTINTI in cui questo pain point appare (minimo 1)
-- evidence: citazione breve o parafrase dal corpus (max 80 caratteri)
-- ${fonteInstr}
-- tipo: "gap_esecuzione" se è un problema pratico non risolto dai libri esistenti, "job_confermato" se è un bisogno già servito ma migliorabile
+- Per ogni pain point estrai sia il CONTENUTO (cosa dicono) sia la FORMA LINGUISTICA (come lo dicono), perché il secondo è materiale prezioso per il copywriting del libro
+
+CAMPI DI OUTPUT PER OGNI PAIN POINT:
+
+1. CAMPI ANALITICI (esistenti):
+   - pain_point: descrizione concisa del problema in italiano (max 15 parole)
+   - F (Frequenza): rispetta la calibrazione sopra
+   - I (Intensità emotiva): rispetta la calibrazione sopra
+   - S (Specificità/Solvibilità con un libro): scala 1-10
+   - num_fonti: numero di thread/video DISTINTI in cui appare (minimo 1)
+   - ${fonteInstr}
+   - tipo: "gap_esecuzione" o "job_confermato"
+
+2. CAMPI VOICE-OF-CUSTOMER (NUOVI, OBBLIGATORI):
+
+   - evidence_quotes: array di 2-4 CITAZIONI ESATTE (verbatim) dal corpus, in lingua originale
+     • Devono essere copia letterale dal corpus, non parafrasi
+     • Privilegia citazioni che esprimono il pain point in modo emotivo o specifico
+     • Ognuna max 150 caratteri
+     • Se trovi solo 1 citazione molto forte, va bene 1 invece di 2-4
+
+   - voice_phrases: array di 2-5 FRASI BREVI pronte per essere usate nel copywriting del libro
+     • Sono ESTRATTI CHIRURGICI dalle evidence_quotes, NON riformulazioni
+     • Es: da "Design Space is SO BAD I want to throw it away" estrai "so bad", "throw it away"
+     • Es: da "I have no idea how the heck to do this" estrai "no idea how the heck"
+     • Frasi 2-6 parole, in lingua originale dal corpus
+     • Devono essere usabili come hook/slogan/bullet/sottotitolo di libro
+     • Privilegia frasi distintive, evocative, emotive — scarta frasi banali tipo "this is hard"
+
+   - emotional_register: il tono emotivo prevalente, uno tra:
+     • "frustrazione" — irritazione generale, problema noioso ricorrente
+     • "rabbia" — ostilità diretta, parole forti, voglia di distruggere
+     • "ansia" — paura, preoccupazione, scenari catastrofici
+     • "rassegnazione" — accettazione amara, "è così e basta"
+     • "desiderio" — espressione di un wishful, "I wish", "I want", "if only"
+     • "confusione" — incapacità di capire, smarrimento, "I don't understand"
+     • "orgoglio" — celebrazione di successo dopo difficoltà
+     • "neutro" — osservazione fattuale senza carica emotiva
+
+   - context: 1 riga (max 15 parole) che descrive CHI parla e IN CHE SITUAZIONE
+     • Es: "principianti assoluti che vedono Excel per la prima volta"
+     • Es: "caregivers che aiutano genitori anziani con smartphone"
+     • Es: "hobbisti che hanno provato Cricut per un anno e sono frustrati"
+
+   - evidence (campo legacy, mantenere per compatibilità): copia qui la PRIMA evidence_quote oppure una parafrasi breve (max 80 caratteri)
+
+   - linguaggio (campo legacy esistente): frase verbatim se tipo=job_confermato, altrimenti null
 
 Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
 [
   {
-    "pain_point": "descrizione concisa del problema (max 15 parole)",
+    "pain_point": "descrizione concisa del problema in italiano (max 15 parole)",
     "F": numero,
     "I": numero,
     "S": numero,
     "num_fonti": numero,
-    "evidence": "citazione o parafrasi",
+    "evidence": "prima evidence_quote o parafrasi (max 80 char)",
+    "evidence_quotes": ["citazione 1 verbatim", "citazione 2 verbatim", "citazione 3 verbatim"],
+    "voice_phrases": ["frase breve 1", "frase breve 2", "frase breve 3"],
+    "emotional_register": "frustrazione | rabbia | ansia | rassegnazione | desiderio | confusione | orgoglio | neutro",
+    "context": "chi parla e in che situazione",
     "fonte": "reddit | youtube",
     "tipo": "gap_esecuzione | job_confermato",
-    "linguaggio": "frase verbatim dell'utente se tipo=job_confermato, altrimenti null"
+    "linguaggio": "frase verbatim se tipo=job_confermato, altrimenti null"
   }
 ]`
 }

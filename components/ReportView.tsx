@@ -33,7 +33,7 @@ export interface FullReport {
   }
   trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null }
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
-  painPoints: { pain_point: string; score: number; F: number; I: number; S: number; evidence: string; criticalSignal?: boolean }[]
+  painPoints: { pain_point: string; score: number; F: number; I: number; S: number; evidence: string; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
   gapAnalysis: {
     passo1_problemi_non_risolti: { items: string[] }
     passo2_angoli_mancanti: { items: string[] }
@@ -1011,6 +1011,54 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
             )}
           </SubCard>
+
+          {/* Lessico dei Lettori — voice-of-customer per copywriting */}
+          {report.painPoints.some(pp => (pp.voice_phrases?.length ?? 0) > 0) && (
+            <SubCard title="Lessico dei Lettori" accent="indigo">
+              <p className="text-xs text-zinc-500 mb-3 italic">
+                Frasi e modi di dire estratti dalle conversazioni reali — materiale pronto per il copywriting (sottotitoli, bullet Amazon, slogan copertina).
+              </p>
+              <div className="space-y-3">
+                {report.painPoints
+                  .filter(pp => (pp.voice_phrases?.length ?? 0) > 0)
+                  .slice(0, 8)
+                  .map((pp, i) => (
+                    <div key={i} className="border-l-2 border-indigo-200 pl-3">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="text-xs font-semibold text-zinc-700 leading-snug">{pp.pain_point}</p>
+                        {pp.emotional_register && (
+                          <span className="shrink-0 text-[10px] uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                            {pp.emotional_register}
+                          </span>
+                        )}
+                      </div>
+                      {pp.context && (
+                        <p className="text-[11px] text-zinc-400 italic mb-1.5">{pp.context}</p>
+                      )}
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {pp.voice_phrases!.map((phrase, j) => (
+                          <span key={j} className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">
+                            &ldquo;{phrase}&rdquo;
+                          </span>
+                        ))}
+                      </div>
+                      {pp.evidence_quotes && pp.evidence_quotes.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-[11px] text-zinc-400 cursor-pointer hover:text-zinc-600">
+                            Citazioni complete ({pp.evidence_quotes.length})
+                          </summary>
+                          <ul className="mt-1 space-y-1 ml-3">
+                            {pp.evidence_quotes.map((q, j) => (
+                              <li key={j} className="text-[11px] text-zinc-500 italic leading-relaxed">&ldquo;{q}&rdquo;</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </SubCard>
+          )}
 
           <SubCard title="Problemi non risolti dai competitor" accent="zinc">
             <ul className="space-y-1.5">
