@@ -55,7 +55,10 @@ const MARKET_TRENDS_PARAMS: Record<Market, { geo: string; hl: string }> = {
 async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
   const apiKey = process.env.SERPAPI_KEY
   if (!apiKey) throw new Error('SERPAPI_KEY non configurata')
-  const qs = new URLSearchParams({ ...params, api_key: apiKey }).toString()
+  // SerpApi google_trends rifiuta '+' come spazio (URLSearchParams default); encodeURIComponent usa '%20' (RFC 3986)
+  const qs = Object.entries({ ...params, api_key: apiKey })
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&')
   const res = await fetch(`https://serpapi.com/search?${qs}`)
   if (!res.ok) throw new Error(`SerpApi ${res.status}: ${(await res.text()).slice(0, 200)}`)
   return res.json()
