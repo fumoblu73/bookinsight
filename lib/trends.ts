@@ -41,13 +41,13 @@ function toYearMonth(raw: string): string {
 
 // ─── Parametri geo/lingua per Google Trends per mercato ─────────────────────
 
-const MARKET_TRENDS_PARAMS: Record<Market, { gl: string; hl: string }> = {
-  US: { gl: 'us', hl: 'en' },
-  UK: { gl: 'gb', hl: 'en' },
-  DE: { gl: 'de', hl: 'de' },
-  FR: { gl: 'fr', hl: 'fr' },
-  IT: { gl: 'it', hl: 'it' },
-  ES: { gl: 'es', hl: 'es' },
+const MARKET_TRENDS_PARAMS: Record<Market, { geo: string; hl: string }> = {
+  US: { geo: 'US', hl: 'en' },
+  UK: { geo: 'GB', hl: 'en' },
+  DE: { geo: 'DE', hl: 'de' },
+  FR: { geo: 'FR', hl: 'fr' },
+  IT: { geo: 'IT', hl: 'it' },
+  ES: { geo: 'ES', hl: 'es' },
 }
 
 // ─── SerpApi fetch (riuso stesso pattern di amazon.ts) ───────────────────────
@@ -119,13 +119,13 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
   const dateRange = `${startDate.toISOString().slice(0, 10)} ${endDate.toISOString().slice(0, 10)}`
 
   const trendsQuery = shortKeyword(keyword)
-  const { gl, hl } = MARKET_TRENDS_PARAMS[market]
+  const { geo, hl } = MARKET_TRENDS_PARAMS[market]
 
   try {
     // Due chiamate in parallelo: timeline + related queries
     const [timelineRaw, relatedRaw] = await Promise.all([
-      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES', gl, hl }),
-      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'RELATED_QUERIES', gl, hl }),
+      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES', geo, hl }),
+      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'RELATED_QUERIES', geo, hl }),
     ])
 
     // ── Parse timeline ────────────────────────────────────────────────────────
