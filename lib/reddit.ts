@@ -3,7 +3,6 @@ import { RedditData, RedditPost, RedditComment } from './types'
 const MIN_RESULTS_FOR_ANALYSIS = 5
 const MAX_POSTS = 15
 const MAX_COMMENTS_PER_POST = 20
-const COMMENT_AGE_MONTHS = 18
 
 function extractPostId(link: string): string | null {
   const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
@@ -283,9 +282,6 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const postsRaw = items.filter(it => (it.dataType as string) === 'post')
   const commentsRaw = items.filter(it => (it.dataType as string) === 'comment')
 
-  const now = Math.floor(Date.now() / 1000)
-  const ageLimit = now - COMMENT_AGE_MONTHS * 30 * 24 * 3600
-
   // Raggruppa commenti per postId estratto dall'URL del commento
   const commentsByPostId = new Map<string, RedditComment[]>()
   for (const c of commentsRaw) {
@@ -297,8 +293,6 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     const createdAt = c.createdAt
       ? Math.floor(new Date(c.createdAt as string).getTime() / 1000)
       : 0
-    if (createdAt > 0 && createdAt < ageLimit) continue
-
     if (!commentsByPostId.has(postId)) commentsByPostId.set(postId, [])
     const bucket = commentsByPostId.get(postId)!
     bucket.push({
@@ -374,7 +368,9 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     `withComments:${postsWithComments} ` +
     `totalComments:${totalComments} ` +
     `subreddits:${subredditsUsed.length} ` +
-    `flow:hybrid_v3`
+    `commentsScrapedTotal:${commentsRaw.length} ` +
+    `commentsKept:${totalComments} ` +
+    `flow:hybrid_v3_unfiltered`
   )
 
   return {
