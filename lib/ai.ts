@@ -96,7 +96,7 @@ export async function callSonnet<T>(userPrompt: string): Promise<T> {
 
   const response = await callWithRetry(() => client.messages.create({
     model: MODEL_SONNET,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: [
       {
         type: 'text',
