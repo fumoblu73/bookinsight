@@ -82,6 +82,13 @@ function parseJSON<T>(raw: string): T {
   return JSON.parse(normalized) as T
 }
 
+// Rimuove lone surrogates dal prompt prima di inviarlo all'API. Reddit/YouTube
+// possono restituire emoji codificati come coppie surrogate rotte (senza il low
+// surrogate): validi in JS ma JSON invalidi — API Anthropic risponde 400.
+function stripLoneSurrogates(s: string): string {
+  return s.replace(/\p{Surrogate}/gu, '')
+}
+
 // ─── callSonnet ───────────────────────────────────────────────────────────────
 
 export async function callSonnet<T>(userPrompt: string): Promise<T> {
@@ -98,7 +105,7 @@ export async function callSonnet<T>(userPrompt: string): Promise<T> {
       },
     ],
     messages: [
-      { role: 'user', content: userPrompt },
+      { role: 'user', content: stripLoneSurrogates(userPrompt) },
     ],
   }))
 
@@ -126,7 +133,7 @@ async function callSonnetText(userPrompt: string): Promise<string> {
       },
     ],
     messages: [
-      { role: 'user', content: userPrompt },
+      { role: 'user', content: stripLoneSurrogates(userPrompt) },
     ],
   }))
 
@@ -155,7 +162,7 @@ export async function callHaiku<T>(userPrompt: string, options?: { temperature?:
       },
     ],
     messages: [
-      { role: 'user', content: userPrompt },
+      { role: 'user', content: stripLoneSurrogates(userPrompt) },
     ],
   }))
 
