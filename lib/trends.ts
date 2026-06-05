@@ -30,13 +30,23 @@ const MONTH_TO_NUM: Record<string, string> = {
 
 function toYearMonth(raw: string): string {
   if (!raw) return ''
+
+  // Formato già YYYY-MM o YYYY-MM-DD
   if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7)
-  const m = raw.match(/^([A-Za-z]{3})\w*\s+(\d{4})/)
-  if (m) {
-    const mon = MONTH_TO_NUM[m[1].toLowerCase()]
-    if (mon) return `${m[2]}-${mon}`
-  }
-  return ''
+
+  // Cerca l'anno (4 cifre) ovunque nella stringa
+  const yearMatch = raw.match(/(\d{4})/)
+  if (!yearMatch) return ''
+  const year = yearMatch[1]
+
+  // Cerca il PRIMO nome mese (3 lettere) all'inizio della stringa
+  // Gestisce: "May 30 - Jun 5, 2021", "Jan 2021", "Apr 18 - 24, 2026"
+  const monthMatch = raw.match(/^([A-Za-z]{3})/)
+  if (!monthMatch) return ''
+  const mon = MONTH_TO_NUM[monthMatch[1].toLowerCase()]
+  if (!mon) return ''
+
+  return `${year}-${mon}`
 }
 
 // ─── Parametri geo/lingua per Google Trends per mercato ─────────────────────
