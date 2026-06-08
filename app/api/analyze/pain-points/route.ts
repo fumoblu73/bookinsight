@@ -9,7 +9,7 @@ import { cacheSet } from '@/lib/upstash'
 import { isAnthropicBillingError } from '@/lib/ai'
 
 // 3 minuti: fetching parallelo + 3 chiamate AI (passo0, pain points, sub-niche)
-export const maxDuration = 180
+export const maxDuration = 300
 
 const INTERMEDIATE_TTL_SECONDS = 30 * 60  // 30 minuti
 

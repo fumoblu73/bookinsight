@@ -5,7 +5,7 @@ import { cacheGet, cacheDel, saveReport, updateReport } from '@/lib/upstash'
 import { isAnthropicBillingError } from '@/lib/ai'
 
 // 2 minuti: 3-4 chiamate AI (insights, gap, strategy, roi narrative)
-export const maxDuration = 120
+export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   let body: { analysisId?: string; selectedPainPointIds?: string[] }
