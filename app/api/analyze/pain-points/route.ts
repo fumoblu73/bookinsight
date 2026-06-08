@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Market } from '@/lib/types'
-import { fetchAmazonData } from '@/lib/amazon'
-import { fetchTrendsData } from '@/lib/trends'
-import { fetchRedditData } from '@/lib/reddit'
-import { fetchYouTubeData } from '@/lib/youtube'
+import { Market, AmazonData, TrendsData, RedditData, YouTubeData } from '@/lib/types'
 import { runPainPointsPhase, PainPointsIntermediate } from '@/lib/analyze-phases'
 import { cacheSet } from '@/lib/upstash'
 import { isAnthropicBillingError } from '@/lib/ai'
 
-// 3 minuti: fetching parallelo + 3 chiamate AI (passo0, pain points, sub-niche)
-export const maxDuration = 300
+// Solo AI (3 chiamate Sonnet): nessun fetching esterno
+export const maxDuration = 180
 
 const INTERMEDIATE_TTL_SECONDS = 30 * 60  // 30 minuti
 
@@ -18,14 +14,21 @@ function generateAnalysisId(): string {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { keyword?: string; market?: string; targetAsin?: string }
+  let body: {
+    keyword?: string
+    market?: string
+    amazonData?: AmazonData
+    trendsData?: TrendsData
+    redditData?: RedditData
+    youtubeData?: YouTubeData
+  }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'body JSON non valido' }, { status: 400 })
   }
 
-  const { keyword, market, targetAsin } = body
+  const { keyword, market, amazonData, trendsData, redditData, youtubeData } = body
 
   if (!keyword?.trim()) {
     return NextResponse.json({ error: 'keyword richiesta' }, { status: 400 })
@@ -33,26 +36,28 @@ export async function POST(req: NextRequest) {
   if (!['US', 'UK', 'DE', 'FR', 'IT', 'ES'].includes(market ?? '')) {
     return NextResponse.json({ error: 'market non valido (US|UK|DE|FR|IT|ES)' }, { status: 400 })
   }
+  if (!amazonData?.topBooks || amazonData.topBooks.length < 3) {
+    return NextResponse.json({ error: 'amazonData insufficiente (< 3 libri filtrati)' }, { status: 422 })
+  }
 
   const kw = keyword.trim()
-  const mk = market as Market
-  const asin = targetAsin?.trim() || undefined
+
+  // Fallback per segnali opzionali (la UI li manda sempre, ma difendiamoci)
+  const effectiveTrends: TrendsData = trendsData ?? {
+    keyword: kw, timelineData: [], relatedQueries: [], yoyGrowth: 0, available: false, peakMonth: null,
+  }
+  const effectiveReddit: RedditData = redditData ?? {
+    keyword: kw, posts: [], totalComments: 0, subredditsUsed: [], threadCount: 0, available: false, insufficientCorpus: true,
+  }
 
   try {
-    // ── Fetching parallelo ──────────────────────────────────────────────────
-    const [amazon, trends, reddit, youtube] = await Promise.all([
-      fetchAmazonData(kw, mk, asin),
-      fetchTrendsData(kw, mk),
-      fetchRedditData(kw),
-      fetchYouTubeData(kw, mk),
-    ])
-
-    if (!amazon?.topBooks || amazon.topBooks.length < 3) {
-      return NextResponse.json({ error: 'Dati Amazon insufficienti (< 3 libri filtrati)' }, { status: 422 })
-    }
-
     // ── Fase AI: passo0 + pain points + sub-niche ───────────────────────────
-    const intermediate: PainPointsIntermediate = await runPainPointsPhase(amazon, trends, reddit, youtube)
+    const intermediate: PainPointsIntermediate = await runPainPointsPhase(
+      amazonData as AmazonData & { market: Market },
+      effectiveTrends,
+      effectiveReddit,
+      youtubeData,
+    )
 
     // ── Salva snapshot intermedio su Redis ─────────────────────────────────
     const analysisId = generateAnalysisId()
@@ -66,18 +71,18 @@ export async function POST(req: NextRequest) {
       scoring: intermediate.scoring,
       passo0: intermediate.passo0,
       amazonSummary: {
-        topBooks: amazon.topBooks.slice(0, 5),
-        keyword: amazon.keyword,
+        topBooks: amazonData.topBooks.slice(0, 5),
+        keyword: amazonData.keyword,
       },
       trendsSummary: {
-        available: trends.available,
-        yoyGrowth: trends.yoyGrowth,
-        peakMonth: trends.peakMonth ?? null,
+        available: effectiveTrends.available,
+        yoyGrowth: effectiveTrends.yoyGrowth,
+        peakMonth: effectiveTrends.peakMonth ?? null,
       },
       redditSummary: {
-        available: reddit.available,
-        postCount: reddit.threadCount,
-        commentCount: reddit.totalComments,
+        available: effectiveReddit.available,
+        postCount: effectiveReddit.threadCount,
+        commentCount: effectiveReddit.totalComments,
       },
     })
   } catch (err) {

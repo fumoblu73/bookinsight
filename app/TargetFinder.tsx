@@ -475,7 +475,7 @@ export default function TargetFinder() {
         {/* ── Link analisi diretta ──────────────────────────────────────────── */}
         <div className="text-center">
           <a
-            href="/analyze"
+            href={keyword.trim() ? `/analyze?keyword=${encodeURIComponent(keyword.trim())}&market=${market}&skipTarget=1` : '/analyze'}
             className="text-sm text-zinc-400 hover:text-indigo-600 transition-colors"
           >
             Analizza direttamente senza scegliere un bersaglio →

@@ -3,36 +3,41 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import ReportView from '@/components/ReportView'
 import type { FullReport } from '@/components/ReportView'
-import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData } from '@/lib/types'
+import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData, PainPoint } from '@/lib/types'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
   | 'idle'
-  | 'loading_amazon'        // fetch /api/amazon in corso
-  | 'awaiting_validation'   // Amazon done, utente sceglie competitor target
-  | 'loading_signals'       // attesa trends+reddit (già avviati in background)
-  | 'loading_passo0'        // server: passo0 + pain points (stream event: passo0)
-  | 'loading_insights'      // server: insights + trend + gap (stream event: insights)
-  | 'loading_strategy'      // server: strategy + ROI (stream event: strategy)
+  | 'loading_amazon'               // fetch /api/amazon in corso
+  | 'awaiting_validation'          // Amazon done, utente sceglie competitor target
+  | 'loading_signals'              // attesa trends+reddit (già avviati in background)
+  | 'loading_passo0'               // /api/analyze/pain-points in corso (passo0 + pain points)
+  | 'awaiting_painpoint_selection' // pain points pronti, utente seleziona
+  | 'loading_insights'             // /api/analyze/finalize in corso
+  | 'loading_strategy'             // usato solo dal vecchio /api/analyze SSE (compatibilità)
   | 'done'
   | 'error'
 
 const STAGE_LABELS: Record<Stage, string> = {
-  idle:                 '',
-  loading_amazon:       'Raccolta dati Amazon…',
-  awaiting_validation:  'Scegli il competitor target',
-  loading_signals:      'Raccolta segnali (trend + Reddit)…',
-  loading_passo0:       'Analisi competitor e pain points…',
-  loading_insights:     'Analisi insight, trend e gap…',
-  loading_strategy:     'Strategia di serie e ROI…',
-  done:                 'Report completato',
-  error:                'Errore',
+  idle:                         '',
+  loading_amazon:               'Raccolta dati Amazon…',
+  awaiting_validation:          'Scegli il competitor target',
+  loading_signals:              'Raccolta segnali (trend + Reddit)…',
+  loading_passo0:               'Estrazione pain points…',
+  awaiting_painpoint_selection: 'Scegli i pain point da analizzare',
+  loading_insights:             'Analisi insight, gap e strategia…',
+  loading_strategy:             'Strategia di serie e ROI…',
+  done:                         'Report completato',
+  error:                        'Errore',
 }
 
-const SERVER_STAGE_MAP: Record<string, Stage> = {
-  passo0:   'loading_passo0',
-  insights: 'loading_insights',
-  strategy: 'loading_strategy',
+// Tipo per i dati di anteprima dopo la fase pain points
+type PainPointsPreviewData = {
+  scoring: { score: number; trendSignal: string; entryDifficulty: string }
+  passo0: { angolo: string; target_reader: string }
+  amazonSummary: { topBooks: FilteredBook[]; keyword: string }
+  trendsSummary: { available: boolean; yoyGrowth: number; peakMonth: string | null }
+  redditSummary: { available: boolean; postCount: number; commentCount: number }
 }
 
 const MARKETS: { value: Market; label: string }[] = [
@@ -72,6 +77,7 @@ export default function AnalyzePage() {
   const [cpc, setCpc]                     = useState('')
   const [stage, setStage]                 = useState<Stage>('idle')
   const [targetAsinFromUrl, setTargetAsinFromUrl] = useState<string | null>(null)
+  const [skipTargetSelection, setSkipTargetSelection] = useState(false)
   const [report, setReport]   = useState<FullReport | null>(null)
   const [reportId, setReportId] = useState<string | null>(null)
   const [error, setError]     = useState<string | null>(null)
@@ -80,7 +86,7 @@ export default function AnalyzePage() {
   const [credits, setCredits] = useState<CreditsData | null>(null)
   const [creditsLoading, setCreditsLoading] = useState(true)
 
-  // User notes (Sessione 4)
+  // User notes
   const [userNotes, setUserNotes] = useState('')
   const [showNotes, setShowNotes] = useState(false)
   const [showCpc, setShowCpc] = useState(false)
@@ -88,21 +94,29 @@ export default function AnalyzePage() {
   const [plannedPages, setPlannedPages] = useState('')
   const [showPlannedParams, setShowPlannedParams] = useState(false)
 
-  // Autocomplete suggestions (Sessione 8)
+  // Autocomplete suggestions
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const suggestionsRef = useRef<HTMLDivElement>(null)
 
-  // Leggi URL params da Target Finder (?keyword=&market=&target=)
+  // Pain point selection state (Step 2 — curated mode)
+  const [analysisId, setAnalysisId] = useState<string | null>(null)
+  const [painPointsToReview, setPainPointsToReview] = useState<PainPoint[]>([])
+  const [selectedPainPointIds, setSelectedPainPointIds] = useState<Set<string>>(new Set())
+  const [previewData, setPreviewData] = useState<PainPointsPreviewData | null>(null)
+
+  // Leggi URL params da Target Finder (?keyword=&market=&target=&skipTarget=)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const kw  = params.get('keyword')
-    const mkt = params.get('market') as Market | null
-    const tgt = params.get('target')
+    const kw   = params.get('keyword')
+    const mkt  = params.get('market') as Market | null
+    const tgt  = params.get('target')
+    const skip = params.get('skipTarget') === '1'
     if (kw) setKeyword(kw)
     if (mkt && ['US', 'UK', 'DE', 'FR', 'IT', 'ES'].includes(mkt)) setMarket(mkt)
     if (tgt) setTargetAsinFromUrl(tgt.toUpperCase())
+    if (skip || tgt) setSkipTargetSelection(true)
   }, [])
 
   // Fetch credits on mount
@@ -189,6 +203,10 @@ export default function AnalyzePage() {
     setCustomAsinInput('')
     setCustomAsinProduct(null)
     setCustomAsinError(null)
+    setAnalysisId(null)
+    setPainPointsToReview([])
+    setSelectedPainPointIds(new Set())
+    setPreviewData(null)
     setStage('loading_amazon')
 
     try {
@@ -205,7 +223,7 @@ export default function AnalyzePage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keyword: kw, market }),
-        }).then(r => r.ok ? r.json() : { available: false, yoyGrowth: 0, relatedQueries: [], timelineData: [], keyword: kw }),
+        }).then(r => r.ok ? r.json() : { available: false, yoyGrowth: 0, relatedQueries: [], timelineData: [], keyword: kw, peakMonth: null }),
         fetch('/api/reddit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -261,12 +279,11 @@ export default function AnalyzePage() {
     }
   }, [customAsinInput, market])
 
-  // ── Phase 2: await signals, run AI pipeline ───────────────────────────────────
+  // ── Phase 2: await signals, call /api/analyze/pain-points ────────────────────
   const handlePhase2 = useCallback(async () => {
     if (!amazonDataState || !signalsRef.current) return
 
-    const kw       = kwRef.current
-    const cpcValue = cpcRef.current
+    const kw = kwRef.current
 
     // Apply selected competitor target
     let finalAmazonData: AmazonData = { ...amazonDataState }
@@ -285,58 +302,104 @@ export default function AnalyzePage() {
 
       setStage('loading_passo0')
 
-      const res = await fetch('/api/analyze', {
+      const res = await fetch('/api/analyze/pain-points', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          keyword: kw, market, amazonData: finalAmazonData, trendsData, redditData, youtubeData,
-          cpc: cpcValue, userNotes: userNotes.trim() || undefined,
-          plannedPrice: plannedPriceRef.current,
-          plannedPages: plannedPagesRef.current,
+          keyword: kw,
+          market,
+          amazonData: finalAmazonData,
+          trendsData,
+          redditData,
+          youtubeData,
         }),
       })
-      if (!res.ok) throw new Error(`Analisi AI: ${await res.text()}`)
-      if (!res.body) throw new Error('Stream non supportato dal browser')
 
-      const reader  = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer    = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          const event = JSON.parse(line) as { type: string; stage?: string; report?: FullReport; message?: string }
-
-          if (event.type === 'progress' && event.stage) {
-            const next = SERVER_STAGE_MAP[event.stage]
-            if (next) setStage(next)
-          } else if (event.type === 'done' && event.report) {
-            setReport(event.report)
-            setReportId((event.report as { id?: string }).id ?? null)
-            setStage('done')
-          } else if (event.type === 'error') {
-            if ((event as { errorType?: string }).errorType === 'billing_anthropic') {
-              setError('BILLING_ANTHROPIC')
-              setStage('error')
-              return
-            }
-            throw new Error(event.message ?? 'Errore sconosciuto dal server')
-          }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: res.statusText }))
+        const errMsg = (errData as { error?: string }).error ?? res.statusText
+        if (res.status === 402) {
+          setError('BILLING_ANTHROPIC')
+          setStage('error')
+          return
         }
+        throw new Error(errMsg)
       }
+
+      const data = await res.json() as {
+        analysisId: string
+        painPoints: PainPoint[]
+        painPointsAmazon: PainPoint[]
+        scoring: { score: number; trendSignal: string; entryDifficulty: string }
+        passo0: { angolo: string; target_reader: string }
+        amazonSummary: { topBooks: FilteredBook[]; keyword: string }
+        trendsSummary: { available: boolean; yoyGrowth: number; peakMonth: string | null }
+        redditSummary: { available: boolean; postCount: number; commentCount: number }
+      }
+
+      const allPainPoints = [...data.painPoints, ...(data.painPointsAmazon ?? [])]
+      setAnalysisId(data.analysisId)
+      setPainPointsToReview(allPainPoints)
+      setSelectedPainPointIds(new Set(allPainPoints.filter(p => p.id).map(p => p.id!)))
+      setPreviewData({
+        scoring: data.scoring,
+        passo0: data.passo0,
+        amazonSummary: data.amazonSummary,
+        trendsSummary: data.trendsSummary,
+        redditSummary: data.redditSummary,
+      })
+      setStage('awaiting_painpoint_selection')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStage('error')
     }
-  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market, userNotes])
+  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market])
 
-  const isLoading = !['idle', 'awaiting_validation', 'done', 'error'].includes(stage)
+  // ── Phase 3: call /api/analyze/finalize with selected pain points ─────────────
+  const handlePhase3 = useCallback(async () => {
+    if (selectedPainPointIds.size === 0 || !analysisId) return
+    setStage('loading_insights')
+    setError(null)
+    try {
+      const res = await fetch('/api/analyze/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysisId,
+          selectedPainPointIds: Array.from(selectedPainPointIds),
+          cpc: cpcRef.current,
+          userNotes: userNotes.trim() || undefined,
+          plannedPrice: plannedPriceRef.current,
+          plannedPages: plannedPagesRef.current,
+        }),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: res.statusText }))
+        const errMsg = (errData as { error?: string }).error ?? res.statusText
+        if (res.status === 402) {
+          setError('BILLING_ANTHROPIC')
+          setStage('error')
+          return
+        }
+        if (res.status === 410) {
+          setError('Analisi scaduta (30 min superati). Riavvia dalla ricerca.')
+          setStage('error')
+          return
+        }
+        throw new Error(errMsg)
+      }
+      const data = await res.json() as { report: FullReport }
+      setReport(data.report)
+      setReportId((data.report as unknown as { id?: string }).id ?? null)
+      setStage('done')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setStage('error')
+    }
+  }, [analysisId, selectedPainPointIds, userNotes])
+
+  const isLoading = !['idle', 'awaiting_validation', 'awaiting_painpoint_selection', 'done', 'error'].includes(stage)
+  const isFormLocked = isLoading || stage === 'awaiting_painpoint_selection'
   const analyzeBlocked = credits !== null && credits.available && credits.analyzesAvailable < 1
 
   return (
@@ -373,9 +436,7 @@ export default function AnalyzePage() {
                 : 'bg-zinc-50 border-zinc-200'
             }`}>
               <div className="flex items-center justify-between gap-4">
-                {/* Left: due righe */}
                 <div className="space-y-1">
-                  {/* Analisi complete */}
                   <div className="flex items-baseline gap-2">
                     <span className={`text-xs font-semibold uppercase tracking-wider ${
                       credits.analyzesAvailable === 0 ? 'text-red-400' :
@@ -392,7 +453,6 @@ export default function AnalyzePage() {
                       <span className="text-xs text-amber-500 ml-1">ultime rimaste</span>
                     )}
                   </div>
-                  {/* Scouting Target Finder */}
                   <div className="flex items-baseline gap-2">
                     <span className={`text-xs font-semibold uppercase tracking-wider ${
                       credits.targetFinderAvailable === 0 ? 'text-red-400' :
@@ -412,7 +472,6 @@ export default function AnalyzePage() {
                     )}
                   </div>
                 </div>
-                {/* Right: SerpApi + Apify + Anthropic detail */}
                 <div className="text-right text-xs text-zinc-400 space-y-0.5 shrink-0">
                   <div>
                     <a href="https://serpapi.com/manage-api-key" target="_blank" rel="noreferrer"
@@ -470,7 +529,7 @@ export default function AnalyzePage() {
                   onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
                   onKeyDown={e => { if (e.key === 'Escape') setShowSuggestions(false) }}
                   placeholder="es. stoicism for beginners"
-                  disabled={isLoading || stage === 'awaiting_validation'}
+                  disabled={isFormLocked || stage === 'awaiting_validation'}
                   className="w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:bg-zinc-50"
                 />
                 {showSuggestions && suggestions.length > 0 && (
@@ -500,7 +559,7 @@ export default function AnalyzePage() {
               <select
                 value={market}
                 onChange={e => setMarket(e.target.value as Market)}
-                disabled={isLoading || stage === 'awaiting_validation'}
+                disabled={isFormLocked || stage === 'awaiting_validation'}
                 className="rounded-lg border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 bg-white"
               >
                 {MARKETS.map(m => (
@@ -509,7 +568,7 @@ export default function AnalyzePage() {
               </select>
               <button
                 type="submit"
-                disabled={isLoading || !keyword.trim() || stage === 'awaiting_validation' || analyzeBlocked}
+                disabled={isFormLocked || !keyword.trim() || stage === 'awaiting_validation' || analyzeBlocked}
                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title={
                   credits?.analyzesAvailable === 0 ? 'Crediti SerpApi insufficienti — ricarica su serpapi.com' :
@@ -529,7 +588,7 @@ export default function AnalyzePage() {
                   value={cpc}
                   onChange={e => setCpc(e.target.value)}
                   placeholder="es. 0.85"
-                  disabled={isLoading || stage === 'awaiting_validation'}
+                  disabled={isFormLocked || stage === 'awaiting_validation'}
                   className="w-28 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
                 />
                 <span className="text-xs text-zinc-400">$/€ per click · usato per stimare il costo ads nel modello ROI §7</span>
@@ -594,7 +653,7 @@ export default function AnalyzePage() {
                       value={plannedPrice}
                       onChange={e => setPlannedPrice(e.target.value)}
                       placeholder={`es. 14.99`}
-                      disabled={isLoading || stage === 'awaiting_validation'}
+                      disabled={isFormLocked || stage === 'awaiting_validation'}
                       className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
                     />
                     <p className="text-xs text-zinc-400">Se assente: usato il prezzo del bersaglio</p>
@@ -606,7 +665,7 @@ export default function AnalyzePage() {
                       value={plannedPages}
                       onChange={e => setPlannedPages(e.target.value)}
                       placeholder="es. 180"
-                      disabled={isLoading || stage === 'awaiting_validation'}
+                      disabled={isFormLocked || stage === 'awaiting_validation'}
                       className="w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50"
                     />
                     <p className="text-xs text-zinc-400">Influisce sulla royalty (costo di stampa KDP). Se assente: usate le pagine del bersaglio</p>
@@ -633,7 +692,7 @@ export default function AnalyzePage() {
                     maxLength={1000}
                     rows={4}
                     placeholder="Es. ho notato che i libri esistenti ignorano il target over 50 · il formato workbook sembra mancante · la keyword X sembra emergente…"
-                    disabled={isLoading || stage === 'awaiting_validation'}
+                    disabled={isFormLocked || stage === 'awaiting_validation'}
                     className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:bg-zinc-50 resize-y"
                   />
                   <p className="text-xs text-zinc-400 mt-1 text-right">{userNotes.length}/1000</p>
@@ -642,7 +701,7 @@ export default function AnalyzePage() {
               )}
             </div>
 
-            {(isLoading || stage === 'awaiting_validation') && (
+            {(isLoading || stage === 'awaiting_validation' || stage === 'awaiting_painpoint_selection') && (
               <div className="mt-4">
                 <PipelineProgress stage={stage} />
               </div>
@@ -669,8 +728,8 @@ export default function AnalyzePage() {
             )}
           </form>
 
-          {/* ── Validation panel ──────────────────────────────────────────────── */}
-          {stage === 'awaiting_validation' && amazonDataState && (
+          {/* ── Validation panel (target selection) — solo se non skipTargetSelection ── */}
+          {stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection && (
             <ValidationPanel
               amazonData={amazonDataState}
               market={market}
@@ -686,6 +745,64 @@ export default function AnalyzePage() {
               onProceed={handlePhase2}
             />
           )}
+
+          {/* ── Skip target recap card — visibile quando arriva da /target o con skipTarget=1 ── */}
+          {stage === 'awaiting_validation' && amazonDataState && skipTargetSelection && (
+            <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-zinc-800">Riepilogo analisi</h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">Parametri confermati — procedi con l&apos;analisi</p>
+                  <div className="mt-3 space-y-1.5 text-sm text-zinc-700">
+                    <div>
+                      <span className="text-xs text-zinc-400 mr-1.5">Keyword:</span>
+                      <span className="font-medium">{kwRef.current || keyword}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-zinc-400 mr-1.5">Mercato:</span>
+                      <span className="font-medium">{market}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs text-zinc-400 mr-1.5">Target:</span>
+                      {targetAsinFromUrl ? (
+                        <span className="font-mono text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-0.5 rounded">
+                          {targetAsinFromUrl}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-zinc-500 italic">Selezionato automaticamente da BookInsight</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={handlePhase2}
+                  className="shrink-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-sm font-medium transition-colors"
+                >
+                  Avvia analisi →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Pain point selection panel ──────────────────────────────────────── */}
+          {stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData && (
+            <PainPointSelectionPanel
+              painPoints={painPointsToReview}
+              selectedIds={selectedPainPointIds}
+              onToggle={(id) => setSelectedPainPointIds(prev => {
+                const next = new Set(prev)
+                if (next.has(id)) next.delete(id)
+                else next.add(id)
+                return next
+              })}
+              onSelectAll={() => setSelectedPainPointIds(
+                new Set(painPointsToReview.filter(p => p.id).map(p => p.id!))
+              )}
+              onDeselectAll={() => setSelectedPainPointIds(new Set())}
+              onContinue={handlePhase3}
+              previewData={previewData}
+            />
+          )}
         </div>
 
         {report && <ReportView report={report} />}
@@ -697,6 +814,218 @@ export default function AnalyzePage() {
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+// ─── Badge helpers ────────────────────────────────────────────────────────────
+
+function fonteBadgeClass(fonte: string): string {
+  if (fonte === 'reddit')               return 'bg-orange-100 text-orange-700 border-orange-200'
+  if (fonte === 'youtube')              return 'bg-red-100 text-red-700 border-red-200'
+  if (fonte === 'recensione_negativa')  return 'bg-rose-100 text-rose-700 border-rose-200'
+  if (fonte === 'recensione_positiva')  return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+  return 'bg-zinc-100 text-zinc-600 border-zinc-200'
+}
+
+function registerBadgeClass(reg: string): string {
+  if (reg === 'frustrazione' || reg === 'rabbia') return 'bg-red-50 text-red-600 border-red-200'
+  if (reg === 'ansia')     return 'bg-amber-50 text-amber-700 border-amber-200'
+  if (reg === 'desiderio') return 'bg-purple-50 text-purple-700 border-purple-200'
+  if (reg === 'confusione') return 'bg-yellow-50 text-yellow-700 border-yellow-200'
+  if (reg === 'orgoglio')  return 'bg-green-50 text-green-700 border-green-200'
+  return 'bg-zinc-50 text-zinc-500 border-zinc-200'
+}
+
+// ─── Pain Point Card ──────────────────────────────────────────────────────────
+
+function PainPointCard({ pp, isSelected, onToggle }: {
+  pp: PainPoint
+  isSelected: boolean
+  onToggle: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const hasId = !!pp.id
+  const hasEvidence = (pp.evidence_quotes && pp.evidence_quotes.length > 0) ||
+                      (pp.voice_phrases && pp.voice_phrases.length > 0)
+
+  return (
+    <div className={`border rounded-xl p-4 mb-3 transition-colors ${
+      isSelected ? 'border-indigo-300 bg-indigo-50' : 'border-zinc-200 bg-white'
+    }`}>
+      <div className="flex gap-3">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggle}
+          disabled={!hasId}
+          className="mt-0.5 shrink-0 w-4 h-4 rounded accent-indigo-600 cursor-pointer disabled:cursor-default"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <p className="text-sm font-semibold text-zinc-800 leading-snug flex-1">{pp.pain_point}</p>
+            <span className="shrink-0 text-xs font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full">
+              {pp.score.toFixed(1)}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">F:{pp.F}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">I:{pp.I}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">S:{pp.S}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${fonteBadgeClass(pp.fonte)}`}>
+              {pp.fonte.replace(/_/g, ' ')}
+            </span>
+            {pp.emotional_register && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${registerBadgeClass(pp.emotional_register)}`}>
+                {pp.emotional_register}
+              </span>
+            )}
+            {pp.criticalSignal && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-red-100 text-red-700 border-red-200 font-semibold">
+                ⚡ critico
+              </span>
+            )}
+          </div>
+          {hasEvidence ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                {expanded ? '▲ Nascondi evidence' : '▼ Mostra evidence'}
+              </button>
+              {expanded && (
+                <div className="mt-2 space-y-2">
+                  {pp.evidence_quotes && pp.evidence_quotes.length > 0 && (
+                    <ul className="space-y-1">
+                      {pp.evidence_quotes.slice(0, 4).map((q, i) => (
+                        <li key={i} className="text-xs text-zinc-600 italic border-l-2 border-indigo-200 pl-2">
+                          &quot;{q.length > 200 ? q.slice(0, 200) + '…' : q}&quot;
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {pp.voice_phrases && pp.voice_phrases.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {pp.voice_phrases.slice(0, 5).map((phrase, i) => (
+                        <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {phrase}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-zinc-400 italic line-clamp-2">{pp.evidence?.slice(0, 120) ?? ''}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Pain Point Selection Panel ───────────────────────────────────────────────
+
+function PainPointSelectionPanel({
+  painPoints, selectedIds, onToggle, onSelectAll, onDeselectAll, onContinue, previewData,
+}: {
+  painPoints: PainPoint[]
+  selectedIds: Set<string>
+  onToggle: (id: string) => void
+  onSelectAll: () => void
+  onDeselectAll: () => void
+  onContinue: () => void
+  previewData: PainPointsPreviewData
+}) {
+  const selectableTotal = painPoints.filter(p => p.id).length
+  const selectedCount   = selectedIds.size
+
+  return (
+    <div className="mb-8 space-y-4">
+      {/* Anteprima analisi */}
+      <div className="bg-white rounded-2xl border border-zinc-200 p-4">
+        <h3 className="text-sm font-semibold text-zinc-700 mb-3">Anteprima analisi</h3>
+        <div className="flex flex-wrap gap-6">
+          <div>
+            <div className="text-2xl font-black text-indigo-700 tabular-nums">{previewData.scoring.score}</div>
+            <div className="text-xs text-zinc-400">Profitability /100</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold text-zinc-700">{previewData.scoring.trendSignal}</div>
+            <div className="text-xs text-zinc-400">Trend segnale</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold text-zinc-700">{previewData.scoring.entryDifficulty}</div>
+            <div className="text-xs text-zinc-400">Difficoltà entrata</div>
+          </div>
+          {previewData.redditSummary.available && (
+            <div>
+              <div className="text-lg font-bold text-zinc-700">{previewData.redditSummary.postCount} post</div>
+              <div className="text-xs text-zinc-400">{previewData.redditSummary.commentCount} commenti Reddit</div>
+            </div>
+          )}
+        </div>
+        {previewData.passo0?.angolo && (
+          <div className="mt-3 text-xs text-zinc-500 border-t border-zinc-100 pt-3">
+            <span className="font-medium text-zinc-600">Angolo competitor:</span>{' '}
+            {previewData.passo0.angolo}
+          </div>
+        )}
+      </div>
+
+      {/* Selezione pain points */}
+      <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6">
+        <div className="flex items-start justify-between gap-4 mb-2">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-800">Seleziona i pain point da analizzare</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Scarta quelli irrilevanti per il tuo mercato. Quelli rimanenti guideranno Insights, Gap Analysis e Strategia.
+            </p>
+          </div>
+          <span className="shrink-0 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full whitespace-nowrap">
+            {selectedCount}/{selectableTotal}
+          </span>
+        </div>
+
+        <div className="mt-4">
+          {painPoints.map(pp => (
+            <PainPointCard
+              key={pp.id ?? pp.pain_point}
+              pp={pp}
+              isSelected={pp.id ? selectedIds.has(pp.id) : true}
+              onToggle={() => pp.id && onToggle(pp.id)}
+            />
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3 mt-4 pt-4 border-t border-zinc-100">
+          <button
+            type="button"
+            onClick={onSelectAll}
+            className="text-sm text-zinc-600 hover:text-zinc-800 border border-zinc-300 rounded-lg px-4 py-2 transition-colors"
+          >
+            Seleziona tutti
+          </button>
+          <button
+            type="button"
+            onClick={onDeselectAll}
+            className="text-sm text-zinc-600 hover:text-zinc-800 border border-zinc-300 rounded-lg px-4 py-2 transition-colors"
+          >
+            Deseleziona tutti
+          </button>
+          <button
+            type="button"
+            onClick={onContinue}
+            disabled={selectedCount === 0}
+            className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Continua con {selectedCount} pain point →
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -858,12 +1187,12 @@ function ValidationPanel({
 // ─── Pipeline Progress ─────────────────────────────────────────────────────────
 
 const STEPS: { key: Stage; label: string }[] = [
-  { key: 'loading_amazon',      label: 'Amazon' },
-  { key: 'awaiting_validation', label: 'Validazione' },
-  { key: 'loading_signals',     label: 'Segnali' },
-  { key: 'loading_passo0',      label: 'Competitor' },
-  { key: 'loading_insights',    label: 'Insight & Gap' },
-  { key: 'loading_strategy',    label: 'Strategia' },
+  { key: 'loading_amazon',               label: 'Amazon' },
+  { key: 'awaiting_validation',          label: 'Target' },
+  { key: 'loading_signals',              label: 'Segnali' },
+  { key: 'loading_passo0',               label: 'Pain Points' },
+  { key: 'awaiting_painpoint_selection', label: 'Selezione' },
+  { key: 'loading_insights',             label: 'Analisi' },
 ]
 
 function PipelineProgress({ stage }: { stage: Stage }) {
@@ -876,14 +1205,14 @@ function PipelineProgress({ stage }: { stage: Stage }) {
           const isDone       = activeIdx > i
           const isActive     = activeIdx === i
           const isPending    = activeIdx < i
-          const isValidation = step.key === 'awaiting_validation'
+          const isPause      = step.key === 'awaiting_validation' || step.key === 'awaiting_painpoint_selection'
 
           return (
             <div key={step.key} className="flex items-center gap-1.5">
               <div className={[
                 'w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
                 isDone    ? 'bg-green-500 text-white' : '',
-                isActive  ? `bg-indigo-600 text-white ${isValidation ? '' : 'animate-pulse'}` : '',
+                isActive  ? `bg-indigo-600 text-white ${isPause ? '' : 'animate-pulse'}` : '',
                 isPending ? 'bg-zinc-200 text-zinc-400' : '',
               ].join(' ')}>
                 {isDone ? '✓' : i + 1}
