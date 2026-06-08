@@ -290,6 +290,7 @@ export async function runPainPointsReddit(
     }
 
     return {
+      id: `pp_${Math.random().toString(36).slice(2, 10)}`,
       pain_point: r.pain_point,
       F,
       I: Math.min(10, Math.max(1, Math.round(r.I))),

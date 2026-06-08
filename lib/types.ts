@@ -142,6 +142,7 @@ export interface YouTubeData {
 // ─── Pain Point (output Haiku) ────────────────────────────────────────────────
 
 export interface PainPoint {
+  id?: string            // identificatore stabile per selezione utente (curated mode)
   pain_point: string
   F: number
   I: number

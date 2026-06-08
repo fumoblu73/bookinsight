@@ -37,6 +37,15 @@ export async function cacheSet(key: string, value: unknown, exSeconds: number): 
   }
 }
 
+export async function cacheDel(key: string): Promise<void> {
+  try {
+    const redis = getRedis()
+    await redis.del(key)
+  } catch {
+    // cache failure non blocca la risposta
+  }
+}
+
 // ─── Chiavi Redis ─────────────────────────────────────────────────────────────
 // report:{id}         → JSON del ReportRecord completo
 // reports:index       → ZSET scored by createdAt (timestamp ms) → id
