@@ -99,6 +99,7 @@ export default function AnalyzePage() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const suggestionsRef = useRef<HTMLDivElement>(null)
+  const autoStartedRef = useRef(false)
 
   // Pain point selection state (Step 2 — curated mode)
   const [analysisId, setAnalysisId] = useState<string | null>(null)
@@ -354,6 +355,19 @@ export default function AnalyzePage() {
       setStage('error')
     }
   }, [amazonDataState, selectedTargetAsin, customAsinProduct, market])
+
+  // Auto-start Phase 2 quando l'utente ha già espresso intent skipTarget
+  useEffect(() => {
+    if (
+      stage === 'awaiting_validation' &&
+      skipTargetSelection &&
+      amazonDataState &&
+      !autoStartedRef.current
+    ) {
+      autoStartedRef.current = true
+      handlePhase2()
+    }
+  }, [stage, skipTargetSelection, amazonDataState, handlePhase2])
 
   // ── Phase 3: call /api/analyze/finalize with selected pain points ─────────────
   const handlePhase3 = useCallback(async () => {
@@ -747,7 +761,7 @@ export default function AnalyzePage() {
           )}
 
           {/* ── Skip target recap card — visibile quando arriva da /target o con skipTarget=1 ── */}
-          {stage === 'awaiting_validation' && amazonDataState && skipTargetSelection && (
+          {(stage === 'awaiting_validation' || stage === 'loading_signals' || stage === 'loading_passo0') && amazonDataState && skipTargetSelection && (
             <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
