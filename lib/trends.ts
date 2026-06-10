@@ -124,6 +124,12 @@ function calcYoY(timeline: TrendsDataPoint[]): number {
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function fetchTrendsData(keyword: string, market: Market = 'US'): Promise<TrendsData> {
+  console.log('[trends-diag] START', JSON.stringify({
+    keyword,
+    market,
+    timestamp: new Date().toISOString(),
+  }))
+
   const endDate   = new Date()
   const startDate = new Date()
   startDate.setMonth(startDate.getMonth() - MONTHS)
@@ -134,12 +140,52 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
   const trendsQuery = shortKeyword(keyword)
   const { geo, hl } = MARKET_TRENDS_PARAMS[market]
 
+  console.log('[trends-diag] QUERY', JSON.stringify({
+    keyword,
+    trendsQuery,
+    dateRange,
+    geo,
+    hl,
+  }))
+
   try {
     // Due chiamate in parallelo: timeline + related queries
-    const [timelineRaw, relatedRaw] = await Promise.all([
+    const tStart = Date.now()
+    const [timelineSettled, relatedSettled] = await Promise.allSettled([
       serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES', geo, hl }),
       serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'RELATED_QUERIES', geo, hl }),
     ])
+    const tElapsed = Date.now() - tStart
+
+    console.log('[trends-diag] SERPAPI_DONE', JSON.stringify({
+      keyword,
+      elapsedMs: tElapsed,
+      timelineStatus: timelineSettled.status,
+      timelineReason: timelineSettled.status === 'rejected' ? String(timelineSettled.reason).slice(0, 200) : null,
+      relatedStatus: relatedSettled.status,
+      relatedReason: relatedSettled.status === 'rejected' ? String(relatedSettled.reason).slice(0, 200) : null,
+    }))
+
+    const timelineRaw = timelineSettled.status === 'fulfilled' ? timelineSettled.value : null
+    const relatedRaw  = relatedSettled.status  === 'fulfilled' ? relatedSettled.value  : null
+
+    // ── Diagnostica payload TIMESERIES ────────────────────────────────────────
+    if (timelineRaw && typeof timelineRaw === 'object') {
+      const t   = timelineRaw as Record<string, unknown>
+      const iot = t.interest_over_time as Record<string, unknown> | undefined
+      const td  = (iot?.timeline_data as unknown[]) ?? []
+      console.log('[trends-diag] TIMELINE_PAYLOAD', JSON.stringify({
+        keyword,
+        hasInterestOverTime:   !!iot,
+        timelineDataLength:    td.length,
+        firstDate: td.length > 0 ? (td[0] as Record<string, unknown>).date : null,
+        lastDate:  td.length > 0 ? (td[td.length - 1] as Record<string, unknown>).date : null,
+        searchMetadataStatus:  (t.search_metadata as Record<string, unknown>)?.status,
+        error: t.error || null,
+      }))
+    } else {
+      console.log('[trends-diag] TIMELINE_PAYLOAD_NULL', JSON.stringify({ keyword }))
+    }
 
     // ── Parse timeline ────────────────────────────────────────────────────────
     const timelineRes = timelineRaw as {
@@ -149,9 +195,9 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
           values?: Array<{ extracted_value?: number }>
         }>
       }
-    }
+    } | null
 
-    const timeline: TrendsDataPoint[] = (timelineRes.interest_over_time?.timeline_data ?? [])
+    const timeline: TrendsDataPoint[] = (timelineRes?.interest_over_time?.timeline_data ?? [])
       .map(item => ({
         date:  toYearMonth(item.date ?? ''),
         value: item.values?.[0]?.extracted_value ?? 0,
@@ -166,10 +212,10 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
         top?:    Array<{ query?: string; extracted_value?: number }>
         rising?: Array<{ query?: string; extracted_value?: number }>
       }
-    }
+    } | null
 
-    const topItems    = relatedRes.related_queries?.top    ?? []
-    const risingItems = relatedRes.related_queries?.rising ?? []
+    const topItems    = relatedRes?.related_queries?.top    ?? []
+    const risingItems = relatedRes?.related_queries?.rising ?? []
 
     const seen = new Set<string>()
     const relatedQueries: RelatedQuery[] = []
@@ -188,7 +234,7 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       })
     }
 
-    return {
+    const result: TrendsData = {
       keyword,
       timelineData:   timeline,
       relatedQueries: relatedQueries.slice(0, 10),
@@ -196,7 +242,23 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       available:  timeline.length > 0,
       peakMonth:  calcPeakMonth(timeline),
     }
+
+    console.log('[trends-diag] RESULT', JSON.stringify({
+      keyword,
+      available:           result.available,
+      timelineDataLength:  result.timelineData?.length ?? 0,
+      yoyGrowth:           result.yoyGrowth,
+      peakMonth:           result.peakMonth,
+      relatedQueriesCount: result.relatedQueries?.length ?? 0,
+    }))
+
+    return result
   } catch (err) {
+    console.log('[trends-diag] EXCEPTION', JSON.stringify({
+      keyword,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack?.slice(0, 500) : null,
+    }))
     console.error(`[trends] fetchTrendsData failed for "${trendsQuery}" (original: "${keyword}"):`, err)
     return {
       keyword,

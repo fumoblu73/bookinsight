@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchTrendsData } from '@/lib/trends'
 import type { Market } from '@/lib/types'
 
-export const maxDuration = 10
+export const maxDuration = 30
 
 export async function POST(req: NextRequest) {
   try {
