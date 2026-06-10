@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Market, FilteredBook, RawBook, RoiEstimate } from '@/lib/types'
+import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence } from '@/lib/types'
 import { calcRoiEstimate } from '@/lib/scoring'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -84,6 +84,7 @@ export interface FullReport {
     } | null
     reviews: Array<{ asin: string; bookTitle: string; reviews: Array<{ rating: number; title: string; body: string }> }>
   }
+  ads_intelligence?: AdsIntelligence
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
