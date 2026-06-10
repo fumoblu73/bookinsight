@@ -423,6 +423,7 @@ export async function runFinalizePhase(
     roiNarrative,
     budget: roi.params.budgetProduzione,
     amazon,
+    ads_intelligence: amazon.ads_intelligence,
     competitiveDynamism,
     complianceCategory,
     complianceRisk,

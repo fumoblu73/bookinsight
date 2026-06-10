@@ -1,4 +1,4 @@
-import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, BookReviews } from './types'
+import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, BookReviews, AdsIntelligence } from './types'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -85,6 +85,54 @@ const PAPERBACK_FORMATS = new Set([
 const MIN_AGE_DAYS = 30
 export const MAX_BOOKS = 5
 export const MAX_PRODUCT_CALLS = 8  // cap product calls per contenere i crediti SerpApi nel free tier
+export const MAX_BOOKS_FOR_ADS = 10
+export const MAX_BSR_FOR_ADS = 500_000
+export const AD_BUDGET_RULE_PERCENT = 0.30
+export const WEAK_SAMPLE_THRESHOLD = 5
+
+function calculateAdsIntelligence(books: FilteredBook[], market: Market): AdsIntelligence {
+  const eligible = books.filter(b =>
+    b.bsr > 0 &&
+    b.bsr < MAX_BSR_FOR_ADS &&
+    b.estimatedDailySalesMin > 0 &&
+    b.estimatedDailySalesMax > 0
+  ).slice(0, MAX_BOOKS_FOR_ADS)
+
+  const competitorCount = eligible.length
+  const currency = MARKET_CURRENCY[market]
+
+  if (competitorCount === 0) {
+    return {
+      available: false,
+      recommendedMonthlyAdBudget: 0,
+      competitorMonthlyRevenueAvg: 0,
+      competitorMonthlyRevenueRange: { min: 0, max: 0 },
+      competitorCount: 0,
+      weakSampleWarning: false,
+      currency,
+    }
+  }
+
+  const monthlyRevenues = eligible.map(b => {
+    const avgDailySales = (b.estimatedDailySalesMin + b.estimatedDailySalesMax) / 2
+    return avgDailySales * b.price * 30
+  })
+
+  const competitorMonthlyRevenueAvg = monthlyRevenues.reduce((s, r) => s + r, 0) / competitorCount
+  const recommendedMonthlyAdBudget = competitorMonthlyRevenueAvg * AD_BUDGET_RULE_PERCENT
+  const min = Math.min(...monthlyRevenues)
+  const max = Math.max(...monthlyRevenues)
+
+  return {
+    available: true,
+    recommendedMonthlyAdBudget: Math.round(recommendedMonthlyAdBudget * 100) / 100,
+    competitorMonthlyRevenueAvg: Math.round(competitorMonthlyRevenueAvg * 100) / 100,
+    competitorMonthlyRevenueRange: { min: Math.round(min * 100) / 100, max: Math.round(max * 100) / 100 },
+    competitorCount,
+    weakSampleWarning: competitorCount < WEAK_SAMPLE_THRESHOLD,
+    currency,
+  }
+}
 
 // ─── SerpApi fetch ────────────────────────────────────────────────────────────
 
@@ -662,18 +710,18 @@ export async function fetchAmazonData(keyword: string, market: Market, targetAsi
   if (unknownFormatCount > 0) {
     console.warn(`[amazon] fetchAmazonData: ${unknownFormatCount} libri scartati per formato sconosciuto`)
   }
-  const filtered = preFiltered
+  const sortedByBsr = preFiltered
     .filter(b => b.bsr > 0)
     .sort((a, b) => a.bsr - b.bsr)
-    .slice(0, MAX_BOOKS)
 
-  if (filtered.length < 3) {
+  if (sortedByBsr.slice(0, MAX_BOOKS).length < 3) {
     throw new Error(
       `Nicchia troppo piccola per "${keyword}" su ${market}. Meno di 3 libri trovati. Prova una keyword più generica o il mercato US.`
     )
   }
 
-  const topBooks: FilteredBook[] = filtered.map(b => {
+  // Map top MAX_BOOKS_FOR_ADS once; slice to MAX_BOOKS for topBooks
+  const adsFilteredBooks: FilteredBook[] = sortedByBsr.slice(0, MAX_BOOKS_FOR_ADS).map(b => {
     const pages = b.pages ?? 200
     const royalty = calcRoyalty(b.price, pages, market)
     const sales = bsrToSales(b.bsr, market)
@@ -686,6 +734,9 @@ export async function fetchAmazonData(keyword: string, market: Market, targetAsi
       estimatedDailySalesMax: sales.max,
     }
   })
+
+  const topBooks = adsFilteredBooks.slice(0, MAX_BOOKS)
+  const ads_intelligence = calculateAdsIntelligence(adsFilteredBooks, market)
 
   const subNiches = detectSubNiches(rawBooks, keyword)
   const targetOverride = targetAsin
@@ -717,5 +768,6 @@ export async function fetchAmazonData(keyword: string, market: Market, targetAsi
     competitorTarget,
     scrapedAt: new Date().toISOString(),
     topBookReviews: topBookReviews.length > 0 ? topBookReviews : undefined,
+    ads_intelligence,
   }
 }

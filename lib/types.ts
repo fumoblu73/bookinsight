@@ -48,6 +48,16 @@ export interface BookReviews {
   reviews: AmazonReview[]
 }
 
+export interface AdsIntelligence {
+  available: boolean
+  recommendedMonthlyAdBudget: number
+  competitorMonthlyRevenueAvg: number
+  competitorMonthlyRevenueRange: { min: number; max: number }
+  competitorCount: number
+  weakSampleWarning: boolean
+  currency: string
+}
+
 export interface AmazonData {
   market: Market
   keyword: string
@@ -57,6 +67,7 @@ export interface AmazonData {
   competitorTarget: FilteredBook
   scrapedAt: string
   topBookReviews?: BookReviews[] // recensioni testuali top 2 competitor
+  ads_intelligence: AdsIntelligence
 }
 
 // ─── Google Trends ────────────────────────────────────────────────────────────
@@ -194,6 +205,7 @@ export interface ReportRecord {
   competitionLevel?: string
   data?: unknown       // full report JSON
   log?: AnalysisLog    // pipeline execution log
+  ads_intelligence?: AdsIntelligence
 }
 
 // ─── Analysis Log ─────────────────────────────────────────────────────────────
