@@ -8,7 +8,7 @@ import {
 } from './compliance'
 import {
   ProfitabilityBreakdown, CompetitiveDynamism,
-  calcProfitabilityScore, calcRoiEstimate, calcCompetitiveDynamism,
+  calcProfitabilityScore, calcRoiEstimate, calcCompetitiveDynamism, calcRoiPerformance,
 } from './scoring'
 import {
   Passo0Result, KeyInsight, TrendForecastResult, GapAnalysisResult,
@@ -337,6 +337,23 @@ export async function runFinalizePhase(
     ...(prefetch ? { monthsToParity: prefetch.monthsToParity, arcReviews: prefetch.arcReviews } : {}),
   })
 
+  const adsIntelligence = {
+    ...amazon.ads_intelligence,
+    roi_performance: calcRoiPerformance(
+      amazon.ads_intelligence,
+      scoring.avgPrice,
+      scoring.avgPages,
+      amazon.market,
+      {
+        ...(plannedPrice     !== undefined && !isNaN(plannedPrice)     && plannedPrice > 0     ? { plannedPrice }     : {}),
+        ...(plannedPages     !== undefined && !isNaN(plannedPages)     && plannedPages > 0     ? { plannedPages }     : {}),
+        ...(costoCopertina   !== undefined && !isNaN(costoCopertina)                           ? { costoCopertina }   : {}),
+        ...(costoPerRecensione !== undefined && !isNaN(costoPerRecensione)                     ? { costoPerRecensione } : {}),
+        ...(prefetch ? { arcReviews: prefetch.arcReviews } : {}),
+      }
+    ),
+  }
+
   const finalizeLogs: LogEntry[] = []
 
   // ── Step: insights + trend forecast + gap analysis ────────────────────────
@@ -423,7 +440,7 @@ export async function runFinalizePhase(
     roiNarrative,
     budget: roi.params.budgetProduzione,
     amazon,
-    ads_intelligence: amazon.ads_intelligence,
+    ads_intelligence: adsIntelligence,
     competitiveDynamism,
     complianceCategory,
     complianceRisk,

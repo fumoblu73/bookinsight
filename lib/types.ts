@@ -48,6 +48,35 @@ export interface BookReviews {
   reviews: AmazonReview[]
 }
 
+export interface RoiPerformanceTarget {
+  label: 'breakeven' | 'roi_50' | 'roi_100'
+  multiplier: number
+}
+
+export interface RoiPerformanceByFixedPrice extends RoiPerformanceTarget {
+  monthlySalesNeeded: number
+  vsCompetitorAvg: number
+  monthsToBreakeven: number
+}
+
+export interface RoiPerformanceByFixedSales extends RoiPerformanceTarget {
+  royaltyNetMinPerSale: number
+  minBookPrice: number
+  monthsToBreakeven: number
+}
+
+export interface RoiPerformance {
+  available: boolean
+  monthlyAdBudget: number
+  competitorAvgMonthlySales: number
+  budgetProduzione: number
+  bookPriceUsed: number
+  bookPagesUsed: number
+  royaltyNetPerSale: number
+  byFixedPrice: RoiPerformanceByFixedPrice[]
+  byFixedSales: RoiPerformanceByFixedSales[]
+}
+
 export interface AdsIntelligence {
   available: boolean
   recommendedMonthlyAdBudget: number
@@ -56,6 +85,7 @@ export interface AdsIntelligence {
   competitorCount: number
   weakSampleWarning: boolean
   currency: string
+  roi_performance?: RoiPerformance
 }
 
 export interface AmazonData {

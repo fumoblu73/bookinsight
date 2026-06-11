@@ -1,7 +1,7 @@
 import { FilteredBook, PainPoint, TrendsData, RoasSignal, InvestVerdict, RoiScenario, RoiEstimate } from './types'
 import { getComplianceMultiplier, ComplianceRisk } from './compliance'
 import { calcRoyalty } from './amazon'
-import type { Market } from './types'
+import type { Market, AdsIntelligence, RoiPerformance, RoiPerformanceByFixedPrice, RoiPerformanceByFixedSales } from './types'
 
 export type { RoasSignal, InvestVerdict, RoiScenario, RoiEstimate }
 
@@ -212,6 +212,12 @@ const ADS_SHARE_START = 0.70
 const ADS_SHARE_DECAY = 0.50
 const ADS_SHARE_FLOOR = 0.20
 
+const ROI_TARGETS = [
+  { label: 'breakeven' as const, multiplier: 1.0 },
+  { label: 'roi_50'    as const, multiplier: 1.5 },
+  { label: 'roi_100'   as const, multiplier: 2.0 },
+]
+
 // ─── Investment / ROI Re-anchor ───────────────────────────────────────────────
 // §7: 3 scenari ancorati al competitor target, §6.2
 
@@ -410,4 +416,110 @@ export function calcCompetitiveDynamism(
   }
 
   return { signal, recent, mid, consolidated, excluded, total }
+}
+
+// ─── ROI Ads Performance ──────────────────────────────────────────────────────
+
+export function priceForRoyalty(
+  targetRoyaltyNet: number,
+  pages: number,
+  market: Market,
+): number {
+  for (let p = 1; p <= 99.99; p += 0.50) {
+    if (calcRoyalty(p, pages, market) >= targetRoyaltyNet) {
+      return Math.round(p * 100) / 100
+    }
+  }
+  return -1
+}
+
+export function calcRoiPerformance(
+  adsIntelligence: AdsIntelligence,
+  avgPrice: number,
+  avgPages: number,
+  market: Market,
+  opts: {
+    plannedPrice?: number
+    plannedPages?: number
+    costoCopertina?: number
+    arcReviews?: number
+    costoPerRecensione?: number
+  } = {},
+): RoiPerformance {
+  if (!adsIntelligence.available || adsIntelligence.recommendedMonthlyAdBudget <= 0) {
+    return {
+      available: false,
+      monthlyAdBudget: 0,
+      competitorAvgMonthlySales: 0,
+      budgetProduzione: 0,
+      bookPriceUsed: 0,
+      bookPagesUsed: 0,
+      royaltyNetPerSale: 0,
+      byFixedPrice: [],
+      byFixedSales: [],
+    }
+  }
+
+  const budget = adsIntelligence.recommendedMonthlyAdBudget
+  const competitorAvg = adsIntelligence.competitorMonthlyRevenueAvg
+  const competitorAvgMonthlySales = avgPrice > 0 ? competitorAvg / avgPrice : 0
+
+  const costoCopertina    = opts.costoCopertina    ?? DEFAULT_COSTO_COPERTINA
+  const costoPerRec       = opts.costoPerRecensione ?? DEFAULT_COSTO_PER_RECENSIONE
+  const arcReviews        = opts.arcReviews        ?? DEFAULT_ARC_REVIEWS
+  const budgetProduzione  = costoCopertina + costoPerRec * arcReviews
+
+  const bookPrice  = opts.plannedPrice ?? avgPrice
+  const bookPages  = opts.plannedPages ?? avgPages
+  const royaltyNet = calcRoyalty(bookPrice, bookPages, market)
+
+  const byFixedPrice: RoiPerformanceByFixedPrice[] = ROI_TARGETS.map(t => {
+    const royaltyTotaleRichiesta = budget * t.multiplier
+    const monthlySalesNeeded = royaltyNet > 0 ? Math.ceil(royaltyTotaleRichiesta / royaltyNet) : 0
+    const vsCompetitorAvg = competitorAvgMonthlySales > 0
+      ? monthlySalesNeeded / competitorAvgMonthlySales
+      : 0
+    const profittoMensile = budget * (t.multiplier - 1)
+    const monthsToBreakeven = profittoMensile > 0
+      ? Math.round((budgetProduzione / profittoMensile) * 10) / 10
+      : 999
+    return {
+      label: t.label,
+      multiplier: t.multiplier,
+      monthlySalesNeeded,
+      vsCompetitorAvg: Math.round(vsCompetitorAvg * 100) / 100,
+      monthsToBreakeven,
+    }
+  })
+
+  const byFixedSales: RoiPerformanceByFixedSales[] = ROI_TARGETS.map(t => {
+    const royaltyTotaleRichiesta = budget * t.multiplier
+    const royaltyNetMinPerSale = competitorAvgMonthlySales > 0
+      ? royaltyTotaleRichiesta / competitorAvgMonthlySales
+      : 0
+    const minBookPrice = priceForRoyalty(royaltyNetMinPerSale, bookPages, market)
+    const profittoMensile = budget * (t.multiplier - 1)
+    const monthsToBreakeven = profittoMensile > 0
+      ? Math.round((budgetProduzione / profittoMensile) * 10) / 10
+      : 999
+    return {
+      label: t.label,
+      multiplier: t.multiplier,
+      royaltyNetMinPerSale: Math.round(royaltyNetMinPerSale * 100) / 100,
+      minBookPrice,
+      monthsToBreakeven,
+    }
+  })
+
+  return {
+    available: true,
+    monthlyAdBudget: budget,
+    competitorAvgMonthlySales: Math.round(competitorAvgMonthlySales * 10) / 10,
+    budgetProduzione,
+    bookPriceUsed: bookPrice,
+    bookPagesUsed: bookPages,
+    royaltyNetPerSale: Math.round(royaltyNet * 100) / 100,
+    byFixedPrice,
+    byFixedSales,
+  }
 }
