@@ -1391,6 +1391,115 @@ export default function ReportView({ report }: { report: FullReport }) {
         </SectionNote>
       </Section>
 
+      {/* ── §8 Sostenibilità Ads ─────────────────────────────────────────── */}
+      {(() => {
+        const adsIntel = report.ads_intelligence
+        const roiPerf = adsIntel?.roi_performance
+        if (!adsIntel?.available || !roiPerf?.available) return null
+        const cur = adsIntel.currency
+        const labelMap: Record<string, string> = { breakeven: 'Breakeven', roi_50: 'ROI 50%', roi_100: 'ROI 100%' }
+        return (
+          <Section num="8" title="Sostenibilità Ads">
+            <div className="space-y-4">
+
+              {/* 1. Costo di Competitività */}
+              <SubCard title="Costo di Competitività" accent="indigo">
+                <p className="text-2xl font-bold text-zinc-900">
+                  {cur}{fmt(adsIntel.recommendedMonthlyAdBudget, 0)}
+                  <span className="text-sm font-normal text-zinc-500 ml-1">/mese</span>
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Calcolato come 30% del fatturato mensile medio dei top {adsIntel.competitorCount} competitor
+                  {' '}(range {cur}{fmt(adsIntel.competitorMonthlyRevenueRange.min, 0)}–{cur}{fmt(adsIntel.competitorMonthlyRevenueRange.max, 0)},
+                  {' '}media {cur}{fmt(adsIntel.competitorMonthlyRevenueAvg, 0)})
+                </p>
+                {adsIntel.weakSampleWarning && (
+                  <p className="text-xs text-zinc-400 mt-1.5 italic">Sample debole: meno di 5 competitor validi</p>
+                )}
+              </SubCard>
+
+              {/* 2. Box esplicativo */}
+              <div className="rounded-xl border border-zinc-200 bg-white px-5 py-4">
+                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">Come leggere queste tabelle</p>
+                <p className="text-sm text-zinc-600 leading-relaxed">
+                  Il Costo di Competitivit&agrave; ({cur}{fmt(adsIntel.recommendedMonthlyAdBudget, 0)}/mese) &egrave; il budget ads necessario per posizionarsi come uno dei top competitor di questa keyword (regola del 30%).
+                  {' '}Le due tabelle qui sotto rispondono a domande complementari: a parit&agrave; di prezzo del libro, quante vendite ti servono? A parit&agrave; di vendite (come il competitor medio), che prezzo deve avere il libro?
+                  {' '}I 3 target ROI vanno da breakeven (le ads pagano se stesse) a ROI 100% (raddoppio dell&apos;investimento ads).
+                </p>
+              </div>
+
+              {/* 3. Due tabelle affiancate */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <SubCard title="A parità di prezzo" accent="sky">
+                  <p className="text-xs text-zinc-500 mb-3">
+                    Prezzo: <strong className="text-zinc-700">{cur}{fmt(roiPerf.bookPriceUsed, 2)}</strong>
+                    {' · '}Pagine: <strong className="text-zinc-700">{roiPerf.bookPagesUsed}</strong>
+                    {' · '}Royalty netta: <strong className="text-zinc-700">{cur}{fmt(roiPerf.royaltyNetPerSale, 2)}</strong>
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-200">
+                          <th className="pb-2 text-left text-xs font-medium text-zinc-500">Target</th>
+                          <th className="pb-2 text-right text-xs font-medium text-zinc-500">Vendite/mese</th>
+                          <th className="pb-2 text-right text-xs font-medium text-zinc-500">vs Comp. avg</th>
+                          <th className="pb-2 text-right text-xs font-medium text-zinc-500">BEP (mesi)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {roiPerf.byFixedPrice.map(row => (
+                          <tr key={row.label}>
+                            <td className="py-2.5 text-sm font-medium text-zinc-900">{labelMap[row.label] ?? row.label}</td>
+                            <td className="py-2.5 text-right text-sm text-zinc-800">{row.monthlySalesNeeded.toLocaleString('it-IT')}</td>
+                            <td className="py-2.5 text-right text-sm text-zinc-800">{row.vsCompetitorAvg.toFixed(2)}x</td>
+                            <td className="py-2.5 text-right text-sm text-zinc-800">{row.monthsToBreakeven === 999 ? '—' : fmt(row.monthsToBreakeven, 1)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </SubCard>
+
+                <SubCard title="A parità di vendite" accent="sky">
+                  <p className="text-xs text-zinc-500 mb-3">
+                    Vendite target: <strong className="text-zinc-700">{fmt(roiPerf.competitorAvgMonthlySales, 1)}/mese</strong>
+                    {' '}(= competitor medio)
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-200">
+                          <th className="pb-2 text-left text-xs font-medium text-zinc-500">Target</th>
+                          <th className="pb-2 text-right text-xs font-medium text-zinc-500">Royalty min</th>
+                          <th className="pb-2 text-right text-xs font-medium text-zinc-500">Prezzo min</th>
+                          <th className="pb-2 text-right text-xs font-medium text-zinc-500">BEP (mesi)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {roiPerf.byFixedSales.map(row => (
+                          <tr key={row.label}>
+                            <td className="py-2.5 text-sm font-medium text-zinc-900">{labelMap[row.label] ?? row.label}</td>
+                            <td className="py-2.5 text-right text-sm text-zinc-800">{cur}{fmt(row.royaltyNetMinPerSale, 2)}</td>
+                            <td className="py-2.5 text-right text-sm text-zinc-800">{row.minBookPrice === -1 ? 'n/d' : `${cur}${fmt(row.minBookPrice, 2)}`}</td>
+                            <td className="py-2.5 text-right text-sm text-zinc-800">{row.monthsToBreakeven === 999 ? '—' : fmt(row.monthsToBreakeven, 1)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </SubCard>
+
+              </div>
+
+            </div>
+            <SectionNote>
+              Calcoli basati su dati osservati dei top {adsIntel.competitorCount} competitor paperback. Budget produzione assunto: {cur}{fmt(roiPerf.budgetProduzione, 0)} (cover + ARC reviews). I mesi a breakeven si applicano al recupero del budget di produzione sul profitto mensile residuo: per il target breakeven (multiplier 1×) il profitto residuo &egrave; zero e il breakeven &egrave; irraggiungibile (—). Royalty calcolata con la regola KDP standard per il mercato {report.market}.
+            </SectionNote>
+          </Section>
+        )
+      })()}
+
     </div>
   )
 }
