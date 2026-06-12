@@ -763,37 +763,29 @@ export default function AnalyzePage() {
           {/* ── Skip target recap card — visibile quando arriva da /target o con skipTarget=1 ── */}
           {(stage === 'awaiting_validation' || stage === 'loading_signals' || stage === 'loading_passo0') && amazonDataState && skipTargetSelection && (
             <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-semibold text-zinc-800">Riepilogo analisi</h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">Parametri confermati — procedi con l&apos;analisi</p>
-                  <div className="mt-3 space-y-1.5 text-sm text-zinc-700">
-                    <div>
-                      <span className="text-xs text-zinc-400 mr-1.5">Keyword:</span>
-                      <span className="font-medium">{kwRef.current || keyword}</span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-zinc-400 mr-1.5">Mercato:</span>
-                      <span className="font-medium">{market}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs text-zinc-400 mr-1.5">Target:</span>
-                      {targetAsinFromUrl ? (
-                        <span className="font-mono text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-0.5 rounded">
-                          {targetAsinFromUrl}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-zinc-500 italic">Selezionato automaticamente da BookInsight</span>
-                      )}
-                    </div>
+              <div>
+                <h3 className="text-base font-semibold text-zinc-800">Riepilogo analisi</h3>
+                <p className="text-xs text-zinc-500 mt-0.5">Parametri confermati — analisi in corso...</p>
+                <div className="mt-3 space-y-1.5 text-sm text-zinc-700">
+                  <div>
+                    <span className="text-xs text-zinc-400 mr-1.5">Keyword:</span>
+                    <span className="font-medium">{kwRef.current || keyword}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-zinc-400 mr-1.5">Mercato:</span>
+                    <span className="font-medium">{market}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs text-zinc-400 mr-1.5">Target:</span>
+                    {targetAsinFromUrl ? (
+                      <span className="font-mono text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-0.5 rounded">
+                        {targetAsinFromUrl}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-zinc-500 italic">Selezionato automaticamente da BookInsight</span>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={handlePhase2}
-                  className="shrink-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-sm font-medium transition-colors"
-                >
-                  Avvia analisi →
-                </button>
               </div>
             </div>
           )}
