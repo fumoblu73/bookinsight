@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence } from '@/lib/types'
+import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion } from '@/lib/types'
 import { calcRoiEstimate } from '@/lib/scoring'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -85,6 +85,7 @@ export interface FullReport {
     reviews: Array<{ asin: string; bookTitle: string; reviews: Array<{ rating: number; title: string; body: string }> }>
   }
   ads_intelligence?: AdsIntelligence
+  bonus_suggestions?: BonusSuggestion[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -423,6 +424,60 @@ function KpiCard({ label, value, sub, subColor = '' }: { label: string; value: s
       <span className="text-xs text-zinc-400 mb-1">{label}</span>
       <span className="text-lg font-bold text-zinc-900 leading-none">{value}</span>
       {sub && <span className={`text-xs font-semibold mt-0.5 ${subColor}`}>{sub}</span>}
+    </div>
+  )
+}
+
+// ─── BonusCard ────────────────────────────────────────────────────────────────
+
+const BONUS_TIPO_LABEL: Record<BonusSuggestion['tipo'], string> = {
+  workbook: 'Workbook',
+  checklist: 'Checklist',
+  cheat_sheet: 'Cheat Sheet',
+  template: 'Template',
+  mini_corso_video: 'Mini-Corso Video',
+  community: 'Community',
+  quiz: 'Quiz',
+  audio_companion: 'Audio Companion',
+  risorse_esterne: 'Risorse Esterne',
+  planner: 'Planner',
+}
+
+function BonusCard({ bonus }: { bonus: BonusSuggestion }) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 print:break-inside-avoid">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+          {BONUS_TIPO_LABEL[bonus.tipo] ?? bonus.tipo}
+        </span>
+        <span className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">
+          Efficacia {bonus.efficacia_score}/10
+        </span>
+        <span className="text-xs text-zinc-400">Fonte: {bonus.segnale_fonte}</span>
+      </div>
+      <h5 className="text-sm font-semibold text-zinc-800 mb-2">{bonus.titolo}</h5>
+      <div className="space-y-1.5 text-sm text-zinc-700">
+        <div>
+          <span className="text-xs text-zinc-400 font-medium">Razionale: </span>
+          {bonus.razionale}
+        </div>
+        <div>
+          <span className="text-xs text-zinc-400 font-medium">Come realizzarlo: </span>
+          {bonus.come_realizzarlo}
+        </div>
+        <div>
+          <span className="text-xs text-zinc-400 font-medium">Come presentarlo: </span>
+          {bonus.come_presentarlo}
+        </div>
+        {bonus.evidence_quote && (
+          <div className="text-xs italic text-zinc-500 border-l-2 border-zinc-200 pl-2 mt-2">
+            &ldquo;{bonus.evidence_quote}&rdquo;
+          </div>
+        )}
+      </div>
+      <div className="mt-2 text-xs text-zinc-400">
+        Pain point collegati: {bonus.pain_points_origine.length}
+      </div>
     </div>
   )
 }
@@ -1185,6 +1240,28 @@ export default function ReportView({ report }: { report: FullReport }) {
               <p className="text-sm text-zinc-700 leading-relaxed">{report.seriesStrategy.strategia_lancio}</p>
             )}
           </SubCard>
+
+          {report.bonus_suggestions && report.bonus_suggestions.length > 0 && (
+            <div className="mt-2 pt-6 border-t border-zinc-200">
+              <div className="flex items-start gap-3 mb-3">
+                <span className="text-xl">🎁</span>
+                <div>
+                  <h4 className="text-base font-semibold text-zinc-800">
+                    Bonus suggeriti per aumentare l&apos;appeal
+                  </h4>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Estensioni del libro principale che risolvono i pain point più forti emersi
+                    dall&apos;analisi. Aumentano il valore percepito e differenziano dai competitor.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {report.bonus_suggestions.map(bonus => (
+                  <BonusCard key={bonus.id} bonus={bonus} />
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
         <SectionNote>

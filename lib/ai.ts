@@ -187,6 +187,7 @@ import {
   promptRoiNarrative,
   promptTargetWeaknesses,
   promptTargetInterpretation,
+  promptBonusSuggestions,
 } from './prompts'
 
 import {
@@ -201,6 +202,7 @@ import {
   TargetWeakness,
   TargetInterpretationSummary,
   BookReviews,
+  BonusSuggestion,
 } from './types'
 
 import {
@@ -383,6 +385,59 @@ export async function runPainPointsAmazonReviews(
     return filterPainPoints(normalized)
   } catch (err) {
     console.error('[ai] runPainPointsAmazonReviews failed:', err)
+    return []
+  }
+}
+
+// ─── Bonus Suggestions (Sonnet) ──────────────────────────────────────────────
+
+type RawBonus = Omit<BonusSuggestion, 'id'>
+
+const VALID_BONUS_TIPO: BonusSuggestion['tipo'][] = [
+  'workbook', 'checklist', 'cheat_sheet', 'template',
+  'mini_corso_video', 'community', 'quiz', 'audio_companion',
+  'risorse_esterne', 'planner',
+]
+
+const VALID_SEGNALE_FONTE: BonusSuggestion['segnale_fonte'][] = [
+  'recensione', 'reddit', 'youtube', 'gap_analysis', 'misto',
+]
+
+export async function runBonusSuggestions(
+  keyword: string,
+  market: Market,
+  painPoints: PainPoint[],
+  topBookReviews: BookReviews[],
+  gapAnalysis?: unknown,
+): Promise<BonusSuggestion[]> {
+  if (painPoints.length === 0) return []
+
+  try {
+    const raw = await callSonnet<RawBonus[]>(
+      promptBonusSuggestions(keyword, market, painPoints, topBookReviews, gapAnalysis)
+    )
+
+    const validIds = new Set(painPoints.map(p => p.id).filter(Boolean) as string[])
+
+    const normalized: BonusSuggestion[] = raw.map(r => ({
+      id: `bonus_${Math.random().toString(36).slice(2, 10)}`,
+      titolo: r.titolo ?? '',
+      tipo: VALID_BONUS_TIPO.includes(r.tipo) ? r.tipo : 'template',
+      pain_points_origine: (r.pain_points_origine ?? []).filter(id => validIds.has(id)),
+      segnale_fonte: VALID_SEGNALE_FONTE.includes(r.segnale_fonte) ? r.segnale_fonte : 'misto',
+      evidence_quote: r.evidence_quote?.trim() ? r.evidence_quote.trim().slice(0, 200) : undefined,
+      razionale: (r.razionale ?? '').slice(0, 400),
+      come_realizzarlo: (r.come_realizzarlo ?? '').slice(0, 400),
+      come_presentarlo: (r.come_presentarlo ?? '').slice(0, 400),
+      efficacia_score: Math.min(10, Math.max(1, Math.round(r.efficacia_score))),
+      efficacia_motivo: (r.efficacia_motivo ?? '').slice(0, 150),
+    }))
+
+    return normalized
+      .slice(0, 5)
+      .sort((a, b) => b.efficacia_score - a.efficacia_score)
+  } catch (err) {
+    console.error('[ai] runBonusSuggestions failed:', err)
     return []
   }
 }

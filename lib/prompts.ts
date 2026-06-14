@@ -611,3 +611,88 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
   }
 ]`
 }
+
+// ─── Bonus Suggestions (Sonnet) ───────────────────────────────────────────────
+
+export function promptBonusSuggestions(
+  keyword: string,
+  market: Market,
+  painPoints: PainPoint[],
+  topBookReviews: BookReviews[],
+  gapAnalysis?: unknown,
+): string {
+  // Blocco pain points
+  const ppBlock = painPoints.map(pp => {
+    const lines: string[] = [
+      `[${pp.id}] ${pp.pain_point} (F:${pp.F} I:${pp.I} S:${pp.S}, fonte:${pp.fonte})`,
+    ]
+    if (pp.evidence_quotes?.length) {
+      pp.evidence_quotes.slice(0, 2).forEach(q => lines.push(`  citazione: "${q}"`))
+    }
+    if (pp.voice_phrases?.length) {
+      pp.voice_phrases.slice(0, 3).forEach(p => lines.push(`  voce lettore: "${p}"`))
+    }
+    return lines.join('\n')
+  }).join('\n\n')
+
+  // Blocco recensioni negative Amazon
+  const reviewLines: string[] = []
+  for (const br of topBookReviews) {
+    const negReviews = br.reviews
+      .filter(r => r.rating <= 3)
+      .slice(0, 4)
+    if (negReviews.length > 0) {
+      reviewLines.push(`Libro: "${br.bookTitle}"`)
+      negReviews.forEach(r => {
+        reviewLines.push(`  [${r.rating}★] "${r.title}" — ${r.body.slice(0, 500)}`)
+      })
+    }
+  }
+  const reviewBlock = reviewLines.length > 0
+    ? reviewLines.join('\n')
+    : '(nessuna recensione negativa disponibile)'
+
+  // Blocco gap analysis
+  const gapBlock = gapAnalysis
+    ? JSON.stringify(gapAnalysis, null, 2).slice(0, 2000)
+    : '(gap analysis non disponibile)'
+
+  return `Sei un esperto di editoria KDP specializzato nel design di bonus e materiali supplementari per libri self-published.
+
+KEYWORD: "${keyword}" (mercato: ${market})
+
+═══ PAIN POINT DEI LETTORI ═══
+${ppBlock}
+
+═══ RECENSIONI NEGATIVE COMPETITOR ═══
+${reviewBlock}
+
+═══ GAP ANALYSIS ═══
+${gapBlock}
+
+═══ ISTRUZIONI ═══
+Genera da 1 a 5 bonus tangibili (non concettuali) per il libro che affrontino uno o più pain point specifici tra quelli forniti sopra.
+
+Regole:
+- Ogni bonus deve referenziare i pain point di origine via pain_points_origine (array di ID esatti come mostrati sopra, es. "pp_abc12345")
+- Preferisci bonus a basso costo produttivo (workbook PDF, checklist, template, planner) rispetto a bonus costosi (video corsi, community) — includi i costosi solo se il segnale è molto forte
+- Usa il voice_phrases dei lettori per i titoli dei bonus dove possibile
+- efficacia_score (1-10): considera (a) esplicitezza del segnale nei dati, (b) numero pain point risolti, (c) facilità di percezione del valore per il lettore
+- Adatta esempi al pubblico del mercato ${market}
+
+Rispondi SOLO con un array JSON valido, nessun testo prima o dopo:
+[
+  {
+    "titolo": "titolo conciso (max 12 parole)",
+    "tipo": "workbook|checklist|cheat_sheet|template|mini_corso_video|community|quiz|audio_companion|risorse_esterne|planner",
+    "pain_points_origine": ["pp_xxxxxxxx"],
+    "segnale_fonte": "recensione|reddit|youtube|gap_analysis|misto",
+    "evidence_quote": "citazione esemplificativa max 200 chars (ometti se non disponibile)",
+    "razionale": "perché questo bonus risolve i pain point (2-3 frasi, max 400 chars)",
+    "come_realizzarlo": "formato, lunghezza, strumenti (2-3 frasi, max 400 chars)",
+    "come_presentarlo": "dove inserirlo: back matter, lead magnet, bonus page, copertina (max 400 chars)",
+    "efficacia_score": 7,
+    "efficacia_motivo": "perché questo score (max 20 parole)"
+  }
+]`
+}

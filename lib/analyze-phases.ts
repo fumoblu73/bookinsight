@@ -1,6 +1,6 @@
 import {
   AmazonData, TrendsData, RedditData, YouTubeData,
-  PainPoint, SubNiche, LogEntry, Market,
+  PainPoint, SubNiche, LogEntry, Market, BonusSuggestion,
 } from './types'
 import {
   ComplianceCategory, ComplianceRisk,
@@ -16,6 +16,7 @@ import {
   runPasso0, runPainPointsReddit, runSubNicheDetection,
   runKeyInsights, runTrendForecast, runGapAnalysis,
   runSeriesStrategy, runRoiNarrative, runPainPointsAmazonReviews,
+  runBonusSuggestions,
 } from './ai'
 import { cacheGet } from './upstash'
 
@@ -408,15 +409,36 @@ export async function runFinalizePhase(
     throw err
   }
 
-  // ── Step: series strategy + ROI narrative ─────────────────────────────────
+  // ── Step: series strategy + ROI narrative + bonus suggestions ────────────
   onProgress?.('strategy')
+
+  // Pain point per i bonus: curated se selezionati, altrimenti top 5 su tutti
+  const allPainPoints = [
+    ...intermediate.painPoints,
+    ...(intermediate.painPointsAmazon ?? []),
+  ]
+  const bonusPainPoints = selectedPainPointIds.length > 0
+    ? allPainPoints.filter(p => selectedPainPointIds.includes(p.id ?? ''))
+    : allPainPoints.slice(0, 5)
+
   const t3 = Date.now()
   let seriesStrategy: SeriesStrategyResult
   let roiNarrative: RoiNarrativeResult
+  let bonusSuggestions: BonusSuggestion[]
   try {
-    ;[seriesStrategy, roiNarrative] = await Promise.all([
+    ;[seriesStrategy, roiNarrative, bonusSuggestions] = await Promise.all([
       runSeriesStrategy(amazon, gapAnalysis.passo5_tesi_libro, scoring, roi),
       runRoiNarrative(intermediate.keyword, intermediate.market, roi, scoring),
+      runBonusSuggestions(
+        intermediate.keyword,
+        intermediate.market,
+        bonusPainPoints,
+        intermediate.amazon.topBookReviews ?? [],
+        gapAnalysis,
+      ).catch(err => {
+        console.error('[finalize] runBonusSuggestions failed:', err)
+        return [] as BonusSuggestion[]
+      }),
     ])
     finalizeLogs.push({
       step: 'strategy', label: 'Strategia e ROI (AI)',
@@ -428,6 +450,17 @@ export async function runFinalizePhase(
         investVerdict: roi.investVerdict,
         breakEvenMonths: roi.scenarios[1].breakEvenMonths,
         netProfit12mBase: roi.scenarios[1].netProfit12m,
+      },
+    })
+    finalizeLogs.push({
+      step: 'bonus',
+      label: 'Bonus Suggestions (AI)',
+      status: bonusSuggestions.length > 0 ? 'ok' : 'warn',
+      summary: `${bonusSuggestions.length} bonus generati da ${bonusPainPoints.length} pain point`,
+      details: {
+        bonusCount: bonusSuggestions.length,
+        sourcePainPoints: bonusPainPoints.length,
+        curatedMode: selectedPainPointIds.length > 0,
       },
     })
   } catch (err) {
@@ -464,6 +497,7 @@ export async function runFinalizePhase(
     budget: roi.params.budgetProduzione,
     amazon,
     ads_intelligence: adsIntelligence,
+    bonus_suggestions: bonusSuggestions,
     competitiveDynamism,
     complianceCategory,
     complianceRisk,

@@ -438,6 +438,24 @@ export interface RoiEstimate {
   warnings: string[]
 }
 
+// ─── Bonus Suggestions ────────────────────────────────────────────────────────
+
+export interface BonusSuggestion {
+  id: string
+  titolo: string
+  tipo: 'workbook' | 'checklist' | 'cheat_sheet' | 'template' |
+        'mini_corso_video' | 'community' | 'quiz' | 'audio_companion' |
+        'risorse_esterne' | 'planner'
+  pain_points_origine: string[]
+  segnale_fonte: 'recensione' | 'reddit' | 'youtube' | 'gap_analysis' | 'misto'
+  evidence_quote?: string
+  razionale: string
+  come_realizzarlo: string
+  come_presentarlo: string
+  efficacia_score: number
+  efficacia_motivo: string
+}
+
 // ─── Credits ──────────────────────────────────────────────────────────────────
 
 export interface CreditsData {
