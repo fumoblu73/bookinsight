@@ -30,7 +30,6 @@ export interface PainPointsIntermediate {
   reddit: RedditData
   youtube: YouTubeData | undefined
   painPoints: PainPoint[]
-  painPointsAmazon: PainPoint[]   // placeholder: runPainPointsAmazonReviews non ancora implementato
   subNiches: SubNiche[]
   complianceRisk: ComplianceRisk
   complianceCategory: ComplianceCategory
@@ -318,6 +317,9 @@ export async function runPainPointsPhase(
     }
   }
 
+  // Merge unico: i pain points Amazon entrano nell'array principale
+  const mergedPainPoints = [...painPoints, ...painPointsAmazon]
+
   return {
     keyword,
     market,
@@ -325,8 +327,7 @@ export async function runPainPointsPhase(
     trends,
     reddit,
     youtube,
-    painPoints,
-    painPointsAmazon,
+    painPoints: mergedPainPoints,
     subNiches: unifiedSubNiches,
     complianceRisk,
     complianceCategory,
@@ -428,13 +429,9 @@ export async function runFinalizePhase(
   onProgress?.('strategy')
 
   // Pain point per i bonus: curated se selezionati, altrimenti top 5 su tutti
-  const allPainPoints = [
-    ...intermediate.painPoints,
-    ...(intermediate.painPointsAmazon ?? []),
-  ]
   const bonusPainPoints = selectedPainPointIds.length > 0
-    ? allPainPoints.filter(p => selectedPainPointIds.includes(p.id ?? ''))
-    : allPainPoints.slice(0, 5)
+    ? intermediate.painPoints.filter(p => selectedPainPointIds.includes(p.id ?? ''))
+    : intermediate.painPoints.slice(0, 5)
 
   const t3 = Date.now()
   let seriesStrategy: SeriesStrategyResult

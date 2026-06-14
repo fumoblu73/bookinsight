@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       analysisId,
       painPoints: intermediate.painPoints,
-      painPointsAmazon: intermediate.painPointsAmazon,
       scoring: intermediate.scoring,
       passo0: intermediate.passo0,
       amazonSummary: {

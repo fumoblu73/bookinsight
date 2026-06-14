@@ -330,7 +330,6 @@ export default function AnalyzePage() {
       const data = await res.json() as {
         analysisId: string
         painPoints: PainPoint[]
-        painPointsAmazon: PainPoint[]
         scoring: { score: number; trendSignal: string; entryDifficulty: string }
         passo0: { angolo: string; target_reader: string }
         amazonSummary: { topBooks: FilteredBook[]; keyword: string }
@@ -338,10 +337,9 @@ export default function AnalyzePage() {
         redditSummary: { available: boolean; postCount: number; commentCount: number }
       }
 
-      const allPainPoints = [...data.painPoints, ...(data.painPointsAmazon ?? [])]
       setAnalysisId(data.analysisId)
-      setPainPointsToReview(allPainPoints)
-      setSelectedPainPointIds(new Set(allPainPoints.filter(p => p.id).map(p => p.id!)))
+      setPainPointsToReview(data.painPoints)
+      setSelectedPainPointIds(new Set(data.painPoints.filter(p => p.id).map(p => p.id!)))
       setPreviewData({
         scoring: data.scoring,
         passo0: data.passo0,
