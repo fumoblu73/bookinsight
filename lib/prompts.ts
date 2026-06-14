@@ -588,6 +588,30 @@ CORPUS RECENSIONI COMPETITOR (keyword: "${keyword}", mercato: ${market}):
 
 ${corpus}
 
+CALIBRAZIONE F (Frequenza) — scala obbligatoria 1-10:
+- F=1-2: il problema appare in 1 sola recensione di 1 solo libro
+- F=3-4: il problema appare in 2-3 recensioni dello stesso libro, OPPURE in 1 sola recensione ma in 2 libri distinti
+- F=5-6: il problema appare in 3+ libri distinti (pattern cross-competitor consolidato)
+- F=7-8: il problema appare in 4+ libri distinti o è citato ripetutamente nella maggior parte dei libri analizzati
+- F=9-10: il problema appare in QUASI TUTTI i libri del corpus (pattern sistemico della nicchia)
+REGOLA HARD: se il problema viene da un solo libro (num_fonti=1), F NON può superare 4.
+
+CALIBRAZIONE I (Intensità emotiva) — scala obbligatoria 1-10:
+Usa COME PROXY PRIMARIO il rating della recensione, modulato dal tono testuale:
+- I=1-3: recensione 4★ ("mixed"), feedback costruttivo neutro ("would be nice if", "could be better")
+- I=4-6: recensione 3★, frustrazione lieve ("annoying", "frustrating", "wish it had")
+- I=7-8: recensione 1-2★, frustrazione esplicita ("waste", "useless", "terrible", linguaggio diretto e negativo)
+- I=9-10: recensione 1★ con linguaggio estremo ("worst book ever", "scam", "ruined", "throw it away")
+
+CALIBRAZIONE S (Specificità/Solvibilità con un libro) — scala obbligatoria 1-10:
+Quanto è risolvibile il problema con una scelta editoriale concreta nel nuovo libro?
+- S=1-3: difficile da risolvere senza riscrivere completamente il libro o cambiare genere
+- S=4-6: risolvibile con modifiche moderate (riorganizzazione capitoli, aggiunta esempi, sezioni didattiche extra)
+- S=7-8: facilmente risolvibile con una scelta editoriale precisa (large print, layout a pagina singola, QR code per video, lay-flat binding, illustrazioni a piena pagina, indice analitico, glossario, ecc.)
+- S=9-10: risolvibile banalmente con un singolo accorgimento (es. aumento font, formato fisico diverso)
+
+REGOLA HARD: F, I, S sono SEMPRE numeri interi tra 1 e 10. NON usare mai 0 o valori fuori scala. NON usare i valori "1, 1, 1" come default: ogni pain point deve avere valori giustificati dalle calibrazioni sopra.
+
 ISTRUZIONI:
 Estrai pain point appartenenti a queste tre categorie (TUTTE valide):
 
@@ -607,20 +631,22 @@ REGOLA DI PRIORITA:
 - Dai peso maggiore ai problemi che compaiono in più libri distinti (cross-competitor pattern)
 - Max 8 pain points
 
+Nel template sotto i campi numerici sono descritti tra <>: nel TUO output JSON devi restituire NUMERI INTERI per F, I, S, num_fonti — non stringhe.
+
 Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
 [
   {
     "pain_point": "descrizione sintetica del problema (max 15 parole)",
-    "F": 1,
-    "I": 1,
-    "S": 1,
-    "num_fonti": 1,
+    "F": "<intero 1-10, rispetta la calibrazione F sopra>",
+    "I": "<intero 1-10, rispetta la calibrazione I sopra>",
+    "S": "<intero 1-10, rispetta la calibrazione S sopra>",
+    "num_fonti": "<numero di libri distinti in cui il problema appare, minimo 1>",
     "evidence": "frase che riassume le recensioni che supportano questo pain point",
-    "fonte": "recensione_negativa oppure recensione_positiva",
-    "evidence_quotes": ["citazione 1 max 200 chars", "citazione 2"],
-    "voice_phrases": ["frase dal lessico dei lettori", "..."],
-    "emotional_register": "frustrazione|rabbia|ansia|rassegnazione|desiderio|confusione|orgoglio|neutro",
-    "tipo": "gap_esecuzione oppure job_confermato"
+    "fonte": "recensione_negativa | recensione_positiva (in base al rating prevalente delle recensioni di supporto)",
+    "evidence_quotes": ["citazione 1 verbatim dalle recensioni, max 200 chars", "citazione 2"],
+    "voice_phrases": ["frase breve dal lessico dei lettori, 2-6 parole", "..."],
+    "emotional_register": "frustrazione | rabbia | ansia | rassegnazione | desiderio | confusione | orgoglio | neutro",
+    "tipo": "gap_esecuzione | job_confermato"
   }
 ]`
 }
