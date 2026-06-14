@@ -589,8 +589,21 @@ CORPUS RECENSIONI COMPETITOR (keyword: "${keyword}", mercato: ${market}):
 ${corpus}
 
 ISTRUZIONI:
-- Estrai solo problemi di **contenuto e struttura** del libro (mancanza di esempi pratici, template assenti, teoria senza applicazione, capitoli mancanti, progressione confusa, ecc.)
-- Ignora: problemi logistici (spedizione, packaging), confronti Kindle/cartaceo, errori di stampa isolati, preferenze stilistiche soggettive
+Estrai pain point appartenenti a queste tre categorie (TUTTE valide):
+
+1. CONTENUTO E STRUTTURA — mancanza di esempi pratici, template assenti, teoria senza applicazione, capitoli mancanti, progressione confusa, sezioni superficiali su temi cruciali, ecc.
+
+2. USABILITA E FRUIZIONE — leggibilità (testo troppo piccolo, font difficile), layout (pagine non apribili a 180 gradi, illustrazioni piccole o poco chiare, schema visivo confuso), navigazione (indice mancante, riferimenti incrociati assenti, difficoltà a trovare informazioni durante la pratica/lettura), formato fisico (rilegatura che si chiude, dimensioni inadatte all'uso pratico). Questi NON sono preferenze soggettive: sono problemi concreti che un editore può risolvere con scelte editoriali specifiche (large print, layout a pagina singola, lay-flat binding, illustrazioni a tutta pagina, QR code per video, ecc.).
+
+3. PRESENTAZIONE DIDATTICA — istruzioni poco chiare, mancanza di esempi visivi, assenza di varianti per livelli diversi, modifiche/adattamenti non spiegati, sequenze/progressioni non guidate.
+
+IGNORA invece queste categorie (NON validi come pain point):
+- Problemi logistici: spedizione, packaging, qualità stampa fisica del singolo esemplare ricevuto
+- Confronti tra edizioni: Kindle vs cartaceo, hardcover vs paperback
+- Opinioni puramente soggettive sullo STILE dell'autore: "tono noioso", "stile pesante", "non mi piace il modo di scrivere"
+- Lamentele sul prezzo o sulla lunghezza generica del libro
+
+REGOLA DI PRIORITA:
 - Dai peso maggiore ai problemi che compaiono in più libri distinti (cross-competitor pattern)
 - Max 8 pain points
 
