@@ -86,9 +86,16 @@ const MIN_AGE_DAYS = 30
 export const MAX_BOOKS = 5
 export const MAX_PRODUCT_CALLS = 8  // cap product calls per contenere i crediti SerpApi nel free tier
 export const MAX_BOOKS_FOR_ADS = 10
-export const MAX_BSR_FOR_ADS = 500_000
+// Soglia "libro attivamente in vendita" nel mercato paperback.
+// Oltre BSR 80k un libro vende ~1 copia ogni 3-5 giorni: includerlo
+// nella media revenue inquina il dato e non rappresenta un competitor
+// pubblicitariamente comparabile.
+export const MAX_BSR_FOR_ADS = 80_000
 export const AD_BUDGET_RULE_PERCENT = 0.30
-export const WEAK_SAMPLE_THRESHOLD = 5
+// Con il filtro BSR < 80k il pool è più stretto: 3 competitor eleggibili
+// sono sufficienti per una media non degenere. Sotto 3, il dato è troppo
+// fragile e va segnalato.
+export const WEAK_SAMPLE_THRESHOLD = 3
 
 function calculateAdsIntelligence(books: FilteredBook[], market: Market): AdsIntelligence {
   const eligible = books.filter(b =>
