@@ -281,12 +281,21 @@ export async function runPainPointsPhase(
   }
 
   let painPointsAmazon: PainPoint[] = []
+  let amazonPainPointsDiagnostics: {
+    rawCount: number
+    rawSample: Array<{ pain_point: string; F: number; I: number; S: number; computed_score?: number }>
+    aiReturnedEmpty: boolean
+    parseError?: string
+  } = { rawCount: 0, rawSample: [], aiReturnedEmpty: true }
+
   try {
-    painPointsAmazon = await runPainPointsAmazonReviews(
+    const result = await runPainPointsAmazonReviews(
       keyword,
       amazon.topBookReviews ?? [],
       market,
     )
+    painPointsAmazon = result.painPoints
+    amazonPainPointsDiagnostics = result.diagnostics
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logEntries.push({
@@ -301,6 +310,12 @@ export async function runPainPointsPhase(
   const reviewsLogEntry = logEntries.find(e => e.step === 'reviews' && e.label === 'Recensioni Amazon')
   if (reviewsLogEntry) {
     reviewsLogEntry.details.amazonPainPointsExtracted = painPointsAmazon.length
+    reviewsLogEntry.details.amazonPainPointsRaw = amazonPainPointsDiagnostics.rawCount
+    reviewsLogEntry.details.amazonPainPointsRawSample = amazonPainPointsDiagnostics.rawSample
+    reviewsLogEntry.details.amazonAiReturnedEmpty = amazonPainPointsDiagnostics.aiReturnedEmpty
+    if (amazonPainPointsDiagnostics.parseError) {
+      reviewsLogEntry.details.amazonParseError = amazonPainPointsDiagnostics.parseError
+    }
   }
 
   return {

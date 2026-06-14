@@ -328,18 +328,41 @@ interface RawAmazonPainPoint {
   emotional_register?: string
 }
 
+export interface AmazonPainPointsResult {
+  painPoints: PainPoint[]
+  diagnostics: {
+    rawCount: number
+    rawSample: Array<{ pain_point: string; F: number; I: number; S: number; computed_score?: number }>
+    aiReturnedEmpty: boolean
+    parseError?: string
+  }
+}
+
 export async function runPainPointsAmazonReviews(
   keyword: string,
   topBookReviews: BookReviews[],
   market: Market,
-): Promise<PainPoint[]> {
-  if (!topBookReviews?.length) return []
+): Promise<AmazonPainPointsResult> {
+  if (!topBookReviews?.length) {
+    return { painPoints: [], diagnostics: { rawCount: 0, rawSample: [], aiReturnedEmpty: true } }
+  }
 
   try {
     const prompt = promptPainPointsAmazonReviews(keyword, topBookReviews, market)
-    if (!prompt) return []
+    if (!prompt) {
+      return { painPoints: [], diagnostics: { rawCount: 0, rawSample: [], aiReturnedEmpty: true } }
+    }
 
     const raw = await callHaiku<RawAmazonPainPoint[]>(prompt)
+
+    const rawCount = raw.length
+    const rawSample = raw.slice(0, 3).map(r => ({
+      pain_point: String(r.pain_point ?? '').slice(0, 100),
+      F: Number(r.F) || 0,
+      I: Number(r.I) || 0,
+      S: Number(r.S) || 0,
+      computed_score: Math.round(((Number(r.F) || 0) * 0.2 + (Number(r.I) || 0) * 0.4 + (Number(r.S) || 0) * 0.4) * 10) / 10,
+    }))
 
     const validRegisters = ['frustrazione', 'rabbia', 'ansia', 'rassegnazione', 'desiderio', 'confusione', 'orgoglio', 'neutro']
 
@@ -382,10 +405,18 @@ export async function runPainPointsAmazonReviews(
       }
     })
 
-    return filterPainPoints(normalized)
+    const filtered = filterPainPoints(normalized)
+    return {
+      painPoints: filtered,
+      diagnostics: { rawCount, rawSample, aiReturnedEmpty: rawCount === 0 },
+    }
   } catch (err) {
     console.error('[ai] runPainPointsAmazonReviews failed:', err)
-    return []
+    const msg = err instanceof Error ? err.message : String(err)
+    return {
+      painPoints: [],
+      diagnostics: { rawCount: 0, rawSample: [], aiReturnedEmpty: true, parseError: msg },
+    }
   }
 }
 
