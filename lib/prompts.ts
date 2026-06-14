@@ -631,6 +631,28 @@ REGOLA DI PRIORITA:
 - Dai peso maggiore ai problemi che compaiono in più libri distinti (cross-competitor pattern)
 - Max 8 pain points
 
+REGOLE DI FORMATTAZIONE OUTPUT:
+
+a) Campo "pain_point": stringa asciutta, max 15 parole, in italiano. Nessuna ripetizione di parole accidentale (NO "Layout layout: foto..." → SÌ "Layout: foto e istruzioni su pagine diverse"). Nessun prefisso ridondante (NO "Problema: ..." → SÌ scrivi direttamente il problema). Frase nominale o frase breve.
+
+b) Campo "evidence": parafrasi in italiano che riassume cosa dicono le recensioni di supporto. Qui PUOI riformulare con parole tue.
+
+c) Campo "evidence_quotes": citazioni LETTERALI dal testo originale delle recensioni. NON parafrasare. NON tradurre. NON riassumere. Copia esattamente le parole come appaiono nella recensione, anche se in inglese. Max 200 caratteri ciascuna.
+
+   ESEMPIO CORRETTO (verbatim dal testo):
+   ✓ "pages don't lie flat while practicing"
+   ✓ "the words are so small I can barely read them"
+   ✓ "photos and descriptions are on different pages"
+
+   ESEMPIO SBAGLIATO (parafrasi/descrizione di terza persona):
+   ✗ "Multiple reviewers explicitly request lay-flat binding"
+   ✗ "Reader complaint about small font size making book difficult to read"
+   ✗ "Reviewer suggests improvement for layout by placing photo and instructions on facing pages"
+
+   Se non trovi una citazione letterale nel testo originale che supporta il pain point, ometti il campo evidence_quotes o lascia un array vuoto. NON inventare citazioni e NON descriverle: meglio nessuna citazione che una parafrasi.
+
+d) Campo "voice_phrases": frasi brevi (2-6 parole) estratte letteralmente dal testo delle recensioni, che rappresentano il modo concreto in cui i lettori esprimono il problema. Stesse regole verbatim di evidence_quotes: copia letterale, nessuna parafrasi.
+
 Nel template sotto i campi numerici sono descritti tra <>: nel TUO output JSON devi restituire NUMERI INTERI per F, I, S, num_fonti — non stringhe.
 
 Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
@@ -641,10 +663,10 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
     "I": "<intero 1-10, rispetta la calibrazione I sopra>",
     "S": "<intero 1-10, rispetta la calibrazione S sopra>",
     "num_fonti": "<numero di libri distinti in cui il problema appare, minimo 1>",
-    "evidence": "frase che riassume le recensioni che supportano questo pain point",
+    "evidence": "parafrasi sintetica in italiano (max 200 chars) che riassume cosa dicono le recensioni",
     "fonte": "recensione_negativa | recensione_positiva (in base al rating prevalente delle recensioni di supporto)",
-    "evidence_quotes": ["citazione 1 verbatim dalle recensioni, max 200 chars", "citazione 2"],
-    "voice_phrases": ["frase breve dal lessico dei lettori, 2-6 parole", "..."],
+    "evidence_quotes": ["VERBATIM dal testo originale, no parafrasi, max 200 chars", "..."],
+    "voice_phrases": ["VERBATIM 2-6 parole dal testo originale, no parafrasi", "..."],
     "emotional_register": "frustrazione | rabbia | ansia | rassegnazione | desiderio | confusione | orgoglio | neutro",
     "tipo": "gap_esecuzione | job_confermato"
   }
