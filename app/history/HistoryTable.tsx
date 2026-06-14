@@ -124,7 +124,7 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
               <ThBase {...thProps} col="score"         label="Score" />
               <ThBase {...thProps} col="trendSignal"   label="Trend" />
               <ThBase {...thProps} col="difficulty"    label="Difficoltà" />
-              <ThBase {...thProps} col="monthlyRevenue" label="Ric./mese" />
+              <ThBase {...thProps} col="monthlyRevenue" label="Netto/mese" />
               <ThBase {...thProps} col="createdAt"     label="Data" className="pr-3" />
               <th className="px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                 Azioni
@@ -183,10 +183,20 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
                     }
                   </td>
 
-                  {/* Ric./mese */}
-                  <td className="px-3 py-3 tabular-nums text-zinc-600">
-                    {r.monthlyRevenue && r.monthlyRevenue > 0
-                      ? `$${Math.round(r.monthlyRevenue).toLocaleString('it-IT')}`
+                  {/* Netto/mese */}
+                  <td className="px-3 py-3 tabular-nums">
+                    {typeof r.monthlyRevenue === 'number' && !isNaN(r.monthlyRevenue)
+                      ? (
+                          <span className={
+                            r.monthlyRevenue > 0
+                              ? 'text-emerald-600 font-medium'
+                              : r.monthlyRevenue < 0
+                                ? 'text-red-600 font-medium'
+                                : 'text-zinc-600'
+                          }>
+                            {r.monthlyRevenue < 0 ? '−' : ''}${Math.abs(Math.round(r.monthlyRevenue)).toLocaleString('it-IT')}
+                          </span>
+                        )
                       : <span className="text-zinc-300">—</span>
                     }
                   </td>
@@ -221,7 +231,7 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
       <div className="px-5 py-2.5 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-400">
         <span>{rows.length} report</span>
         <span>
-          Ordinato per <strong className="text-zinc-600">{sortKey === 'createdAt' ? 'data' : sortKey === 'monthlyRevenue' ? 'ric./mese' : sortKey}</strong>{' '}
+          Ordinato per <strong className="text-zinc-600">{sortKey === 'createdAt' ? 'data' : sortKey === 'monthlyRevenue' ? 'netto/mese' : sortKey}</strong>{' '}
           {sortDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}
         </span>
       </div>
