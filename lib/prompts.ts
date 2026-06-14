@@ -1,4 +1,4 @@
-import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, SubNiche, TargetInterpretationSummary } from './types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, SubNiche, TargetInterpretationSummary, BookReviews } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -542,4 +542,72 @@ Restituisci un array JSON (vuoto [] se non emergono difetti chiari da almeno 2 r
 ]
 
 Max 5 difetti. Ordina per gravità decrescente. JSON puro senza markdown.`
+}
+
+// ─── Pain Points da Recensioni Amazon (Haiku) ─────────────────────────────────
+
+export function promptPainPointsAmazonReviews(
+  keyword: string,
+  topBookReviews: BookReviews[],
+  market: Market,
+): string | null {
+  const perBook: Array<{ asin: string; bookTitle: string; entries: Array<{ label: string; text: string }> }> = []
+
+  for (const br of topBookReviews) {
+    const negEntries = br.reviews
+      .filter(r => r.rating <= 3)
+      .slice(0, 5)
+      .map(r => ({ label: `[NEG ${r.rating}★]`, text: `"${r.title}" — ${r.body.slice(0, 500)}` }))
+
+    const mixedEntries = br.reviews
+      .filter(r => r.rating === 4)
+      .slice(0, 2)
+      .map(r => ({ label: `[MIXED 4★]`, text: `"${r.title}" — ${r.body.slice(0, 500)}` }))
+
+    const bookEntries = [...negEntries, ...mixedEntries]
+    if (bookEntries.length > 0) {
+      perBook.push({ asin: br.asin, bookTitle: br.bookTitle, entries: bookEntries })
+    }
+  }
+
+  const totalReviews = perBook.reduce((acc, b) => acc + b.entries.length, 0)
+  if (totalReviews < 3) return null
+
+  const corpus = perBook
+    .map(b => {
+      const reviewsText = b.entries
+        .map(e => `  ${e.label} ${e.text}`)
+        .join('\n')
+      return `Libro: "${b.bookTitle}" (ASIN: ${b.asin})\n${reviewsText}`
+    })
+    .join('\n\n---\n\n')
+
+  return `Sei un esperto di analisi editoriale KDP con specializzazione nell'interpretazione delle recensioni Amazon.
+
+CORPUS RECENSIONI COMPETITOR (keyword: "${keyword}", mercato: ${market}):
+
+${corpus}
+
+ISTRUZIONI:
+- Estrai solo problemi di **contenuto e struttura** del libro (mancanza di esempi pratici, template assenti, teoria senza applicazione, capitoli mancanti, progressione confusa, ecc.)
+- Ignora: problemi logistici (spedizione, packaging), confronti Kindle/cartaceo, errori di stampa isolati, preferenze stilistiche soggettive
+- Dai peso maggiore ai problemi che compaiono in più libri distinti (cross-competitor pattern)
+- Max 8 pain points
+
+Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
+[
+  {
+    "pain_point": "descrizione sintetica del problema (max 15 parole)",
+    "F": 1,
+    "I": 1,
+    "S": 1,
+    "num_fonti": 1,
+    "evidence": "frase che riassume le recensioni che supportano questo pain point",
+    "fonte": "recensione_negativa oppure recensione_positiva",
+    "evidence_quotes": ["citazione 1 max 200 chars", "citazione 2"],
+    "voice_phrases": ["frase dal lessico dei lettori", "..."],
+    "emotional_register": "frustrazione|rabbia|ansia|rassegnazione|desiderio|confusione|orgoglio|neutro",
+    "tipo": "gap_esecuzione oppure job_confermato"
+  }
+]`
 }

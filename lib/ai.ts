@@ -179,6 +179,7 @@ export async function callHaiku<T>(userPrompt: string, options?: { temperature?:
 import {
   promptPasso0,
   promptPainPointsReddit,
+  promptPainPointsAmazonReviews,
   promptKeyInsights,
   promptTrendForecast,
   promptGapAnalysis,
@@ -199,6 +200,7 @@ import {
   SubNiche,
   TargetWeakness,
   TargetInterpretationSummary,
+  BookReviews,
 } from './types'
 
 import {
@@ -307,6 +309,82 @@ export async function runPainPointsReddit(
   })
 
   return filterPainPoints(normalized)
+}
+
+// §5B — Pain Points da Recensioni Amazon (Haiku)
+interface RawAmazonPainPoint {
+  pain_point: string
+  F: number
+  I: number
+  S: number
+  num_fonti?: number
+  evidence: string
+  fonte?: string
+  tipo?: 'gap_esecuzione' | 'job_confermato'
+  evidence_quotes?: string[]
+  voice_phrases?: string[]
+  emotional_register?: string
+}
+
+export async function runPainPointsAmazonReviews(
+  keyword: string,
+  topBookReviews: BookReviews[],
+  market: Market,
+): Promise<PainPoint[]> {
+  if (!topBookReviews?.length) return []
+
+  try {
+    const prompt = promptPainPointsAmazonReviews(keyword, topBookReviews, market)
+    if (!prompt) return []
+
+    const raw = await callHaiku<RawAmazonPainPoint[]>(prompt)
+
+    const validRegisters = ['frustrazione', 'rabbia', 'ansia', 'rassegnazione', 'desiderio', 'confusione', 'orgoglio', 'neutro']
+
+    const normalized = raw.map(r => {
+      const F_raw = Math.min(10, Math.max(1, Math.round(r.F)))
+      const F = (r.num_fonti ?? 1) <= 1 ? Math.min(F_raw, 4) : F_raw
+
+      const cleanVoicePhrases = (r.voice_phrases ?? [])
+        .filter(p => typeof p === 'string' && p.trim().length >= 2 && p.trim().length <= 100)
+        .map(p => p.trim())
+        .filter((p, i, arr) => arr.indexOf(p) === i)
+        .slice(0, 5)
+
+      const cleanEvidenceQuotes = (r.evidence_quotes ?? [])
+        .filter(q => typeof q === 'string' && q.trim().length >= 10 && q.trim().length <= 200)
+        .map(q => q.trim())
+        .slice(0, 4)
+
+      const emotional_register = (r.emotional_register && validRegisters.includes(r.emotional_register))
+        ? r.emotional_register as PainPoint['emotional_register']
+        : undefined
+
+      const fonte: 'recensione_negativa' | 'recensione_positiva' =
+        r.fonte === 'recensione_negativa' || r.fonte === 'recensione_positiva'
+          ? r.fonte
+          : 'recensione_negativa'
+
+      return {
+        id: `pp_amz_${Math.random().toString(36).slice(2, 10)}`,
+        pain_point: r.pain_point,
+        F,
+        I: Math.min(10, Math.max(1, Math.round(r.I))),
+        S: Math.min(10, Math.max(1, Math.round(r.S))),
+        evidence: r.evidence,
+        fonte,
+        tipo: r.tipo,
+        evidence_quotes: cleanEvidenceQuotes.length > 0 ? cleanEvidenceQuotes : undefined,
+        voice_phrases: cleanVoicePhrases.length > 0 ? cleanVoicePhrases : undefined,
+        emotional_register,
+      }
+    })
+
+    return filterPainPoints(normalized)
+  } catch (err) {
+    console.error('[ai] runPainPointsAmazonReviews failed:', err)
+    return []
+  }
 }
 
 // §1 — Key Insights (Sonnet)

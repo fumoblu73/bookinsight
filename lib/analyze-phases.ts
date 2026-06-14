@@ -15,7 +15,7 @@ import {
   SeriesStrategyResult, RoiNarrativeResult,
   runPasso0, runPainPointsReddit, runSubNicheDetection,
   runKeyInsights, runTrendForecast, runGapAnalysis,
-  runSeriesStrategy, runRoiNarrative,
+  runSeriesStrategy, runRoiNarrative, runPainPointsAmazonReviews,
 } from './ai'
 import { cacheGet } from './upstash'
 
@@ -279,6 +279,29 @@ export async function runPainPointsPhase(
     throw err
   }
 
+  let painPointsAmazon: PainPoint[] = []
+  try {
+    painPointsAmazon = await runPainPointsAmazonReviews(
+      keyword,
+      amazon.topBookReviews ?? [],
+      market,
+    )
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    logEntries.push({
+      step: 'reviews',
+      label: 'Pain Points da Recensioni Amazon (AI)',
+      status: 'warn',
+      summary: `Estrazione pain points fallita: ${msg}`,
+      details: {},
+    })
+  }
+
+  const reviewsLogEntry = logEntries.find(e => e.step === 'reviews' && e.label === 'Recensioni Amazon')
+  if (reviewsLogEntry) {
+    reviewsLogEntry.details.amazonPainPointsExtracted = painPointsAmazon.length
+  }
+
   return {
     keyword,
     market,
@@ -287,7 +310,7 @@ export async function runPainPointsPhase(
     reddit,
     youtube,
     painPoints,
-    painPointsAmazon: [],
+    painPointsAmazon,
     subNiches: unifiedSubNiches,
     complianceRisk,
     complianceCategory,
