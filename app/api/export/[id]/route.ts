@@ -39,6 +39,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
       },
       gap_analysis: report.gapAnalysis,
       series_strategy: report.seriesStrategy,
+      bonus_suggestions: report.bonus_suggestions ?? null,
       investment_roi: {
         ...report.roi,
         narrative: report.roiNarrative,
@@ -48,6 +49,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
     pain_points: report.painPoints,
     voice_data: report.voice_data ?? null,
     ads_intelligence: report.ads_intelligence ?? null,
+    analysis_log: record.log ?? null,
   }
 
   const filename = `bookinsight_${report.keyword.replace(/\s+/g, '_')}_${report.market}.json`
