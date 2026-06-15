@@ -196,7 +196,10 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
   try {
     // Due chiamate in parallelo: timeline + related queries
     const [timelineSettled, relatedSettled] = await Promise.allSettled([
-      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES', geo, hl }),
+      serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'TIMESERIES', geo }),
+      // hl rimosso intenzionalmente dalla call timeline: con hl=it (e probabilmente altre
+      // locale non-en) SerpApi/Google Trends ritorna timeline vuota. L'URL nativo Google
+      // Trends IT non include hl. Per le related queries hl resta (call separata, funziona).
       serpApiFetch({ engine: 'google_trends', q: trendsQuery, date: dateRange, data_type: 'RELATED_QUERIES', geo, hl }),
     ])
 
@@ -257,6 +260,25 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       hasTimeline && hasRelated ? 'full' :
       hasRelated                ? 'partial' :
       'none'
+
+    // Diagnostica: logga solo quando la timeline non è arrivata (problema noto su alcuni geo)
+    if (!hasTimeline) {
+      let diagnostic: Record<string, unknown> = { status: timelineSettled.status }
+      if (timelineSettled.status === 'rejected') {
+        const reason = timelineSettled.reason
+        diagnostic.reason = reason instanceof Error ? reason.message : String(reason)
+      } else if (timelineSettled.status === 'fulfilled') {
+        const value = timelineSettled.value as Record<string, unknown> | null
+        diagnostic.responseKeys = value ? Object.keys(value).slice(0, 10) : []
+        const iot = value?.interest_over_time as Record<string, unknown> | undefined
+        if (iot && typeof iot === 'object') {
+          diagnostic.interestOverTimeKeys = Object.keys(iot).slice(0, 10)
+          const timeline_data = iot.timeline_data as unknown[] | undefined
+          diagnostic.timelineDataRawLength = Array.isArray(timeline_data) ? timeline_data.length : 0
+        }
+      }
+      console.warn('[trends] timeline empty', { keyword: trendsQuery, market, geo, ...diagnostic })
+    }
 
     const result: TrendsData = {
       keyword,
