@@ -1,8 +1,6 @@
 import { TrendsData, TrendsDataPoint, RelatedQuery, Market } from './types'
 import { cacheGet, cacheSet } from './upstash'
 
-const MONTHS = 60  // 5 anni
-
 const FRESH_TTL_SEC  = 60 * 60 * 24          // 24h: cache "fresh", hit immediato
 const STALE_TTL_SEC  = 60 * 60 * 24 * 7      // 7 giorni: cache "stale", solo fallback
 const FETCH_TIMEOUT_MS = 25_000              // 25s per singola call SerpApi
@@ -180,12 +178,10 @@ function calcYoY(timeline: TrendsDataPoint[]): number {
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function fetchTrendsData(keyword: string, market: Market = 'US'): Promise<TrendsData> {
-  const endDate   = new Date()
-  const startDate = new Date()
-  startDate.setMonth(startDate.getMonth() - MONTHS)
-
-  // SerpApi usa formato "YYYY-MM-DD YYYY-MM-DD"
-  const dateRange = `${startDate.toISOString().slice(0, 10)} ${endDate.toISOString().slice(0, 10)}`
+  // Sintassi relativa nativa Google Trends: più stabile su backend non-US
+  // (problema confermato su geo=IT con range esplicito YYYY-MM-DD).
+  // Produce anche cache key stabili nell'arco della giornata.
+  const dateRange = 'today 5-y'
 
   const trendsQuery = shortKeyword(keyword)
   const { geo, hl } = MARKET_TRENDS_PARAMS[market]
