@@ -122,6 +122,7 @@ export interface TrendsData {
   available: boolean         // false se API ha fallito (fallback attivo)
   peakMonth: string | null   // nome mese con interesse medio più alto (es. "Dicembre")
   staleData?: boolean        // true se i dati provengono da cache stale (fallback dopo fallimento SerpApi)
+  availability?: 'full' | 'partial' | 'none'  // granularità: full=timeline+related, partial=solo related, none=nulla
 }
 
 // ─── Reddit ───────────────────────────────────────────────────────────────────

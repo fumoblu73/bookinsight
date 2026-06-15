@@ -117,9 +117,25 @@ async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
 // ─── Filtro related queries ───────────────────────────────────────────────────
 
 function filterRelatedQuery(query: string): boolean {
+  // 1. Nomi propri di persone (pattern "Nome Cognome")
   if (/^[A-Z][a-z]+ [A-Z][a-z]+/.test(query)) return false
-  const brandPattern = /\b(amazon|netflix|youtube|spotify|google|apple|facebook|instagram|tiktok|twitter|reddit|pinterest)\b/i
-  if (brandPattern.test(query)) return false
+
+  // 2. Brand tech/social/streaming
+  const socialPattern = /\b(amazon|netflix|youtube|spotify|google|apple|facebook|instagram|tiktok|twitter|reddit|pinterest|whatsapp|telegram)\b/i
+  if (socialPattern.test(query)) return false
+
+  // 3. Brand hardware/laptop (es. "lenovo yoga", "ipad yoga" — laptop non libri)
+  const hardwarePattern = /\b(lenovo|dell|hp|asus|acer|samsung|sony|microsoft|surface|ipad|macbook|kindle|huawei|xiaomi|oppo|motorola|alcatel|nokia)\b/i
+  if (hardwarePattern.test(query)) return false
+
+  // 4. Termini commerciali/operativi che non riflettono interesse editoriale
+  const commercePattern = /\b(near me|store|shop|vendita|prezzo|prezzi|sconto|offerta|usato|comprare|buy|sale|cheap|economic[oa])\b/i
+  if (commercePattern.test(query)) return false
+
+  // 5. Termini app/video/tutorial che inflazionano senza aiutare a posizionare un libro
+  const formatPattern = /\b(app|application|video|tutorial|streaming|download|gratis|free)\b/i
+  if (formatPattern.test(query)) return false
+
   return true
 }
 
@@ -238,13 +254,22 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       })
     }
 
+    // Granularità availability
+    const hasTimeline = timeline.length > 0
+    const hasRelated  = relatedQueries.length > 0
+    const availability: 'full' | 'partial' | 'none' =
+      hasTimeline && hasRelated ? 'full' :
+      hasRelated                ? 'partial' :
+      'none'
+
     const result: TrendsData = {
       keyword,
       timelineData:   timeline,
       relatedQueries: relatedQueries.slice(0, 10),
       yoyGrowth,
-      available:  timeline.length > 0,
-      peakMonth:  calcPeakMonth(timeline),
+      available:    hasTimeline,   // retro: true solo se timeline (immutato)
+      peakMonth:    calcPeakMonth(timeline),
+      availability,
     }
 
     // ── Salva in cache fresh (TTL 24h) ─────────────────────────────────────
@@ -273,6 +298,7 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       yoyGrowth:      0,
       available:      false,
       peakMonth:      null,
+      availability:   'none' as const,
     }
   }
 }

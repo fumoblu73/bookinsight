@@ -178,12 +178,15 @@ export async function runPainPointsPhase(
   // ── Log: Google Trends ────────────────────────────────────────────────────
   logEntries.push({
     step: 'trends', label: 'Google Trends',
-    status: trends.available ? 'ok' : 'warn',
-    summary: trends.available
-      ? `${trends.timelineData.length} mesi di dati · YoY ${trends.yoyGrowth >= 0 ? '+' : ''}${trends.yoyGrowth}%`
-      : 'Dati non disponibili (query troppo specifica o rate limit)',
+    status: trends.availability === 'full' ? 'ok' : 'warn',
+    summary: trends.availability === 'full'
+      ? `${trends.timelineData.length} mesi di dati · YoY ${trends.yoyGrowth >= 0 ? '+' : ''}${trends.yoyGrowth}% · ${trends.relatedQueries.length} query correlate`
+      : trends.availability === 'partial'
+      ? `Timeline non disponibile, ma ${trends.relatedQueries.length} query correlate recuperate`
+      : 'Dati non disponibili (timeline + query correlate vuote)',
     details: {
       available: trends.available,
+      availability: trends.availability ?? 'none',
       queryUsed: trends.keyword,
       dataPoints: trends.timelineData.length,
       yoyGrowth: trends.yoyGrowth,

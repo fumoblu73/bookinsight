@@ -31,7 +31,7 @@ export interface FullReport {
     punti_forza: string[]; punti_debolezza: string[]
     confidence: 'ALTA' | 'MEDIA' | 'BASSA'
   }
-  trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null; staleData?: boolean }
+  trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null; staleData?: boolean; availability?: 'full' | 'partial' | 'none' }
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
   painPoints: { pain_point: string; score: number; F: number; I: number; S: number; evidence: string; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
   gapAnalysis: {
@@ -971,10 +971,29 @@ export default function ReportView({ report }: { report: FullReport }) {
             <span>Dati Trends da cache recente (Google Trends temporaneamente non raggiungibile)</span>
           </div>
         )}
-        {!report.trends.available ? (
+        {(report.trends.availability ?? (report.trends.available ? 'full' : 'none')) === 'none' ? (
           <div className="flex items-center gap-3 text-sm text-zinc-400 italic py-2">
             <span className="text-2xl">—</span>
             <span>Dati Google Trends non disponibili per questa keyword.</span>
+          </div>
+        ) : (report.trends.availability ?? (report.trends.available ? 'full' : 'none')) === 'partial' ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-zinc-700">
+              <span className="font-semibold text-amber-700">ⓘ Timeline non disponibile.</span>{' '}
+              I dati storici di Google Trends per questa keyword/mercato non sono accessibili in questo momento,
+              ma le <strong>query correlate</strong> sono state recuperate e mostrate sotto.
+            </div>
+            {report.trends.relatedQueries.length > 0 && (
+              <SubCard title="Query correlate" accent="violet">
+                <div className="flex flex-wrap gap-2">
+                  {report.trends.relatedQueries.slice(0, 8).map((q, i) => (
+                    <span key={i} className="text-xs px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full font-medium">
+                      {q.query}{q.growthYoY > 0 && <span className="ml-1 text-violet-500">+{q.growthYoY}%</span>}
+                    </span>
+                  ))}
+                </div>
+              </SubCard>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
