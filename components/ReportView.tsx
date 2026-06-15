@@ -31,7 +31,7 @@ export interface FullReport {
     punti_forza: string[]; punti_debolezza: string[]
     confidence: 'ALTA' | 'MEDIA' | 'BASSA'
   }
-  trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null }
+  trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null; staleData?: boolean }
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
   painPoints: { pain_point: string; score: number; F: number; I: number; S: number; evidence: string; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
   gapAnalysis: {
@@ -965,6 +965,12 @@ export default function ReportView({ report }: { report: FullReport }) {
 
       {/* ── §4 Trend Analysis ────────────────────────────────────────────── */}
       <Section num="4" title="Trend Analysis">
+        {report.trends.staleData && (
+          <div className="mb-3 inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+            <span>ⓘ</span>
+            <span>Dati Trends da cache recente (Google Trends temporaneamente non raggiungibile)</span>
+          </div>
+        )}
         {!report.trends.available ? (
           <div className="flex items-center gap-3 text-sm text-zinc-400 italic py-2">
             <span className="text-2xl">—</span>

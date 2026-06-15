@@ -1,6 +1,12 @@
 import { TrendsData, TrendsDataPoint, RelatedQuery, Market } from './types'
+import { cacheGet, cacheSet } from './upstash'
 
 const MONTHS = 60  // 5 anni
+
+const FRESH_TTL_SEC  = 60 * 60 * 24          // 24h: cache "fresh", hit immediato
+const STALE_TTL_SEC  = 60 * 60 * 24 * 7      // 7 giorni: cache "stale", solo fallback
+const FETCH_TIMEOUT_MS = 25_000              // 25s per singola call SerpApi
+const RETRY_DELAY_MS   = 1_500               // 1.5s di delay tra tentativi
 
 // Parole generiche da escludere per ottenere la variante corta della keyword
 const GENERIC_WORDS = new Set([
@@ -62,6 +68,21 @@ const MARKET_TRENDS_PARAMS: Record<Market, { geo: string; hl: string }> = {
 
 // ─── SerpApi fetch (riuso stesso pattern di amazon.ts) ───────────────────────
 
+async function serpApiFetchOnce(qs: string): Promise<unknown> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://serpapi.com/search?${qs}`, { signal: controller.signal })
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 200)
+      throw new Error(`SerpApi ${res.status}: ${body}`)
+    }
+    return await res.json()
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
   const apiKey = process.env.SERPAPI_KEY
   if (!apiKey) throw new Error('SERPAPI_KEY non configurata')
@@ -69,9 +90,28 @@ async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
   const qs = Object.entries({ ...params, api_key: apiKey })
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
-  const res = await fetch(`https://serpapi.com/search?${qs}`)
-  if (!res.ok) throw new Error(`SerpApi ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  return res.json()
+
+  // Tentativo 1
+  try {
+    return await serpApiFetchOnce(qs)
+  } catch (err1) {
+    const msg1 = err1 instanceof Error ? err1.message : String(err1)
+    // Retry solo su errori "ritentabili": timeout/abort, 5xx, network failure, rate limit
+    const isRetryable =
+      msg1.includes('aborted') ||
+      msg1.includes('SerpApi 5') ||
+      msg1.includes('SerpApi 429') ||
+      msg1.includes('fetch failed') ||
+      msg1.includes('ECONNRESET') ||
+      msg1.includes('ETIMEDOUT')
+    if (!isRetryable) throw err1
+
+    console.warn(`[trends] serpApi retry after error: ${msg1.slice(0, 120)}`)
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+
+    // Tentativo 2 (final)
+    return await serpApiFetchOnce(qs)
+  }
 }
 
 // ─── Filtro related queries ───────────────────────────────────────────────────
@@ -133,6 +173,13 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
 
   const trendsQuery = shortKeyword(keyword)
   const { geo, hl } = MARKET_TRENDS_PARAMS[market]
+
+  // ── Cache lookup: fresh hit → ritorna subito ──────────────────────────────
+  const cacheKey = `trends:${market}:${trendsQuery}`
+  const cached = await cacheGet<TrendsData>(cacheKey)
+  if (cached && cached.available) {
+    return cached
+  }
 
   try {
     // Due chiamate in parallelo: timeline + related queries
@@ -200,9 +247,25 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
       peakMonth:  calcPeakMonth(timeline),
     }
 
+    // ── Salva in cache fresh (TTL 24h) ─────────────────────────────────────
+    if (result.available) {
+      await cacheSet(cacheKey, result, FRESH_TTL_SEC)
+      // Mantieni una copia "stale" più duratura come fallback per il prossimo 504
+      await cacheSet(`${cacheKey}:stale`, result, STALE_TTL_SEC)
+    }
+
     return result
   } catch (err) {
     console.error(`[trends] fetchTrendsData failed for "${trendsQuery}" (original: "${keyword}"):`, err)
+
+    // ── Fallback: prova la cache "stale" ─────────────────────────────────────
+    const stale = await cacheGet<TrendsData>(`${cacheKey}:stale`)
+    if (stale && stale.available) {
+      console.warn(`[trends] using stale cache fallback for "${trendsQuery}"`)
+      return { ...stale, staleData: true }
+    }
+
+    // ── Nessuna cache: ritorna vuoto come prima ───────────────────────────────
     return {
       keyword,
       timelineData:   [],
