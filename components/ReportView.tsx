@@ -573,6 +573,8 @@ export default function ReportView({ report }: { report: FullReport }) {
       plannedPrice: roi.params.plannedPrice,
       plannedPages: roi.params.plannedPages,
       monthsToParity: roi.rampMonths,
+      profitabilityScore: report.profitabilityScore,
+      entryDifficulty: report.scoringBreakdown.entryDifficulty,
     })
   }, [roiLocalParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1312,6 +1314,32 @@ export default function ReportView({ report }: { report: FullReport }) {
                 </span>
               )}
             </div>
+            {liveRoi.degradedFrom && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+                <div className="flex items-start gap-2">
+                  <span className="text-amber-600 text-sm leading-5 flex-shrink-0">ⓘ</span>
+                  <div className="text-sm text-zinc-700 leading-relaxed space-y-2">
+                    <p>
+                      <span className="font-semibold text-zinc-900">Verdetto corretto da {liveRoi.degradedFrom} a {liveRoi.investVerdict}.</span>{' '}
+                      Il calcolo puro dei numeri darebbe <span className="font-semibold">{liveRoi.degradedFrom}</span>
+                      {typeof liveRoi.scenarios?.[1]?.ratioVsBudget === 'number' && (
+                        <> (ROI {Math.round(liveRoi.scenarios[1].ratioVsBudget * 100) / 100}× sul budget)</>
+                      )}
+                      . Però la nicchia ha un Profitability Score basso e un&apos;entry difficulty DIFFICILE: il verdetto è stato corretto a <span className="font-semibold">{liveRoi.investVerdict}</span> per riflettere il contesto strategico complessivo.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-zinc-900">Cosa significa per te:</span>{' '}
+                      i numeri sono favorevoli, ma considera tempi di rientro più lunghi e budget di backup più ampio rispetto a una nicchia con verdetto pieno. Pianifica il lancio con margine, accumula recensioni nei primi 30 giorni, e tieni budget pubblicitario di riserva per le settimane in cui l&apos;ACoS dovesse salire sopra 50%.
+                    </p>
+                    {liveRoi.degradeReason && (
+                      <p className="text-xs text-zinc-500 italic">
+                        Regola applicata: {liveRoi.degradeReason}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
