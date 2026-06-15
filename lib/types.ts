@@ -434,6 +434,8 @@ export interface RoiEstimate {
   adSaleIsProfitable: boolean
   bepSignal: RoasSignal
   investVerdict: InvestVerdict
+  degradedFrom?: InvestVerdict    // verdetto numerico originale, se è stato degradato dalla regola contestuale
+  degradeReason?: string          // motivo testuale del degrade (es. "score<50 + DIFFICILE")
 
   warnings: string[]
 }

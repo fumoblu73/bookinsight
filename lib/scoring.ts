@@ -234,9 +234,13 @@ export function calcRoiEstimate(
     costoScrittura?: number
     costoCopertina?: number
     costoPerRecensione?: number
+    profitabilityScore?: number                         // 0-100, da Scoring.score
+    entryDifficulty?: 'FACILE' | 'MEDIO' | 'DIFFICILE' // da Scoring.entryDifficulty
   } = {},
 ): RoiEstimate {
   const warnings: string[] = []
+  const profitabilityScore = opts.profitabilityScore
+  const entryDifficulty = opts.entryDifficulty
 
   // 1. Risolvi parametri
   const cpc            = opts.cpc            ?? DEFAULT_CPC[market]
@@ -343,10 +347,32 @@ export function calcRoiEstimate(
 
   // 7. Verdetto dallo scenario base (indice 1)
   const baseRatio = scenarios[1].ratioVsBudget
-  const investVerdict: InvestVerdict =
+  const numericVerdict: InvestVerdict =
     baseRatio >= 2.0 ? 'INVEST' :
     baseRatio >= 1.0 ? 'PARTIAL' :
     'PASS'
+
+  // 7.bis Degrade rule contestuale: il verdetto numerico viene declassato
+  // se lo score di profittabilità è basso E la nicchia è difficile da attaccare.
+  // Le due condizioni devono valere INSIEME (AND): un solo segnale negativo non basta.
+  let investVerdict: InvestVerdict = numericVerdict
+  let degradedFrom: InvestVerdict | undefined
+  let degradeReason: string | undefined
+
+  if (
+    typeof profitabilityScore === 'number' &&
+    entryDifficulty === 'DIFFICILE'
+  ) {
+    if (numericVerdict === 'INVEST' && profitabilityScore < 50) {
+      investVerdict = 'PARTIAL'
+      degradedFrom = 'INVEST'
+      degradeReason = `score ${profitabilityScore}/100 < 50 + entry DIFFICILE`
+    } else if (numericVerdict === 'PARTIAL' && profitabilityScore < 40) {
+      investVerdict = 'PASS'
+      degradedFrom = 'PARTIAL'
+      degradeReason = `score ${profitabilityScore}/100 < 40 + entry DIFFICILE`
+    }
+  }
 
   // 8. Segnale BEP dallo scenario base
   const baseBep = scenarios[1].breakEvenMonths
@@ -368,6 +394,8 @@ export function calcRoiEstimate(
     adSaleIsProfitable,
     bepSignal,
     investVerdict,
+    ...(degradedFrom ? { degradedFrom } : {}),
+    ...(degradeReason ? { degradeReason } : {}),
     warnings,
   }
 }

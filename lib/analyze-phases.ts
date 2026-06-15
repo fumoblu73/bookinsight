@@ -375,6 +375,8 @@ export async function runFinalizePhase(
     ...(costoCopertina   !== undefined && !isNaN(costoCopertina)                           ? { costoCopertina }   : {}),
     ...(costoPerRecensione !== undefined && !isNaN(costoPerRecensione)                     ? { costoPerRecensione } : {}),
     ...(prefetch ? { monthsToParity: prefetch.monthsToParity, arcReviews: prefetch.arcReviews } : {}),
+    profitabilityScore: intermediate.scoring.score,
+    entryDifficulty: intermediate.scoring.entryDifficulty,
   })
 
   const adsIntelligence = {
