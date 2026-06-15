@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
+﻿import Anthropic from '@anthropic-ai/sdk'
 
 // ─── Costanti modelli ─────────────────────────────────────────────────────────
 
@@ -70,16 +70,89 @@ async function callWithRetry<T>(fn: () => Promise<T>): Promise<T> {
 
 // ─── Helper: parse JSON robusto ───────────────────────────────────────────────
 
-function parseJSON<T>(raw: string): T {
-  // Rimuove eventuali backtick/markdown che il modello potrebbe aggiungere
-  const cleaned = raw
+// Estrae la prima struttura JSON ben formata (array o oggetto) dalla stringa.
+// Cerca il primo carattere di apertura "[" o "{" e usa un balance-counter che
+// rispetta stringhe e escape per trovare il matching close. Ritorna null se
+// nessuna struttura ben formata viene trovata.
+function extractJsonBoundary(s: string): string | null {
+  let firstOpen = -1
+  let openChar: '[' | '{' | null = null
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (c === '[' || c === '{') {
+      firstOpen = i
+      openChar = c as '[' | '{'
+      break
+    }
+  }
+  if (firstOpen === -1 || openChar === null) return null
+
+  const closeChar = openChar === '[' ? ']' : '}'
+  let depth = 0
+  let inString = false
+  let escape = false
+
+  for (let i = firstOpen; i < s.length; i++) {
+    const c = s[i]
+    if (escape) { escape = false; continue }
+    if (c === '\\' && inString) { escape = true; continue }
+    if (c === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (c === openChar) depth++
+    else if (c === closeChar) {
+      depth--
+      if (depth === 0) return s.slice(firstOpen, i + 1)
+    }
+  }
+  return null
+}
+
+function logParseFailure(raw: string, extracted: string | null, err: unknown, context?: string): void {
+  const errMsg = err instanceof Error ? err.message : String(err)
+  const rawPreview = raw.length > 300 ? `${raw.slice(0, 150)}…${raw.slice(-150)}` : raw
+  const extractedPreview = extracted
+    ? (extracted.length > 200 ? `${extracted.slice(0, 100)}…${extracted.slice(-100)}` : extracted)
+    : '<none>'
+  console.error('[ai] parseJSON failed', {
+    context: context ?? 'unknown',
+    error: errMsg,
+    rawLength: raw.length,
+    rawPreview,
+    extractedPreview,
+  })
+}
+
+function parseJSON<T>(raw: string, context?: string): T {
+  // 1. Rimuove eventuali backtick/markdown a inizio/fine (compatibilita retro)
+  const stripped = raw
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim()
-  // NFC: converte caratteri Unicode decomposti in forme composte corrette
-  // es. "a\u0300" (a + combining grave) → "à", prevenendo mojibake nell'output AI
-  const normalized = cleaned.normalize('NFC')
-  return JSON.parse(normalized) as T
+
+  // 2. NFC: converte caratteri Unicode decomposti in forme composte corrette
+  const normalized = stripped.normalize('NFC')
+
+  // 3. Tentativo diretto: se la stringa e gia JSON pulito, parsa senza estrazione
+  try {
+    return JSON.parse(normalized) as T
+  } catch {
+    // Fall through to boundary extraction
+  }
+
+  // 4. Boundary detection: estrai la prima struttura JSON ben formata
+  const extracted = extractJsonBoundary(normalized)
+  if (extracted) {
+    try {
+      return JSON.parse(extracted) as T
+    } catch (err) {
+      logParseFailure(normalized, extracted, err, context)
+      throw err
+    }
+  }
+
+  // 5. Nessuna struttura JSON trovata: logga e lancia errore generico
+  logParseFailure(normalized, null, new Error('No JSON structure found'), context)
+  throw new Error(`AI response is not valid JSON${context ? ` (${context})` : ''}: no [...] or {...} found in response`)
 }
 
 // Rimuove lone surrogates dal prompt prima di inviarlo all'API. Reddit/YouTube
@@ -114,7 +187,7 @@ export async function callSonnet<T>(userPrompt: string): Promise<T> {
     throw new Error('Sonnet: risposta vuota o formato inatteso')
   }
 
-  return parseJSON<T>(block.text)
+  return parseJSON<T>(block.text, 'callSonnet')
 }
 
 // ─── callSonnetText ───────────────────────────────────────────────────────────
@@ -171,7 +244,7 @@ export async function callHaiku<T>(userPrompt: string, options?: { temperature?:
     throw new Error('Haiku: risposta vuota o formato inatteso')
   }
 
-  return parseJSON<T>(block.text)
+  return parseJSON<T>(block.text, 'callHaiku')
 }
 
 // ─── Funzioni specifiche per ogni sezione ─────────────────────────────────────
