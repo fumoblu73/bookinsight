@@ -442,6 +442,18 @@ export interface RoiEstimate {
   warnings: string[]
 }
 
+// ─── Things to Avoid ─────────────────────────────────────────────────────────
+
+export interface ThingToAvoid {
+  id: string
+  titolo: string
+  descrizione: string
+  categoria: 'pricing' | 'positioning' | 'cover_design' | 'content' |
+             'format' | 'marketing' | 'differentiation' | 'review_velocity'
+  evidence: string
+  severita: 'critica' | 'alta' | 'media'
+}
+
 // ─── Concept Directions ───────────────────────────────────────────────────────
 
 export interface ConceptDirection {

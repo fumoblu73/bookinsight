@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection } from '@/lib/types'
+import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection, ThingToAvoid } from '@/lib/types'
 import { calcRoiEstimate } from '@/lib/scoring'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -87,6 +87,7 @@ export interface FullReport {
   ads_intelligence?: AdsIntelligence
   bonus_suggestions?: BonusSuggestion[]
   concept_directions?: ConceptDirection[]
+  things_to_avoid?: ThingToAvoid[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -540,6 +541,54 @@ function ConceptCard({ concept, index }: { concept: ConceptDirection; index: num
 
       <div className="text-xs text-zinc-400 mt-auto pt-2 border-t border-zinc-100">
         Pain risolti: {concept.pain_points_origine.length} · {concept.evidenza_motivo}
+      </div>
+    </div>
+  )
+}
+
+// ─── ThingToAvoidCard ─────────────────────────────────────────────────────────
+
+const CATEGORIA_LABEL: Record<ThingToAvoid['categoria'], string> = {
+  pricing: 'Pricing',
+  positioning: 'Posizionamento',
+  cover_design: 'Copertina',
+  content: 'Contenuto',
+  format: 'Formato',
+  marketing: 'Marketing',
+  differentiation: 'Differenziazione',
+  review_velocity: 'Review Velocity',
+}
+
+function ThingToAvoidCard({ item, index }: { item: ThingToAvoid; index: number }) {
+  const severitaCls = item.severita === 'critica'
+    ? 'bg-rose-50 text-rose-700 border-rose-200'
+    : item.severita === 'alta'
+    ? 'bg-amber-50 text-amber-700 border-amber-200'
+    : 'bg-zinc-50 text-zinc-600 border-zinc-200'
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="flex items-start gap-3">
+        <span className="text-rose-500 text-xl leading-6 flex-shrink-0">⚠</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className="text-xs text-zinc-400 font-mono">#{index}</span>
+            <span className={`text-xs px-2 py-0.5 rounded border font-medium ${severitaCls}`}>
+              {item.severita.toUpperCase()}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 font-medium">
+              {CATEGORIA_LABEL[item.categoria] ?? item.categoria}
+            </span>
+          </div>
+          <h5 className="text-sm font-semibold text-zinc-900 mb-2">{item.titolo}</h5>
+          <div className="space-y-2 text-sm text-zinc-700">
+            <div>{item.descrizione}</div>
+            <div className="text-xs text-zinc-500 border-l-2 border-zinc-200 pl-3 italic">
+              <span className="font-medium not-italic text-zinc-400">Dato: </span>
+              {item.evidence}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -1348,6 +1397,20 @@ export default function ReportView({ report }: { report: FullReport }) {
               ))}
             </div>
           </SubCard>
+
+          {report.things_to_avoid && report.things_to_avoid.length >= 2 && (
+            <SubCard title="Cosa evitare in questa nicchia" accent="rose">
+              <div className="mb-3 text-xs text-zinc-500">
+                Errori che ricorrono nei dati di questa nicchia e che, se commessi, possono compromettere il lancio.
+                Ognuno è ancorato a un dato verificabile dal report.
+              </div>
+              <div className="space-y-3">
+                {report.things_to_avoid.map((item, i) => (
+                  <ThingToAvoidCard key={item.id} item={item} index={i + 1} />
+                ))}
+              </div>
+            </SubCard>
+          )}
 
           <SubCard title="Strategia lancio" accent="indigo">
             {strategiaSteps.length > 1 ? (

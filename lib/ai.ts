@@ -262,6 +262,7 @@ import {
   promptTargetInterpretation,
   promptBonusSuggestions,
   promptConceptDirections,
+  promptThingsToAvoid,
 } from './prompts'
 
 import {
@@ -278,6 +279,8 @@ import {
   BookReviews,
   BonusSuggestion,
   ConceptDirection,
+  ThingToAvoid,
+  FilteredBook,
 } from './types'
 
 import {
@@ -602,6 +605,54 @@ export async function runConceptDirections(
     return normalized.slice(0, 3)
   } catch (err) {
     console.error('[ai] runConceptDirections failed:', err)
+    return []
+  }
+}
+
+// ─── Things to Avoid (Sonnet) ────────────────────────────────────────────────
+
+type RawThingToAvoid = Omit<ThingToAvoid, 'id'>
+
+const VALID_CATEGORIA: ThingToAvoid['categoria'][] = [
+  'pricing', 'positioning', 'cover_design', 'content',
+  'format', 'marketing', 'differentiation', 'review_velocity',
+]
+
+const VALID_SEVERITA: ThingToAvoid['severita'][] = ['critica', 'alta', 'media']
+
+const SEVERITA_WEIGHT: Record<ThingToAvoid['severita'], number> = { critica: 0, alta: 1, media: 2 }
+
+export async function runThingsToAvoid(
+  keyword: string,
+  market: Market,
+  painPoints: PainPoint[],
+  topBooks: FilteredBook[],
+  topBookReviews: BookReviews[],
+  gapAnalysis?: unknown,
+): Promise<ThingToAvoid[]> {
+  if (painPoints.length === 0 && topBooks.length === 0) return []
+
+  try {
+    const raw = await callSonnet<RawThingToAvoid[]>(
+      promptThingsToAvoid(keyword, market, painPoints, topBooks, topBookReviews, gapAnalysis)
+    )
+
+    const normalized: ThingToAvoid[] = raw.map(r => ({
+      id: `avoid_${Math.random().toString(36).slice(2, 10)}`,
+      titolo: (r.titolo ?? '').slice(0, 100),
+      descrizione: (r.descrizione ?? '').slice(0, 500),
+      categoria: VALID_CATEGORIA.includes(r.categoria) ? r.categoria : 'differentiation',
+      evidence: (r.evidence ?? '').slice(0, 400),
+      severita: VALID_SEVERITA.includes(r.severita) ? r.severita : 'alta',
+    }))
+
+    if (normalized.length < 2) return []
+
+    return normalized
+      .slice(0, 3)
+      .sort((a, b) => SEVERITA_WEIGHT[a.severita] - SEVERITA_WEIGHT[b.severita])
+  } catch (err) {
+    console.error('[ai] runThingsToAvoid failed:', err)
     return []
   }
 }

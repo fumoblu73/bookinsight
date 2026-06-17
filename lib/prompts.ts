@@ -1,4 +1,4 @@
-import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, SubNiche, TargetInterpretationSummary, BookReviews } from './types'
+import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, SubNiche, TargetInterpretationSummary, BookReviews, FilteredBook } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -895,6 +895,146 @@ Rispondi SOLO con un array JSON valido, nessun testo prima o dopo:
     "come_presentarlo": "dove inserirlo: back matter, lead magnet, bonus page, copertina (max 400 chars)",
     "efficacia_score": 7,
     "efficacia_motivo": "perché questo score (max 20 parole)"
+  }
+]`
+}
+
+// ─── Things to Avoid (Sonnet) ─────────────────────────────────────────────────
+
+export function promptThingsToAvoid(
+  keyword: string,
+  market: Market,
+  painPoints: PainPoint[],
+  topBooks: FilteredBook[],
+  topBookReviews: BookReviews[],
+  gapAnalysis?: unknown,
+): string {
+  // Blocco top 5 strutturato + statistiche aggregate
+  const prices = topBooks.map(b => b.price).filter(p => p > 0)
+  const avgPrice = prices.length > 0 ? (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2) : 'N/D'
+  const minPrice = prices.length > 0 ? Math.min(...prices).toFixed(2) : 'N/D'
+  const maxPrice = prices.length > 0 ? Math.max(...prices).toFixed(2) : 'N/D'
+  const ratings = topBooks.map(b => b.rating).filter(r => r > 0)
+  const ratingRange = ratings.length > 0
+    ? `${Math.min(...ratings).toFixed(1)}–${Math.max(...ratings).toFixed(1)}`
+    : 'N/D'
+  const bsrRange = topBooks.filter(b => b.bsr > 0).map(b => b.bsr)
+  const bsrRangeStr = bsrRange.length > 0
+    ? `${Math.min(...bsrRange).toLocaleString()}–${Math.max(...bsrRange).toLocaleString()}`
+    : 'N/D'
+
+  const booksBlock = topBooks
+    .map((b, i) =>
+      `${i + 1}. "${b.title}" — ${b.currency}${b.price.toFixed(2)}, BSR ${b.bsr.toLocaleString()}, ` +
+      `${b.reviewCount} rec, ${b.rating}★, ${b.pages ?? '?'} pag, ${b.selfPublished ? 'self-pub' : 'publisher'}`
+    )
+    .join('\n')
+
+  // Blocco recensioni negative (≤3★, max 3 per libro, 400 chars)
+  const reviewLines: string[] = []
+  for (const br of topBookReviews) {
+    const neg = br.reviews.filter(r => r.rating <= 3).slice(0, 3)
+    if (neg.length > 0) {
+      reviewLines.push(`Libro: "${br.bookTitle}"`)
+      neg.forEach(r => reviewLines.push(`  [${r.rating}★] "${r.title}" — ${r.body.slice(0, 400)}`))
+    }
+  }
+  const reviewBlock = reviewLines.length > 0
+    ? reviewLines.join('\n')
+    : '(nessuna recensione negativa disponibile)'
+
+  // Blocco pain points top (max 8, con evidence_quotes)
+  const topPainPoints = [...painPoints]
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 8)
+
+  const ppBlock = topPainPoints.map(pp => {
+    const lines: string[] = [
+      `[${pp.id}] score ${pp.score} — "${pp.pain_point}" (fonte: ${pp.fonte})`,
+    ]
+    if (pp.evidence_quotes?.length) {
+      pp.evidence_quotes.slice(0, 2).forEach(q => lines.push(`  citazione: "${q}"`))
+    }
+    return lines.join('\n')
+  }).join('\n\n')
+
+  // Blocco gap analysis narrativo
+  let gapBlock = '(gap analysis non disponibile)'
+  if (gapAnalysis && typeof gapAnalysis === 'object') {
+    const ga = gapAnalysis as Record<string, unknown>
+    const compact = {
+      problemi_non_risolti: ga['passo1_problemi_non_risolti'],
+      angoli_mancanti: ga['passo2_angoli_mancanti'],
+      target_non_servito: ga['passo4_target_non_servito'],
+    }
+    gapBlock = JSON.stringify(compact, null, 2).slice(0, 1500)
+  }
+
+  return `Sei un esperto di strategia editoriale KDP che identifica gli errori più comuni che un nuovo entrante commette in questa nicchia.
+
+KEYWORD: "${keyword}" (mercato: ${market})
+
+═══ TOP ${topBooks.length} COMPETITOR ═══
+${booksBlock}
+
+Statistiche aggregate: prezzo medio ${market === 'IT' ? '€' : '$'}${avgPrice} (range ${minPrice}–${maxPrice}) · BSR range ${bsrRangeStr} · rating range ${ratingRange}★
+
+═══ RECENSIONI NEGATIVE ═══
+${reviewBlock}
+
+═══ PAIN POINTS TOP (ordinati per score) ═══
+${ppBlock}
+
+═══ GAP ANALYSIS ═══
+${gapBlock}
+
+═══ ISTRUZIONI ═══
+Genera ESATTAMENTE 3 anti-pattern specifici e ancorati ai dati di questa nicchia.
+Ordina per severità decrescente: critica → alta → media.
+I 3 anti-pattern devono avere categorie DISTINTE (no doppioni di categoria).
+Almeno 1 deve avere severità "critica" se i dati lo supportano.
+
+LINGUA: SEMPRE ITALIANO per tutti i campi.
+
+REGOLA D'ORO: ogni "evidence" deve citare un dato specifico verificabile dal report. NIENTE frasi vaghe.
+
+ESEMPI di evidence VALIDA:
+✓ "Il top 4 ha prezzo medio $27.79, range $17.99-$37.97. Sotto $19.99 ti collochi nella fascia low-quality."
+✓ "3 recensioni negative su 5 libri citano 'pictures don't match instructions' o 'no diagrams' (pattern cross-competitor)."
+✓ "Il pain point score 7.6 'mancanza esempi pratici' è confermato da 2 thread Reddit e 4 recensioni negative."
+✓ "I top 4 competitor hanno tutti illustrazioni vettoriali in copertina; foto realistiche perdono leggibilità a thumbnail 100×150."
+
+ESEMPI di evidence INVALIDA:
+✗ "La nicchia è competitiva."
+✗ "I lettori si aspettano qualità."
+✗ "È importante differenziarsi."
+
+CATEGORIE ammesse (usa esattamente questi valori):
+- pricing: errori di prezzo
+- positioning: errori di posizionamento (es. troppo generico, sovrapposizione con dominator)
+- cover_design: errori di copertina (es. mismatch genere, illeggibile a thumbnail)
+- content: errori di contenuto (es. troppo teorico, mancano esempi)
+- format: errori di formato (es. layout non funzionale)
+- marketing: errori di marketing (es. ARC team insufficiente, ads troppo presto)
+- differentiation: mancata differenziazione (es. clone degli omnibus, no USP chiaro)
+- review_velocity: errori di review velocity (es. lanciare senza ARC)
+
+SEVERITÀ (usa esattamente questi valori):
+- critica: errore che da solo uccide il lancio
+- alta: errore che riduce significativamente la conversione
+- media: errore evitabile ma non fatale
+
+CONVENZIONE TERMINI: traduci in italiano, aggiungi termine originale tra parentesi se aggiunge precisione editoriale.
+ECCEZIONI (non tradurre): USDA, FDA e altri acronimi consolidati; nomi propri; termini già usati in italiano (prepper, homesteading, off-grid).
+
+Rispondi SOLO con un array JSON di 3 elementi, ordinato per severità decrescente, niente prosa, niente markdown:
+[
+  {
+    "titolo": "Etichetta breve dell'anti-pattern (max 8 parole, italiano)",
+    "descrizione": "2-3 frasi italiane che spiegano cosa evitare e perché (max 500 chars)",
+    "categoria": "pricing | positioning | cover_design | content | format | marketing | differentiation | review_velocity",
+    "evidence": "1-2 frasi italiane con dato specifico verificabile dal report (max 400 chars). Cita numeri concreti.",
+    "severita": "critica | alta | media"
   }
 ]`
 }

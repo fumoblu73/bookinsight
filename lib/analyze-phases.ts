@@ -1,6 +1,6 @@
 import {
   AmazonData, TrendsData, RedditData, YouTubeData,
-  PainPoint, SubNiche, LogEntry, Market, BonusSuggestion, ConceptDirection,
+  PainPoint, SubNiche, LogEntry, Market, BonusSuggestion, ConceptDirection, ThingToAvoid,
 } from './types'
 import {
   ComplianceCategory, ComplianceRisk,
@@ -16,7 +16,7 @@ import {
   runPasso0, runPainPointsReddit, runSubNicheDetection,
   runKeyInsights, runTrendForecast, runGapAnalysis,
   runSeriesStrategy, runRoiNarrative, runPainPointsAmazonReviews,
-  runBonusSuggestions, runConceptDirections,
+  runBonusSuggestions, runConceptDirections, runThingsToAvoid,
 } from './ai'
 import { cacheGet } from './upstash'
 
@@ -443,8 +443,9 @@ export async function runFinalizePhase(
   let roiNarrative: RoiNarrativeResult
   let bonusSuggestions: BonusSuggestion[]
   let conceptDirections: ConceptDirection[]
+  let thingsToAvoid: ThingToAvoid[]
   try {
-    ;[seriesStrategy, roiNarrative, bonusSuggestions, conceptDirections] = await Promise.all([
+    ;[seriesStrategy, roiNarrative, bonusSuggestions, conceptDirections, thingsToAvoid] = await Promise.all([
       runSeriesStrategy(amazon, gapAnalysis.passo5_tesi_libro, scoring, roi),
       runRoiNarrative(intermediate.keyword, intermediate.market, roi, scoring),
       runBonusSuggestions(
@@ -466,6 +467,17 @@ export async function runFinalizePhase(
       ).catch(err => {
         console.error('[finalize] runConceptDirections failed:', err)
         return [] as ConceptDirection[]
+      }),
+      runThingsToAvoid(
+        intermediate.keyword,
+        intermediate.market,
+        bonusPainPoints,
+        amazon.topBooks,
+        intermediate.amazon.topBookReviews ?? [],
+        gapAnalysis,
+      ).catch(err => {
+        console.error('[finalize] runThingsToAvoid failed:', err)
+        return [] as ThingToAvoid[]
       }),
     ])
     finalizeLogs.push({
@@ -500,6 +512,19 @@ export async function runFinalizePhase(
         conceptCount: conceptDirections.length,
         sourcePainPoints: bonusPainPoints.length,
         curatedMode: (selectedPainPointIds?.length ?? 0) > 0,
+      },
+    })
+    finalizeLogs.push({
+      step: 'avoid',
+      label: 'Things to Avoid (AI)',
+      status: thingsToAvoid.length >= 2 ? 'ok' : 'warn',
+      summary: thingsToAvoid.length > 0
+        ? `${thingsToAvoid.length} anti-pattern identificati`
+        : 'Nessun anti-pattern identificato (corpus insufficiente)',
+      details: {
+        count: thingsToAvoid.length,
+        severities: thingsToAvoid.map(t => t.severita),
+        categories: thingsToAvoid.map(t => t.categoria),
       },
     })
   } catch (err) {
@@ -538,6 +563,7 @@ export async function runFinalizePhase(
     ads_intelligence: adsIntelligence,
     bonus_suggestions: bonusSuggestions,
     concept_directions: conceptDirections,
+    things_to_avoid: thingsToAvoid,
     competitiveDynamism,
     complianceCategory,
     complianceRisk,
