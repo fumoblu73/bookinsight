@@ -3,6 +3,9 @@ import { cacheGet, cacheSet } from './upstash'
 
 const FRESH_TTL_SEC  = 60 * 60 * 24          // 24h: cache "fresh", hit immediato
 const STALE_TTL_SEC  = 60 * 60 * 24 * 7      // 7 giorni: cache "stale", solo fallback
+// Incrementare quando la semantica di TrendsData cambia in modo incompatibile.
+// Le entry vecchie diventano irraggiungibili e scadono autonomamente entro STALE_TTL_SEC.
+const CACHE_VERSION = 'v2'
 const FETCH_TIMEOUT_MS = 25_000              // 25s per singola call SerpApi
 const RETRY_DELAY_MS   = 1_500               // 1.5s di delay tra tentativi
 
@@ -187,7 +190,7 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
   const { geo, hl } = MARKET_TRENDS_PARAMS[market]
 
   // ── Cache lookup: fresh hit → ritorna subito ──────────────────────────────
-  const cacheKey = `trends:${market}:${trendsQuery}`
+  const cacheKey = `trends_${CACHE_VERSION}:${market}:${trendsQuery}`
   const cached = await cacheGet<TrendsData>(cacheKey)
   if (cached && cached.available) {
     return cached
