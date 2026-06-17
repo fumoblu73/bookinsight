@@ -1,6 +1,6 @@
 import {
   AmazonData, TrendsData, RedditData, YouTubeData,
-  PainPoint, SubNiche, LogEntry, Market, BonusSuggestion,
+  PainPoint, SubNiche, LogEntry, Market, BonusSuggestion, ConceptDirection,
 } from './types'
 import {
   ComplianceCategory, ComplianceRisk,
@@ -16,7 +16,7 @@ import {
   runPasso0, runPainPointsReddit, runSubNicheDetection,
   runKeyInsights, runTrendForecast, runGapAnalysis,
   runSeriesStrategy, runRoiNarrative, runPainPointsAmazonReviews,
-  runBonusSuggestions,
+  runBonusSuggestions, runConceptDirections,
 } from './ai'
 import { cacheGet } from './upstash'
 
@@ -442,8 +442,9 @@ export async function runFinalizePhase(
   let seriesStrategy: SeriesStrategyResult
   let roiNarrative: RoiNarrativeResult
   let bonusSuggestions: BonusSuggestion[]
+  let conceptDirections: ConceptDirection[]
   try {
-    ;[seriesStrategy, roiNarrative, bonusSuggestions] = await Promise.all([
+    ;[seriesStrategy, roiNarrative, bonusSuggestions, conceptDirections] = await Promise.all([
       runSeriesStrategy(amazon, gapAnalysis.passo5_tesi_libro, scoring, roi),
       runRoiNarrative(intermediate.keyword, intermediate.market, roi, scoring),
       runBonusSuggestions(
@@ -455,6 +456,16 @@ export async function runFinalizePhase(
       ).catch(err => {
         console.error('[finalize] runBonusSuggestions failed:', err)
         return [] as BonusSuggestion[]
+      }),
+      runConceptDirections(
+        intermediate.keyword,
+        intermediate.market,
+        bonusPainPoints,
+        intermediate.amazon.topBookReviews ?? [],
+        gapAnalysis,
+      ).catch(err => {
+        console.error('[finalize] runConceptDirections failed:', err)
+        return [] as ConceptDirection[]
       }),
     ])
     finalizeLogs.push({
@@ -478,6 +489,17 @@ export async function runFinalizePhase(
         bonusCount: bonusSuggestions.length,
         sourcePainPoints: bonusPainPoints.length,
         curatedMode: selectedPainPointIds.length > 0,
+      },
+    })
+    finalizeLogs.push({
+      step: 'concepts',
+      label: 'Concept Directions (AI)',
+      status: conceptDirections.length > 0 ? 'ok' : 'warn',
+      summary: `${conceptDirections.length} angoli alternativi generati`,
+      details: {
+        conceptCount: conceptDirections.length,
+        sourcePainPoints: bonusPainPoints.length,
+        curatedMode: (selectedPainPointIds?.length ?? 0) > 0,
       },
     })
   } catch (err) {
@@ -515,6 +537,7 @@ export async function runFinalizePhase(
     amazon,
     ads_intelligence: adsIntelligence,
     bonus_suggestions: bonusSuggestions,
+    concept_directions: conceptDirections,
     competitiveDynamism,
     complianceCategory,
     complianceRisk,

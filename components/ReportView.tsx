@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion } from '@/lib/types'
+import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection } from '@/lib/types'
 import { calcRoiEstimate } from '@/lib/scoring'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -86,6 +86,7 @@ export interface FullReport {
   }
   ads_intelligence?: AdsIntelligence
   bonus_suggestions?: BonusSuggestion[]
+  concept_directions?: ConceptDirection[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -477,6 +478,68 @@ function BonusCard({ bonus }: { bonus: BonusSuggestion }) {
       </div>
       <div className="mt-2 text-xs text-zinc-400">
         Pain point collegati: {bonus.pain_points_origine.length}
+      </div>
+    </div>
+  )
+}
+
+// ─── ConceptCard ──────────────────────────────────────────────────────────────
+
+function ConceptCard({ concept, index }: { concept: ConceptDirection; index: number }) {
+  const difficoltaCls = concept.difficolta_esecuzione === 'BASSA'
+    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    : concept.difficolta_esecuzione === 'ALTA'
+    ? 'bg-rose-50 text-rose-700 border-rose-200'
+    : 'bg-amber-50 text-amber-700 border-amber-200'
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 flex flex-col gap-3 print:break-inside-avoid">
+      <div className="flex items-start gap-2 flex-wrap">
+        <span className="text-xs text-zinc-400 font-mono">Concept {index}</span>
+        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${difficoltaCls}`}>
+          Difficoltà {concept.difficolta_esecuzione}
+        </span>
+        <span className="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium">
+          Evidenza {concept.evidenza_score}/10
+        </span>
+      </div>
+
+      <h5 className="text-sm font-semibold text-zinc-900 leading-snug">
+        {concept.titolo_concetto}
+      </h5>
+
+      <div className="text-xs text-zinc-500 italic">
+        {concept.sotto_segmento}
+      </div>
+
+      <div className="space-y-2 text-sm text-zinc-700">
+        <div>
+          <span className="text-xs text-zinc-400 font-medium">Angolo: </span>
+          {concept.angolo}
+        </div>
+        <div>
+          <span className="text-xs text-zinc-400 font-medium">Perché potrebbe funzionare: </span>
+          {concept.why_could_work}
+        </div>
+        <div>
+          <span className="text-xs text-rose-500 font-medium">Rischio principale: </span>
+          {concept.main_risk}
+        </div>
+      </div>
+
+      {concept.differenziatori_chiave.length > 0 && (
+        <div>
+          <div className="text-xs text-zinc-400 font-medium mb-1">Differenziatori chiave:</div>
+          <ul className="text-xs text-zinc-600 space-y-1 list-disc list-inside">
+            {concept.differenziatori_chiave.map((d, i) => (
+              <li key={i}>{d}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="text-xs text-zinc-400 mt-auto pt-2 border-t border-zinc-100">
+        Pain risolti: {concept.pain_points_origine.length} · {concept.evidenza_motivo}
       </div>
     </div>
   )
@@ -1211,6 +1274,21 @@ export default function ReportView({ report }: { report: FullReport }) {
                       </div>
                     )
                   })}
+              </div>
+            </SubCard>
+          )}
+
+          {/* Angoli Alternativi — solo se concept_directions presenti */}
+          {report.concept_directions && report.concept_directions.length > 0 && (
+            <SubCard title="Angoli Alternativi" accent="indigo">
+              <div className="mb-3 text-xs text-zinc-500">
+                Tre concetti di libro alternativi sulla stessa nicchia, ognuno con un sotto-segmento e angolo distinto.
+                Diversi dal &ldquo;Libro Proposto&rdquo; sopra (sintesi unica) e dalla Series Strategy sotto (3 volumi della stessa serie).
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {report.concept_directions.map((concept, i) => (
+                  <ConceptCard key={concept.id} concept={concept} index={i + 1} />
+                ))}
               </div>
             </SubCard>
           )}

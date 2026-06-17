@@ -40,6 +40,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
       gap_analysis: report.gapAnalysis,
       series_strategy: report.seriesStrategy,
       bonus_suggestions: report.bonus_suggestions ?? null,
+      concept_directions: report.concept_directions ?? null,
       investment_roi: {
         ...report.roi,
         narrative: report.roiNarrative,

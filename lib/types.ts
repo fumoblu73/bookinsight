@@ -442,6 +442,22 @@ export interface RoiEstimate {
   warnings: string[]
 }
 
+// ─── Concept Directions ───────────────────────────────────────────────────────
+
+export interface ConceptDirection {
+  id: string
+  titolo_concetto: string
+  sotto_segmento: string
+  pain_points_origine: string[]
+  angolo: string
+  why_could_work: string
+  main_risk: string
+  differenziatori_chiave: string[]
+  difficolta_esecuzione: 'BASSA' | 'MEDIA' | 'ALTA'
+  evidenza_score: number
+  evidenza_motivo: string
+}
+
 // ─── Bonus Suggestions ────────────────────────────────────────────────────────
 
 export interface BonusSuggestion {

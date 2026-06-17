@@ -261,6 +261,7 @@ import {
   promptTargetWeaknesses,
   promptTargetInterpretation,
   promptBonusSuggestions,
+  promptConceptDirections,
 } from './prompts'
 
 import {
@@ -276,6 +277,7 @@ import {
   TargetInterpretationSummary,
   BookReviews,
   BonusSuggestion,
+  ConceptDirection,
 } from './types'
 
 import {
@@ -542,6 +544,64 @@ export async function runBonusSuggestions(
       .sort((a, b) => b.efficacia_score - a.efficacia_score)
   } catch (err) {
     console.error('[ai] runBonusSuggestions failed:', err)
+    return []
+  }
+}
+
+// ─── Concept Directions (Sonnet) ─────────────────────────────────────────────
+
+type RawConcept = Omit<ConceptDirection, 'id'>
+
+const VALID_DIFFICOLTA: ConceptDirection['difficolta_esecuzione'][] = ['BASSA', 'MEDIA', 'ALTA']
+
+export async function runConceptDirections(
+  keyword: string,
+  market: Market,
+  painPoints: PainPoint[],
+  topBookReviews: BookReviews[],
+  gapAnalysis?: unknown,
+): Promise<ConceptDirection[]> {
+  if (painPoints.length === 0) return []
+
+  try {
+    const raw = await callSonnet<RawConcept[]>(
+      promptConceptDirections(keyword, market, painPoints, topBookReviews, gapAnalysis)
+    )
+
+    const validIds = new Set(painPoints.map(p => p.id).filter(Boolean) as string[])
+
+    const normalized: ConceptDirection[] = raw
+      .map(r => {
+        const validOrigins = (r.pain_points_origine ?? []).filter(id => validIds.has(id))
+        if (validOrigins.length === 0) return null
+
+        const differenziatori = (r.differenziatori_chiave ?? [])
+          .filter(d => typeof d === 'string' && d.trim().length > 0)
+          .map(d => d.trim().slice(0, 100))
+          .slice(0, 3)
+
+        return {
+          id: `concept_${Math.random().toString(36).slice(2, 10)}`,
+          titolo_concetto: (r.titolo_concetto ?? '').slice(0, 120),
+          sotto_segmento: (r.sotto_segmento ?? '').slice(0, 200),
+          pain_points_origine: validOrigins,
+          angolo: (r.angolo ?? '').slice(0, 400),
+          why_could_work: (r.why_could_work ?? '').slice(0, 400),
+          main_risk: (r.main_risk ?? '').slice(0, 300),
+          differenziatori_chiave: differenziatori,
+          difficolta_esecuzione: VALID_DIFFICOLTA.includes(r.difficolta_esecuzione)
+            ? r.difficolta_esecuzione
+            : 'MEDIA',
+          evidenza_score: Math.min(10, Math.max(1, Math.round(r.evidenza_score))),
+          evidenza_motivo: (r.evidenza_motivo ?? '').slice(0, 150),
+        }
+      })
+      .filter((c): c is ConceptDirection => c !== null)
+
+    if (normalized.length === 0) return []
+    return normalized.slice(0, 3)
+  } catch (err) {
+    console.error('[ai] runConceptDirections failed:', err)
     return []
   }
 }

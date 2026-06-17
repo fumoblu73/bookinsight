@@ -673,6 +673,109 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
 ]`
 }
 
+// ─── Concept Directions (Sonnet) ─────────────────────────────────────────────
+
+export function promptConceptDirections(
+  keyword: string,
+  market: Market,
+  painPoints: PainPoint[],
+  topBookReviews: BookReviews[],
+  gapAnalysis?: unknown,
+): string {
+  // Blocco pain points con evidence e voice
+  const ppBlock = painPoints.map(pp => {
+    const lines: string[] = [
+      `[${pp.id}] ${pp.pain_point} (score ${pp.score}, fonte: ${pp.fonte})`,
+    ]
+    if (pp.evidence_quotes?.length) {
+      pp.evidence_quotes.slice(0, 2).forEach(q => lines.push(`  citazione: "${q}"`))
+    }
+    if (pp.voice_phrases?.length) {
+      pp.voice_phrases.slice(0, 3).forEach(p => lines.push(`  voce lettore: "${p}"`))
+    }
+    return lines.join('\n')
+  }).join('\n\n')
+
+  // Blocco recensioni negative top competitor (max 3 per libro, body ≤400 chars)
+  const reviewLines: string[] = []
+  for (const br of topBookReviews) {
+    const negReviews = br.reviews
+      .filter(r => r.rating <= 3)
+      .slice(0, 3)
+    if (negReviews.length > 0) {
+      reviewLines.push(`Libro: "${br.bookTitle}"`)
+      negReviews.forEach(r => {
+        reviewLines.push(`  [${r.rating}★] "${r.title}" — ${r.body.slice(0, 400)}`)
+      })
+    }
+  }
+  const reviewBlock = reviewLines.length > 0
+    ? reviewLines.join('\n')
+    : '(nessuna recensione negativa disponibile)'
+
+  // Blocco gap analysis compatto (passo1, passo2, passo4)
+  let gapBlock = '(gap analysis non disponibile)'
+  if (gapAnalysis && typeof gapAnalysis === 'object') {
+    const ga = gapAnalysis as Record<string, unknown>
+    const compact = {
+      problemi_non_risolti: ga['passo1_problemi_non_risolti'],
+      angoli_mancanti: ga['passo2_angoli_mancanti'],
+      target_non_servito: ga['passo4_target_non_servito'],
+    }
+    gapBlock = JSON.stringify(compact, null, 2).slice(0, 1500)
+  }
+
+  const langNote = NON_ENGLISH_MARKETS.has(market)
+    ? `Lingua dei concept: ITALIANO (mercato ${market}). Titoli, angolo, sotto-segmento devono essere in italiano.`
+    : `Lingua dei concept: INGLESE (mercato ${market}). Titoli, angolo, sotto-segmento devono essere in inglese.`
+
+  return `Sei un esperto di strategia editoriale KDP specializzato nel posizionamento di nuovi titoli in nicchie già competitive.
+
+KEYWORD: "${keyword}" (mercato: ${market})
+${langNote}
+
+═══ PAIN POINT DEI LETTORI ═══
+${ppBlock}
+
+═══ RECENSIONI NEGATIVE COMPETITOR ═══
+${reviewBlock}
+
+═══ GAP ANALYSIS ═══
+${gapBlock}
+
+═══ ISTRUZIONI ═══
+Genera esattamente 3 concept di libro ALTERNATIVI per la nicchia "${keyword}" sul mercato ${market}.
+Questi NON sono volumi della stessa serie: sono 3 libri indipendenti con angoli distinti.
+
+Ogni concept deve avere un sotto-segmento target DISTINTO dagli altri due (no overlap > 50% di pubblico target).
+
+- Concept 1: il più allineato ai pain point top (sotto-segmento principale della nicchia)
+- Concept 2: alternativa che attacca un pain meno ovvio o un segmento adiacente
+- Concept 3: esplorazione laterale (audience diversa, formato diverso, o approccio inversamente posizionato)
+
+Regole:
+- Ogni concept deve referenziare pain point concreti via pain_points_origine (usa gli ID esatti mostrati sopra, es. "pp_abc12345" o "pp_amz_abc12345")
+- difficolta_esecuzione riflette: skill autoriali richieste, ricerca necessaria, costi di produzione, capacità di differenziarsi visivamente
+- evidenza_score (1-10): (a) quanti pain top sono coperti, (b) chiarezza del segnale dai dati, (c) probabilità realistica di emergere dato il top 5 attuale
+- Usa i voice_phrases dei lettori dove possibile per i titoli dei concept
+
+Rispondi SOLO con un array JSON di esattamente 3 elementi, niente prosa, niente markdown:
+[
+  {
+    "titolo_concetto": "titolo conciso (max 12 parole, lingua del mercato)",
+    "sotto_segmento": "descrizione del pubblico target (max 25 parole, specifica)",
+    "pain_points_origine": ["pp_xxxxxxxx", "..."],
+    "angolo": "cosa rende unico questo concept (2-3 frasi, max 400 chars)",
+    "why_could_work": "meccanica del successo (2-3 frasi, max 400 chars)",
+    "main_risk": "rischio principale (1-2 frasi, max 300 chars)",
+    "differenziatori_chiave": ["differenziatore 1", "differenziatore 2", "differenziatore 3"],
+    "difficolta_esecuzione": "BASSA | MEDIA | ALTA",
+    "evidenza_score": 7,
+    "evidenza_motivo": "perché questo score (max 20 parole)"
+  }
+]`
+}
+
 // ─── Bonus Suggestions (Sonnet) ───────────────────────────────────────────────
 
 export function promptBonusSuggestions(
