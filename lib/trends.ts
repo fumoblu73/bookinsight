@@ -258,7 +258,7 @@ export async function fetchTrendsData(keyword: string, market: Market = 'US'): P
     const hasRelated  = relatedQueries.length > 0
     const availability: 'full' | 'partial' | 'none' =
       hasTimeline && hasRelated ? 'full' :
-      hasRelated                ? 'partial' :
+      hasTimeline || hasRelated ? 'partial' :
       'none'
 
     // Diagnostica: logga solo quando la timeline non è arrivata (problema noto su alcuni geo)

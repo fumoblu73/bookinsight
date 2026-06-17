@@ -1034,88 +1034,108 @@ export default function ReportView({ report }: { report: FullReport }) {
             <span>Dati Trends da cache recente (Google Trends temporaneamente non raggiungibile)</span>
           </div>
         )}
-        {(report.trends.availability ?? (report.trends.available ? 'full' : 'none')) === 'none' ? (
-          <div className="flex items-center gap-3 text-sm text-zinc-400 italic py-2">
-            <span className="text-2xl">—</span>
-            <span>Dati Google Trends non disponibili per questa keyword.</span>
-          </div>
-        ) : (report.trends.availability ?? (report.trends.available ? 'full' : 'none')) === 'partial' ? (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-zinc-700">
-              <span className="font-semibold text-amber-700">ⓘ Timeline non disponibile.</span>{' '}
-              I dati storici di Google Trends per questa keyword/mercato non sono accessibili in questo momento,
-              ma le <strong>query correlate</strong> sono state recuperate e mostrate sotto.
-            </div>
-            {report.trends.relatedQueries.length > 0 && (
-              <SubCard title="Query correlate" accent="violet">
-                <div className="flex flex-wrap gap-2">
-                  {report.trends.relatedQueries.slice(0, 8).map((q, i) => (
-                    <span key={i} className="text-xs px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full font-medium">
-                      {q.query}{q.growthYoY > 0 && <span className="ml-1 text-violet-500">+{q.growthYoY}%</span>}
-                    </span>
-                  ))}
+        {(() => {
+          const hasTimeline = report.trends.timelineData.length > 0
+          const hasRelated  = report.trends.relatedQueries.length > 0
+
+          if (!hasTimeline && !hasRelated) {
+            return (
+              <div className="flex items-center gap-3 text-sm text-zinc-400 italic py-2">
+                <span className="text-2xl">—</span>
+                <span>Dati Google Trends non disponibili per questa keyword.</span>
+              </div>
+            )
+          }
+
+          if (!hasTimeline && hasRelated) {
+            return (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-zinc-700">
+                  <span className="font-semibold text-amber-700">ⓘ Timeline non disponibile.</span>{' '}
+                  I dati storici di Google Trends per questa keyword/mercato non sono accessibili in questo momento,
+                  ma le <strong>query correlate</strong> sono state recuperate e mostrate sotto.
                 </div>
-              </SubCard>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <SubCard title="Andamento" accent="violet">
-              <div className="space-y-3">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <span className={`text-3xl font-black ${trendColor(report.trendForecast?.classificazione ?? sb.trendSignal)}`}>
-                    {report.trendForecast?.classificazione ?? sb.trendSignal}
-                  </span>
-                  <span className={`text-lg font-bold ${report.trends.yoyGrowth >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                    {report.trends.yoyGrowth > 0 ? '+' : ''}{report.trends.yoyGrowth}% YoY
-                  </span>
-                  {report.trendForecast?.stagionalita && (
-                    <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200 font-medium">
-                      Stagionale: {report.trendForecast.stagionalita}
+                <SubCard title="Query correlate" accent="violet">
+                  <div className="flex flex-wrap gap-2">
+                    {report.trends.relatedQueries.slice(0, 8).map((q, i) => (
+                      <span key={i} className="text-xs px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full font-medium">
+                        {q.query}{q.growthYoY > 0 && <span className="ml-1 text-violet-500">+{q.growthYoY}%</span>}
+                      </span>
+                    ))}
+                  </div>
+                </SubCard>
+              </div>
+            )
+          }
+
+          // Caso: timeline ok (hasTimeline=true), con o senza related
+          return (
+            <div className="space-y-4">
+              <SubCard title="Andamento" accent="violet">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span className={`text-3xl font-black ${trendColor(report.trendForecast?.classificazione ?? sb.trendSignal)}`}>
+                      {report.trendForecast?.classificazione ?? sb.trendSignal}
                     </span>
+                    <span className={`text-lg font-bold ${report.trends.yoyGrowth >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {report.trends.yoyGrowth > 0 ? '+' : ''}{report.trends.yoyGrowth}% YoY
+                    </span>
+                    {report.trendForecast?.stagionalita && (
+                      <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200 font-medium">
+                        Stagionale: {report.trendForecast.stagionalita}
+                      </span>
+                    )}
+                  </div>
+                  {report.trendForecast?.narrativa && (
+                    <p className="text-sm text-zinc-600 leading-relaxed border-l-2 border-indigo-200 pl-4">
+                      {report.trendForecast.narrativa}
+                    </p>
                   )}
                 </div>
-                {report.trendForecast?.narrativa && (
-                  <p className="text-sm text-zinc-600 leading-relaxed border-l-2 border-indigo-200 pl-4">
-                    {report.trendForecast.narrativa}
-                  </p>
-                )}
-              </div>
-            </SubCard>
-
-            {report.trends.timelineData?.length >= 12 && (
-              <SubCard title="Stagionalità della nicchia" accent="violet">
-                {report.trends.peakMonth && (
-                  <div className="mb-3 flex items-center gap-2 text-sm text-zinc-700">
-                    <span className="text-base">📅</span>
-                    <span>Timing ottimale di lancio: <strong className="text-emerald-700">{report.trends.peakMonth}</strong></span>
-                    <span className="text-zinc-400 text-xs">(mese di picco storico)</span>
-                  </div>
-                )}
-                <SeasonalityChart timelineData={report.trends.timelineData} />
               </SubCard>
-            )}
 
-            <SubCard title="Prospetto multi-mercato" accent="violet">
-              <MultiMarketPanel keyword={report.keyword} primaryMarket={report.market} />
-            </SubCard>
+              {report.trends.timelineData?.length >= 12 && (
+                <SubCard title="Stagionalità della nicchia" accent="violet">
+                  {report.trends.peakMonth && (
+                    <div className="mb-3 flex items-center gap-2 text-sm text-zinc-700">
+                      <span className="text-base">📅</span>
+                      <span>Timing ottimale di lancio: <strong className="text-emerald-700">{report.trends.peakMonth}</strong></span>
+                      <span className="text-zinc-400 text-xs">(mese di picco storico)</span>
+                    </div>
+                  )}
+                  <SeasonalityChart timelineData={report.trends.timelineData} />
+                </SubCard>
+              )}
 
-            {report.trends.relatedQueries.length > 0 && (
-              <SubCard title="Query correlate" accent="violet">
-                <div className="flex flex-wrap gap-2">
-                  {report.trends.relatedQueries.slice(0, 8).map((q, i) => (
-                    <span key={i} className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-600">
-                      {q.query}
-                      <span className={`font-semibold ${q.growthYoY >= 50 ? 'text-emerald-600' : q.growthYoY >= 20 ? 'text-amber-500' : 'text-zinc-400'}`}>
-                        {q.growthYoY > 0 ? '+' : ''}{q.growthYoY}%
+              <SubCard title="Prospetto multi-mercato" accent="violet">
+                <MultiMarketPanel keyword={report.keyword} primaryMarket={report.market} />
+              </SubCard>
+
+              {hasRelated && (
+                <SubCard title="Query correlate" accent="violet">
+                  <div className="flex flex-wrap gap-2">
+                    {report.trends.relatedQueries.slice(0, 8).map((q, i) => (
+                      <span key={i} className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-600">
+                        {q.query}
+                        <span className={`font-semibold ${q.growthYoY >= 50 ? 'text-emerald-600' : q.growthYoY >= 20 ? 'text-amber-500' : 'text-zinc-400'}`}>
+                          {q.growthYoY > 0 ? '+' : ''}{q.growthYoY}%
+                        </span>
                       </span>
-                    </span>
-                  ))}
+                    ))}
+                  </div>
+                </SubCard>
+              )}
+
+              {!hasRelated && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-zinc-700">
+                  <span className="font-semibold text-amber-700">ⓘ Query correlate non disponibili.</span>{' '}
+                  Google Trends non ha restituito query correlate per questa keyword. Il dato di andamento e
+                  stagionalità sopra resta affidabile.
                 </div>
-              </SubCard>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )
+        })()}
         <SectionNote>
           Prima di investire mesi di lavoro in un libro, è fondamentale sapere se la domanda in quella nicchia sta crescendo o calando. Il dato YoY (anno su anno) confronta l&apos;interesse degli ultimi 12 mesi con quello dei 12 mesi precedenti: un valore positivo indica un mercato in espansione, uno negativo un mercato in contrazione. Una nicchia in crescita è più attrattiva perché significa che nuovi lettori si avvicinano ogni mese all&apos;argomento. Una nicchia stabile è comunque valida se ha una domanda solida. Una nicchia in calo non è automaticamente da evitare — potrebbe avere ancora un pubblico fedele — ma richiede una proposta molto più mirata. La stagionalità è un&apos;informazione pratica importante: se la tua nicchia ha picchi di interesse ricorrenti in certi periodi dell&apos;anno (es. diete e fitness a gennaio, viaggi in primavera, regali a dicembre), pianifica il lancio almeno 6–8 settimane prima del picco, così da accumulare le prime recensioni prima che la domanda salga al massimo. Le query correlate sono ricerche adiacenti in crescita: se alcune di queste descrivono meglio il tuo angolo editoriale rispetto alla keyword principale, potresti includerle nel titolo, nel sottotitolo o nelle parole chiave di pubblicazione KDP per catturare traffico aggiuntivo.
         </SectionNote>

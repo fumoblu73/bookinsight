@@ -577,7 +577,7 @@ export async function runConceptDirections(
 
         const differenziatori = (r.differenziatori_chiave ?? [])
           .filter(d => typeof d === 'string' && d.trim().length > 0)
-          .map(d => d.trim().slice(0, 100))
+          .map(d => d.trim().slice(0, 180))
           .slice(0, 3)
 
         return {
