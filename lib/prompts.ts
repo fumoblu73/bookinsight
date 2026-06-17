@@ -725,14 +725,52 @@ export function promptConceptDirections(
     gapBlock = JSON.stringify(compact, null, 2).slice(0, 1500)
   }
 
-  const langNote = NON_ENGLISH_MARKETS.has(market)
-    ? `Lingua dei concept: ITALIANO (mercato ${market}). Titoli, angolo, sotto-segmento devono essere in italiano.`
-    : `Lingua dei concept: INGLESE (mercato ${market}). Titoli, angolo, sotto-segmento devono essere in inglese.`
-
   return `Sei un esperto di strategia editoriale KDP specializzato nel posizionamento di nuovi titoli in nicchie già competitive.
 
 KEYWORD: "${keyword}" (mercato: ${market})
-${langNote}
+
+ISTRUZIONI LINGUA E TERMINOLOGIA:
+
+Il report è letto da un autore-decisore di lingua ITALIANA che valuta se entrare nella nicchia. Per questo motivo i campi analitici del report devono essere in italiano, mentre il titolo del libro proposto resta nella lingua del mercato perché si rivolge ai lettori finali.
+
+REGOLE PER CAMPO:
+
+- "titolo_concetto" → lingua del mercato (${market}): è il titolo del libro che andrebbe pubblicato per i lettori target. Per US/UK: inglese. Per IT: italiano. Per DE/FR/ES: rispettiva lingua locale.
+
+- "sotto_segmento" → SEMPRE ITALIANO. Descrizione del target reader rivolta all'autore-decisore.
+
+- "angolo" → SEMPRE ITALIANO. Spiegazione strategica del concept.
+
+- "why_could_work" → SEMPRE ITALIANO. Analisi del potenziale di successo.
+
+- "main_risk" → SEMPRE ITALIANO. Analisi del rischio principale.
+
+- "differenziatori_chiave" → SEMPRE ITALIANO (ogni elemento).
+
+- "evidenza_motivo" → SEMPRE ITALIANO. Giustificazione del punteggio di evidenza.
+
+CONVENZIONE PER TERMINI TECNICI DEL MERCATO:
+
+Quando nella spiegazione italiana incontri un termine tecnico, di formato editoriale, o un'espressione idiomatica specifica del mercato che merita di essere richiamata letteralmente (perché è il termine effettivo che useresti nel libro/in copertina/nelle ricerche Amazon), traducilo in italiano e aggiungi il termine originale tra parentesi.
+
+ESEMPI CORRETTI:
+✓ "Calcolatore stampabile della quantità di legna (printable firewood quantity calculator), primo nella nicchia"
+✓ "Modulo compilabile incorporato (fill-in workbook embedded), trasformandolo in un riferimento riutilizzabile"
+✓ "Sessioni di pratica da 30 minuti (30-minute practice sessions) progettate per evitare la perfection-burnout"
+✓ "Posizionamento anti-stanchezza (anti-burnout positioning)"
+
+ESEMPI SBAGLIATI:
+✗ "Printable firewood quantity calculator stampabile" (mix confusionario di lingue)
+✗ "Una guida workbook a fill-in" (mix non strutturato)
+✗ "Un fill-in workbook compilabile" (ridondanza, scegli una via)
+
+ECCEZIONI (NON tradurre):
+- Acronimi consolidati: USDA, FDA, EPA, USP — restano in originale senza parentesi
+- Nomi propri di organizzazioni, prodotti, autori — restano in originale
+- Termini tecnici già consolidati anche in italiano: "homesteading", "prepper", "off-grid" — restano in inglese senza parentesi
+- Nomi geografici: "Bay Area", "Midwest" — restano in originale
+
+NON tradurre forzatamente quando la traduzione italiana risulta artificiale o pedante.
 
 ═══ PAIN POINT DEI LETTORI ═══
 ${ppBlock}
