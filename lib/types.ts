@@ -454,6 +454,20 @@ export interface ThingToAvoid {
   severita: 'critica' | 'alta' | 'media'
 }
 
+// ─── Pivot Signals ────────────────────────────────────────────────────────────
+
+export interface PivotSignal {
+  id: string
+  titolo: string
+  descrizione: string
+  threshold: string
+  metrica: 'bsr' | 'review_velocity' | 'conversion_rate' | 'organic_ranking' |
+           'ads_acos' | 'competitor_entry' | 'review_rating' | 'sales_velocity' | 'other'
+  timing: 'pre_launch' | 'launch_30d' | 'launch_60d' | 'launch_90d' | 'ongoing'
+  azione_consigliata: string
+  severita: 'critica' | 'alta' | 'media'
+}
+
 // ─── Concept Directions ───────────────────────────────────────────────────────
 
 export interface ConceptDirection {

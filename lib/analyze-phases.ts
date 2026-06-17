@@ -1,6 +1,6 @@
 import {
   AmazonData, TrendsData, RedditData, YouTubeData,
-  PainPoint, SubNiche, LogEntry, Market, BonusSuggestion, ConceptDirection, ThingToAvoid,
+  PainPoint, SubNiche, LogEntry, Market, BonusSuggestion, ConceptDirection, ThingToAvoid, PivotSignal,
 } from './types'
 import {
   ComplianceCategory, ComplianceRisk,
@@ -16,7 +16,7 @@ import {
   runPasso0, runPainPointsReddit, runSubNicheDetection,
   runKeyInsights, runTrendForecast, runGapAnalysis,
   runSeriesStrategy, runRoiNarrative, runPainPointsAmazonReviews,
-  runBonusSuggestions, runConceptDirections, runThingsToAvoid,
+  runBonusSuggestions, runConceptDirections, runThingsToAvoid, runPivotSignals,
 } from './ai'
 import { cacheGet } from './upstash'
 
@@ -444,8 +444,9 @@ export async function runFinalizePhase(
   let bonusSuggestions: BonusSuggestion[]
   let conceptDirections: ConceptDirection[]
   let thingsToAvoid: ThingToAvoid[]
+  let pivotSignals: PivotSignal[]
   try {
-    ;[seriesStrategy, roiNarrative, bonusSuggestions, conceptDirections, thingsToAvoid] = await Promise.all([
+    ;[seriesStrategy, roiNarrative, bonusSuggestions, conceptDirections, thingsToAvoid, pivotSignals] = await Promise.all([
       runSeriesStrategy(amazon, gapAnalysis.passo5_tesi_libro, scoring, roi),
       runRoiNarrative(intermediate.keyword, intermediate.market, roi, scoring),
       runBonusSuggestions(
@@ -478,6 +479,17 @@ export async function runFinalizePhase(
       ).catch(err => {
         console.error('[finalize] runThingsToAvoid failed:', err)
         return [] as ThingToAvoid[]
+      }),
+      runPivotSignals(
+        intermediate.keyword,
+        intermediate.market,
+        amazon.topBooks,
+        roi,
+        bonusPainPoints,
+        gapAnalysis,
+      ).catch(err => {
+        console.error('[finalize] runPivotSignals failed:', err)
+        return [] as PivotSignal[]
       }),
     ])
     finalizeLogs.push({
@@ -527,6 +539,20 @@ export async function runFinalizePhase(
         categories: thingsToAvoid.map(t => t.categoria),
       },
     })
+    finalizeLogs.push({
+      step: 'pivot',
+      label: 'Pivot Signals (AI)',
+      status: pivotSignals.length >= 1 ? 'ok' : 'warn',
+      summary: pivotSignals.length > 0
+        ? `${pivotSignals.length} pivot signal generati`
+        : 'Nessun pivot signal generato',
+      details: {
+        count: pivotSignals.length,
+        severities: pivotSignals.map(p => p.severita),
+        timings: pivotSignals.map(p => p.timing),
+        metriche: pivotSignals.map(p => p.metrica),
+      },
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     finalizeLogs.push({ step: 'strategy', label: 'Strategia e ROI (AI)', status: 'error', summary: msg, durationMs: Date.now() - t3, details: {}, error: msg })
@@ -564,6 +590,7 @@ export async function runFinalizePhase(
     bonus_suggestions: bonusSuggestions,
     concept_directions: conceptDirections,
     things_to_avoid: thingsToAvoid,
+    pivot_signals: pivotSignals,
     competitiveDynamism,
     complianceCategory,
     complianceRisk,

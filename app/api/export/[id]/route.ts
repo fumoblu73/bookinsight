@@ -42,6 +42,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
       bonus_suggestions: report.bonus_suggestions ?? null,
       concept_directions: report.concept_directions ?? null,
       things_to_avoid: report.things_to_avoid ?? null,
+      pivot_signals: report.pivot_signals ?? null,
       investment_roi: {
         ...report.roi,
         narrative: report.roiNarrative,

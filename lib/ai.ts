@@ -263,6 +263,7 @@ import {
   promptBonusSuggestions,
   promptConceptDirections,
   promptThingsToAvoid,
+  promptPivotSignals,
 } from './prompts'
 
 import {
@@ -281,6 +282,7 @@ import {
   ConceptDirection,
   ThingToAvoid,
   FilteredBook,
+  PivotSignal,
 } from './types'
 
 import {
@@ -653,6 +655,68 @@ export async function runThingsToAvoid(
       .sort((a, b) => SEVERITA_WEIGHT[a.severita] - SEVERITA_WEIGHT[b.severita])
   } catch (err) {
     console.error('[ai] runThingsToAvoid failed:', err)
+    return []
+  }
+}
+
+// ─── Pivot Signals (Sonnet) ──────────────────────────────────────────────────
+
+type RawPivotSignal = Omit<PivotSignal, 'id'>
+
+const VALID_METRICA: PivotSignal['metrica'][] = [
+  'bsr', 'review_velocity', 'conversion_rate', 'organic_ranking',
+  'ads_acos', 'competitor_entry', 'review_rating', 'sales_velocity', 'other',
+]
+
+const VALID_TIMING: PivotSignal['timing'][] = [
+  'pre_launch', 'launch_30d', 'launch_60d', 'launch_90d', 'ongoing',
+]
+
+const VALID_SEVERITA_PIVOT: PivotSignal['severita'][] = ['critica', 'alta', 'media']
+
+const SEVERITA_PIVOT_WEIGHT: Record<PivotSignal['severita'], number> = { critica: 0, alta: 1, media: 2 }
+
+const TIMING_WEIGHT: Record<PivotSignal['timing'], number> = {
+  pre_launch: 0, launch_30d: 1, launch_60d: 2, launch_90d: 3, ongoing: 4,
+}
+
+export async function runPivotSignals(
+  keyword: string,
+  market: Market,
+  topBooks: FilteredBook[],
+  roi: RoiEstimate,
+  painPoints: PainPoint[],
+  gapAnalysis: GapAnalysisResult | undefined,
+): Promise<PivotSignal[]> {
+  if (topBooks.length === 0) return []
+
+  try {
+    const raw = await callSonnet<RawPivotSignal[]>(
+      promptPivotSignals(keyword, market, topBooks, roi, painPoints, gapAnalysis)
+    )
+
+    const normalized: PivotSignal[] = raw.map(r => ({
+      id: `pivot_${Math.random().toString(36).slice(2, 10)}`,
+      titolo: (r.titolo ?? '').slice(0, 100),
+      descrizione: (r.descrizione ?? '').slice(0, 500),
+      threshold: (r.threshold ?? '').slice(0, 200),
+      metrica: VALID_METRICA.includes(r.metrica) ? r.metrica : 'other',
+      timing: VALID_TIMING.includes(r.timing) ? r.timing : 'launch_30d',
+      azione_consigliata: (r.azione_consigliata ?? '').slice(0, 400),
+      severita: VALID_SEVERITA_PIVOT.includes(r.severita) ? r.severita : 'alta',
+    }))
+
+    if (normalized.length === 0) return []
+
+    return normalized
+      .slice(0, 4)
+      .sort((a, b) => {
+        const sd = SEVERITA_PIVOT_WEIGHT[a.severita] - SEVERITA_PIVOT_WEIGHT[b.severita]
+        if (sd !== 0) return sd
+        return TIMING_WEIGHT[a.timing] - TIMING_WEIGHT[b.timing]
+      })
+  } catch (err) {
+    console.error('[ai] runPivotSignals failed:', err)
     return []
   }
 }

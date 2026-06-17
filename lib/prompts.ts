@@ -1038,3 +1038,135 @@ Rispondi SOLO con un array JSON di 3 elementi, ordinato per severità decrescent
   }
 ]`
 }
+
+// ─── Pivot Signals (Sonnet) ───────────────────────────────────────────────────
+
+export function promptPivotSignals(
+  keyword: string,
+  market: Market,
+  topBooks: FilteredBook[],
+  roi: RoiEstimate,
+  painPoints: PainPoint[],
+  gapAnalysis: unknown,
+): string {
+  const base = roi.scenarios[1]
+
+  const roiBlock = [
+    `Verdetto: ${roi.investVerdict}${roi.degradedFrom ? ` (corretto da ${roi.degradedFrom})` : ''}`,
+    `Scenario base ROI: ${base.ratioVsBudget.toFixed(2)}× sul budget`,
+    `BEP signal: ${roi.bepSignal}`,
+    `Break-even scenario base: ${base.breakEvenMonths === 999 ? 'mai entro 12 mesi' : `mese ${base.breakEvenMonths}`}`,
+  ].join('\n')
+
+  const prices = topBooks.map(b => b.price).filter(p => p > 0)
+  const bsrs = topBooks.map(b => b.bsr).filter(b => b > 0)
+  const bsrMedian = bsrs.length > 0
+    ? [...bsrs].sort((a, b) => a - b)[Math.floor(bsrs.length / 2)]
+    : 0
+  const priceMin = prices.length > 0 ? Math.min(...prices).toFixed(2) : 'N/D'
+  const priceMax = prices.length > 0 ? Math.max(...prices).toFixed(2) : 'N/D'
+
+  const booksBlock = topBooks
+    .map((b, i) =>
+      `${i + 1}. "${b.title}" — BSR ${b.bsr.toLocaleString()}, ` +
+      `${b.currency}${b.price.toFixed(2)}, ${b.rating}★, ${b.reviewCount} rec`
+    )
+    .join('\n')
+  const booksStats = `BSR mediano: ${bsrMedian.toLocaleString()} · Range prezzo: ${priceMin}–${priceMax}`
+
+  const topPains = [...painPoints]
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 5)
+  const painsBlock = topPains.length > 0
+    ? topPains.map(p => `- [score ${p.score}] "${p.pain_point}" (fonte: ${p.fonte})`).join('\n')
+    : '(nessun pain point disponibile)'
+
+  let gapBlock = '(gap analysis non disponibile)'
+  if (gapAnalysis && typeof gapAnalysis === 'object') {
+    const ga = gapAnalysis as Record<string, unknown>
+    const compact: Record<string, unknown> = {}
+    if (ga['passo2_angoli_mancanti']) compact['angoli_mancanti'] = ga['passo2_angoli_mancanti']
+    if (ga['passo4_target_non_servito']) compact['target_non_servito'] = ga['passo4_target_non_servito']
+    gapBlock = JSON.stringify(compact, null, 2).slice(0, 800)
+  }
+
+  return `Sei un esperto di strategia editoriale KDP che identifica i segnali di pivot post-lancio. Genera da 2 a 4 segnali concreti, OSSERVABILI dopo il lancio del libro, con soglia QUANTITATIVA esplicita e azione consigliata.
+
+KEYWORD: "${keyword}" (mercato: ${market})
+
+═══ VERDETTO ROI ═══
+${roiBlock}
+
+═══ TOP ${topBooks.length} COMPETITOR ═══
+${booksBlock}
+${booksStats}
+
+═══ PAIN POINTS PRINCIPALI ═══
+${painsBlock}
+
+═══ GAP ANALYSIS ═══
+${gapBlock}
+
+═══ ISTRUZIONI ═══
+LINGUA: SEMPRE ITALIANO per tutti i campi testuali. Convenzione termini originali tra parentesi quando aggiungono precisione (es. "review velocity", "search slots").
+
+REGOLA D'ORO: ogni "threshold" deve essere un valore numerico o categoriale verificabile dall'autore SENZA ambiguità. NIENTE frasi vaghe come "se le vendite vanno male" o "se i competitor sono troppi".
+
+ESEMPI di threshold valida:
+✓ "BSR > 200.000 dopo 60 giorni di Ads attivi"
+✓ "Meno di 2 review verificate / settimana al mese 2"
+✓ "ACoS > 70% per 14 giorni consecutivi"
+✓ "Nuovo competitor con BSR < 30.000 entra nel top 10"
+✓ "Rating medio < 4.0 dopo 20 recensioni"
+
+ESEMPI di threshold INVALIDA:
+✗ "Se le vendite non vanno bene"
+✗ "Se la concorrenza diventa forte"
+✗ "Se il libro non performa"
+
+METRICHE ammesse (campo "metrica"):
+- bsr: posizione di vendita Amazon
+- review_velocity: ritmo di acquisizione recensioni nel tempo
+- conversion_rate: % clic che si trasformano in acquisti
+- organic_ranking: posizionamento nelle ricerche organiche Amazon
+- ads_acos: Advertising Cost of Sale
+- competitor_entry: nuovo libro entra nel top X
+- review_rating: rating medio del libro
+- sales_velocity: ritmo vendite (copie/giorno o copie/settimana)
+- other: solo se davvero nessuna delle precedenti calza
+
+TIMING ammessi (campo "timing"):
+- pre_launch: segnale da verificare PRIMA del lancio (es. ARC team insufficiente)
+- launch_30d: primi 30 giorni dal lancio
+- launch_60d: tra 30 e 60 giorni
+- launch_90d: tra 60 e 90 giorni
+- ongoing: monitoraggio continuo dopo 90 giorni
+
+SEVERITÀ:
+- critica: il trigger richiede pivot immediato (es. cambiare angolo, fermare ads)
+- alta: trigger richiede azione correttiva forte (es. rivedere cover, aumentare ARC)
+- media: trigger richiede attenzione/monitoraggio aumentato
+
+AZIONI CONSIGLIATE: devono essere CONCRETE e SPECIFICHE. Esempi:
+✓ "Pausa Amazon Ads, rivedi cover con A/B test, considera pivot a Concept 2 (se presente)"
+✓ "Aumenta ARC outreach di 2x, riapri canali di pre-order outreach su community target"
+✓ "Accelera Vol.2 della serie (anticipa di 2 mesi) per saturare slot di ricerca"
+
+EVITA azioni vaghe come "rivedi la strategia" o "valuta opzioni".
+
+FORMATO OUTPUT: SOLO array JSON di 2-4 elementi, niente prosa, niente markdown.
+
+ORDINAMENTO: ordina per severità decrescente (critica → alta → media), poi per timing crescente (pre_launch → ongoing).
+
+[
+  {
+    "titolo": "Etichetta breve del trigger (max 8 parole, italiano)",
+    "descrizione": "2-3 frasi italiane: cosa monitorare e perché è importante (max 500 chars)",
+    "threshold": "Valore numerico/categoriale esplicito (es. 'BSR > 200.000 al giorno 60')",
+    "metrica": "bsr | review_velocity | conversion_rate | organic_ranking | ads_acos | competitor_entry | review_rating | sales_velocity | other",
+    "timing": "pre_launch | launch_30d | launch_60d | launch_90d | ongoing",
+    "azione_consigliata": "1-2 frasi specifiche: cosa fare se il trigger scatta (max 400 chars)",
+    "severita": "critica | alta | media"
+  }
+]`
+}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection, ThingToAvoid } from '@/lib/types'
+import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection, ThingToAvoid, PivotSignal } from '@/lib/types'
 import { calcRoiEstimate } from '@/lib/scoring'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -88,6 +88,7 @@ export interface FullReport {
   bonus_suggestions?: BonusSuggestion[]
   concept_directions?: ConceptDirection[]
   things_to_avoid?: ThingToAvoid[]
+  pivot_signals?: PivotSignal[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -587,6 +588,75 @@ function ThingToAvoidCard({ item, index }: { item: ThingToAvoid; index: number }
               <span className="font-medium not-italic text-zinc-400">Dato: </span>
               {item.evidence}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── PivotSignalCard ──────────────────────────────────────────────────────────
+
+function PivotSignalCard({ signal, index }: { signal: PivotSignal; index: number }) {
+  const severitaCls = {
+    critica: 'bg-rose-50 text-rose-700 border-rose-200',
+    alta:    'bg-amber-50 text-amber-700 border-amber-200',
+    media:   'bg-zinc-50 text-zinc-600 border-zinc-200',
+  }[signal.severita] || 'bg-zinc-50 text-zinc-600 border-zinc-200'
+
+  const timingLabel = {
+    pre_launch: 'Pre-lancio',
+    launch_30d: 'Primi 30gg',
+    launch_60d: '30-60gg',
+    launch_90d: '60-90gg',
+    ongoing: 'Continuo',
+  }[signal.timing] || signal.timing
+
+  const metricaLabel = {
+    bsr: 'BSR',
+    review_velocity: 'Review velocity',
+    conversion_rate: 'Conversion rate',
+    organic_ranking: 'Ranking organico',
+    ads_acos: 'ACoS',
+    competitor_entry: 'Nuovo competitor',
+    review_rating: 'Rating recensioni',
+    sales_velocity: 'Sales velocity',
+    other: 'Altro',
+  }[signal.metrica] || signal.metrica
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-3.5">
+      <div className="flex items-start gap-3">
+        <span className="text-violet-500 text-base leading-6 flex-shrink-0 mt-0.5">⏱</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <span className="text-xs text-zinc-400 font-mono">#{index}</span>
+            <span className={`text-xs px-2 py-0.5 rounded border font-medium ${severitaCls}`}>
+              {signal.severita.toUpperCase()}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 font-medium">
+              {timingLabel}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 font-medium">
+              {metricaLabel}
+            </span>
+          </div>
+
+          <h5 className="text-sm font-semibold text-zinc-900 mb-1.5">
+            {signal.titolo}
+          </h5>
+
+          <div className="text-sm text-zinc-700 mb-2">
+            {signal.descrizione}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-xs">
+            <div className="text-zinc-400 font-medium">Soglia:</div>
+            <div className="text-zinc-800 font-mono bg-zinc-50 px-2 py-1 rounded inline-block border border-zinc-200">
+              {signal.threshold}
+            </div>
+            <div className="text-zinc-400 font-medium pt-1">Azione:</div>
+            <div className="text-zinc-700 pt-1">{signal.azione_consigliata}</div>
           </div>
         </div>
       </div>
@@ -1591,6 +1661,21 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
             )}
           </SubCard>
+
+          {/* 3. Pivot Signals */}
+          {report.pivot_signals && report.pivot_signals.length >= 1 && (
+            <SubCard title="Pivot Signals — quando rivedere la strategia" accent="violet">
+              <div className="mb-3 text-xs text-zinc-500">
+                Trigger osservabili dopo il lancio. Ognuno ha una soglia quantitativa esplicita
+                e un&apos;azione consigliata se scatta. Ordinati per priorità.
+              </div>
+              <div className="space-y-2.5">
+                {report.pivot_signals.map((signal, i) => (
+                  <PivotSignalCard key={signal.id} signal={signal} index={i + 1} />
+                ))}
+              </div>
+            </SubCard>
+          )}
 
           {/* 4. Pannello costi e parametri — ricalcolo live */}
           <SubCard title="Costi e parametri — ricalcolo live" accent="indigo">
