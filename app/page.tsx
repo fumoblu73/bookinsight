@@ -1,7 +1,7 @@
-import TargetFinder from './TargetFinder'
+import AnalyzeView from '@/app/AnalyzeView'
 
-export const metadata = { title: 'BookInsight — Target Finder' }
+export const metadata = { title: 'BookInsight — Analisi nicchia KDP' }
 
 export default function HomePage() {
-  return <TargetFinder />
+  return <AnalyzeView />
 }
