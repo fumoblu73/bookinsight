@@ -518,7 +518,7 @@ export default function AnalyzeView() {
                     }`}>{credits.targetFinderAvailable}</span>
                     {credits.targetFinderAvailable === 0 && (
                       <span className="text-xs font-medium text-red-500 ml-1">
-                        {credits.apifyAvailable && credits.apifyBalanceUsd < 0.10 ? '— Apify insufficiente' : '— SerpApi esaurito'}
+                        {credits.apifyState === 'capped' ? '— Apify: tetto raggiunto' : '— SerpApi esaurito'}
                       </span>
                     )}
                     {credits.targetFinderAvailable > 0 && credits.targetFinderAvailable <= 3 && (
@@ -539,7 +539,15 @@ export default function AnalyzeView() {
                       <a href="https://console.apify.com/billing" target="_blank" rel="noreferrer"
                         className="inline-flex items-center justify-end gap-1 text-zinc-400 hover:text-indigo-500 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-                        Apify — <span className="font-medium text-zinc-600">${credits.apifyBalanceUsd.toFixed(2)} credito rimanente</span>
+                        {credits.apifyState === 'ok' && (
+                          <>Apify — <span className="font-medium text-zinc-600">${(credits.apifyPrepaidUsd - credits.apifyUsedUsd).toFixed(2)} prepagato rimanente</span></>
+                        )}
+                        {credits.apifyState === 'overage' && (
+                          <>Apify — <span className="font-medium text-amber-600">overage ${credits.apifyOverageUsd.toFixed(2)}, margine ${credits.apifyMarginToCapUsd.toFixed(2)}</span></>
+                        )}
+                        {credits.apifyState === 'capped' && (
+                          <>Apify — <span className="font-medium text-red-600">tetto ${credits.apifyCapUsd.toFixed(2)} raggiunto</span></>
+                        )}
                       </a>
                     </div>
                   )}
@@ -552,6 +560,26 @@ export default function AnalyzeView() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── Banner overage / capped Apify ─────────────────────────────── */}
+          {!creditsLoading && credits?.apifyState === 'overage' && (
+            <div className="mb-4 rounded-xl border px-5 py-3 bg-amber-50 border-amber-200 no-print text-sm text-amber-800">
+              ⚠️ Credito Apify incluso esaurito — da ora le analisi di viabilità sono a{' '}
+              <strong>pagamento a consumo</strong>. Overage attuale:{' '}
+              <strong>${credits.apifyOverageUsd.toFixed(2)}</strong>, margine fino al tetto:{' '}
+              <strong>${credits.apifyMarginToCapUsd.toFixed(2)}</strong>.{' '}
+              <a href="https://console.apify.com/billing" target="_blank" rel="noreferrer"
+                className="underline hover:text-amber-900">Verifica su Apify Billing</a>
+            </div>
+          )}
+          {!creditsLoading && credits?.apifyState === 'capped' && (
+            <div className="mb-4 rounded-xl border px-5 py-3 bg-red-50 border-red-200 no-print text-sm text-red-800">
+              ⛔ Tetto di spesa Apify (${credits.apifyCapUsd.toFixed(2)}) raggiunto. Le analisi di viabilità
+              sono sospese fino al rinnovo del ciclo o all&apos;aumento del tetto su{' '}
+              <a href="https://console.apify.com/billing" target="_blank" rel="noreferrer"
+                className="underline hover:text-red-900">Apify Billing</a>.
             </div>
           )}
 

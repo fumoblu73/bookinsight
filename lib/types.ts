@@ -515,8 +515,16 @@ export interface CreditsData {
   cached: boolean
   cached_at?: string
   // Derived — due contatori distinti per flusso
-  analyzesAvailable: number        // flusso /analyze (solo SerpApi): floor(total / ANALYZE_COST)
-  targetFinderAvailable: number    // flusso /api/target + viability (SerpApi + Apify): min(serp, apify)
+  analyzesAvailable: number
+  targetFinderAvailable: number
+  // Apify — retrocompatibilità
   apifyBalanceUsd: number
   apifyAvailable: boolean
+  // Apify — sistema a 3 stati
+  apifyState: 'ok' | 'overage' | 'capped' | 'unknown'
+  apifyPrepaidUsd: number
+  apifyCapUsd: number
+  apifyUsedUsd: number
+  apifyOverageUsd: number
+  apifyMarginToCapUsd: number
 }
