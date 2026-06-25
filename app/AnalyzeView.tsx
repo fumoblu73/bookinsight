@@ -3,7 +3,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import ReportView from '@/components/ReportView'
 import type { FullReport } from '@/components/ReportView'
-import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData, PainPoint } from '@/lib/types'
+import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData, PainPoint, TargetFinderResult, TargetCandidate } from '@/lib/types'
+import TargetSelector from '@/components/TargetSelector'
+import { calcRoyalty } from '@/lib/amazon'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
@@ -84,6 +86,11 @@ export default function AnalyzeView() {
 
   // Bivio auto/manuale nella fase awaiting_validation
   const [targetMode, setTargetMode] = useState<'undecided' | 'manual'>('undecided')
+
+  // TargetSelector (ramo manuale)
+  const [targetFinderResult, setTargetFinderResult] = useState<TargetFinderResult | null>(null)
+  const [targetFinderLoading, setTargetFinderLoading] = useState(false)
+  const [targetFinderError, setTargetFinderError] = useState<string | null>(null)
 
   // Credits state
   const [credits, setCredits] = useState<CreditsData | null>(null)
@@ -212,6 +219,9 @@ export default function AnalyzeView() {
     setSelectedPainPointIds(new Set())
     setPreviewData(null)
     setTargetMode('undecided')
+    setTargetFinderResult(null)
+    setTargetFinderLoading(false)
+    setTargetFinderError(null)
     setStage('loading_amazon')
 
     try {
@@ -284,19 +294,50 @@ export default function AnalyzeView() {
     }
   }, [customAsinInput, market])
 
+  // ── Fetch candidati per TargetSelector (ramo manuale) ───────────────────────
+  const loadTargetFinder = useCallback(async () => {
+    if (!keyword.trim()) return
+    setTargetFinderLoading(true)
+    setTargetFinderError(null)
+    setTargetFinderResult(null)
+    try {
+      const res = await fetch('/api/target', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: keyword.trim(), market, bsrMax: 80000 }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Errore Target Finder')
+      setTargetFinderResult(json as TargetFinderResult)
+    } catch (err) {
+      setTargetFinderError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setTargetFinderLoading(false)
+    }
+  }, [keyword, market])
+
   // ── Phase 2: await signals, call /api/analyze/pain-points ────────────────────
-  const handlePhase2 = useCallback(async () => {
+  const handlePhase2 = useCallback(async (targetAsinOverride?: string) => {
     if (!amazonDataState || !signalsRef.current) return
 
     const kw = kwRef.current
+    const effectiveTargetAsin = targetAsinOverride ?? selectedTargetAsin
 
     // Apply selected competitor target
     let finalAmazonData: AmazonData = { ...amazonDataState }
-    if (selectedTargetAsin !== amazonDataState.competitorTarget.asin) {
-      const newTarget =
-        customAsinProduct?.asin === selectedTargetAsin
+    if (effectiveTargetAsin !== amazonDataState.competitorTarget.asin) {
+      let newTarget: FilteredBook | undefined =
+        customAsinProduct?.asin === effectiveTargetAsin
           ? customAsinProduct
-          : amazonDataState.topBooks.find(b => b.asin === selectedTargetAsin)
+          : amazonDataState.topBooks.find(b => b.asin === effectiveTargetAsin)
+
+      // Se non trovato tra topBooks/customAsin, cerca tra i candidati del TargetFinder
+      if (!newTarget && targetFinderResult) {
+        const cand = [...targetFinderResult.candidates, ...targetFinderResult.suggested]
+          .find(c => c.asin === effectiveTargetAsin)
+        if (cand) newTarget = mapCandidateToFilteredBook(cand, amazonDataState.competitorTarget, market)
+      }
+
       if (newTarget) finalAmazonData = { ...finalAmazonData, competitorTarget: newTarget }
     }
 
@@ -356,7 +397,7 @@ export default function AnalyzeView() {
       setError(err instanceof Error ? err.message : String(err))
       setStage('error')
     }
-  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market])
+  }, [amazonDataState, selectedTargetAsin, customAsinProduct, market, targetFinderResult])
 
   // Auto-start Phase 2 quando l'utente ha già espresso intent skipTarget
   useEffect(() => {
@@ -430,9 +471,6 @@ export default function AnalyzeView() {
             <p className="text-xs text-zinc-500">Analisi nicchie Amazon KDP con AI</p>
           </div>
           <div className="flex items-center gap-4">
-            <a href="/target" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-              Trova il bersaglio
-            </a>
             <a href="/history" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
               Storico report
             </a>
@@ -762,7 +800,7 @@ export default function AnalyzeView() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTargetMode('manual')}
+                  onClick={() => { setTargetMode('manual'); loadTargetFinder() }}
                   className="flex-1 px-4 py-3 rounded-xl border border-zinc-300 hover:border-indigo-400 hover:bg-indigo-50 text-sm font-medium text-zinc-800 transition-colors text-left"
                 >
                   <span className="block font-semibold">Seleziona manualmente</span>
@@ -772,22 +810,30 @@ export default function AnalyzeView() {
             </div>
           )}
 
-          {/* ── Validation panel: solo dopo scelta "Seleziona manualmente" ── */}
+          {/* ── TargetSelector: solo dopo scelta "Seleziona manualmente" ── */}
           {stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection && targetMode === 'manual' && (
-            <ValidationPanel
-              amazonData={amazonDataState}
-              market={market}
-              selectedTargetAsin={selectedTargetAsin}
-              onSelectTarget={setSelectedTargetAsin}
-              suggestedTargetAsin={targetAsinFromUrl ?? undefined}
-              customAsinInput={customAsinInput}
-              onCustomAsinChange={v => setCustomAsinInput(v)}
-              onFetchCustomAsin={handleFetchCustomAsin}
-              customAsinLoading={customAsinLoading}
-              customAsinProduct={customAsinProduct}
-              customAsinError={customAsinError}
-              onProceed={handlePhase2}
-            />
+            <div className="mb-8">
+              {targetFinderLoading && (
+                <div className="bg-white rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
+                  Ricerca dei competitor target in corso…
+                </div>
+              )}
+              {targetFinderError && (
+                <div className="bg-rose-50 rounded-2xl border border-rose-200 p-6 text-sm text-rose-700">
+                  {targetFinderError}
+                  <button className="ml-3 underline" onClick={loadTargetFinder}>Riprova</button>
+                </div>
+              )}
+              {targetFinderResult && !targetFinderLoading && (
+                <TargetSelector
+                  result={targetFinderResult}
+                  initialBsrMax={80000}
+                  keyword={keyword}
+                  market={market}
+                  onSelectTarget={(asin) => { setSelectedTargetAsin(asin); handlePhase2(asin) }}
+                />
+              )}
+            </div>
           )}
 
           {/* ── Skip target recap card — visibile quando arriva da /target o con skipTarget=1 ── */}
@@ -1070,6 +1116,29 @@ function PainPointSelectionPanel({
 
 function coverUrl(asin: string, imageUrl?: string) {
   return imageUrl || `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SX85_.jpg`
+}
+
+function mapCandidateToFilteredBook(cand: TargetCandidate, fallbackTarget: FilteredBook, market: Market): FilteredBook {
+  const pages = cand.pages > 0 ? cand.pages : (fallbackTarget.pages ?? 200)
+  return {
+    asin: cand.asin,
+    title: cand.title,
+    bsr: cand.bsr,
+    bsrTimestamp: new Date().toISOString(),
+    price: cand.price,
+    currency: cand.currency,
+    reviewCount: cand.reviewCount,
+    rating: cand.rating,
+    publishedDate: cand.publishedDate,
+    pages,
+    selfPublished: cand.selfPublished,
+    sponsored: false,
+    imageUrl: cand.imageUrl,
+    royalty: calcRoyalty(cand.price, pages, market),
+    estimatedDailySalesMin: cand.estMonthlySalesMin / 30,
+    estimatedDailySalesMax: cand.estMonthlySalesMax / 30,
+    pagesEstimated: cand.pages <= 0,
+  }
 }
 
 function ValidationPanel({

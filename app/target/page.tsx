@@ -1,7 +1,7 @@
-import TargetFinder from '@/app/TargetFinder'
+import { redirect } from 'next/navigation'
 
-export const metadata = { title: 'BookInsight — Target Finder' }
+export const metadata = { title: 'BookInsight' }
 
 export default function TargetPage() {
-  return <TargetFinder />
+  redirect('/')
 }
