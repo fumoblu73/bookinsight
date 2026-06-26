@@ -111,6 +111,7 @@ export default function AnalyzeView() {
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const autoStartedRef = useRef(false)
   const targetPanelRef = useRef<HTMLDivElement>(null)
+  const manualPanelRef = useRef<HTMLDivElement>(null)
   const painpointPanelRef = useRef<HTMLDivElement>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
@@ -209,7 +210,7 @@ export default function AnalyzeView() {
       if (targetMode === 'manual') {
         if (targetFinderResult && !targetFinderLoading) {
           t = setTimeout(() => {
-            targetPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            manualPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
           }, 250)
         }
       } else {
@@ -873,7 +874,7 @@ export default function AnalyzeView() {
 
             {/* ── TargetSelector: solo dopo scelta "Seleziona manualmente" ── */}
             {stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection && targetMode === 'manual' && (
-              <div className="mb-8">
+              <div ref={manualPanelRef} className="mb-8">
                 {targetFinderLoading && (
                   <div className="bg-white rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
                     Ricerca dei competitor target in corso…
