@@ -206,9 +206,17 @@ export default function AnalyzeView() {
     let t: ReturnType<typeof setTimeout> | undefined
 
     if (stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection) {
-      t = setTimeout(() => {
-        targetPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 150)
+      if (targetMode === 'manual') {
+        if (targetFinderResult && !targetFinderLoading) {
+          t = setTimeout(() => {
+            targetPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }, 250)
+        }
+      } else {
+        t = setTimeout(() => {
+          targetPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 150)
+      }
     } else if (stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData) {
       t = setTimeout(() => {
         painpointPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -220,7 +228,7 @@ export default function AnalyzeView() {
     }
 
     return () => { if (t) clearTimeout(t) }
-  }, [stage, amazonDataState, skipTargetSelection, painPointsToReview.length, previewData, report])
+  }, [stage, amazonDataState, skipTargetSelection, targetMode, targetFinderResult, targetFinderLoading, painPointsToReview.length, previewData, report])
 
   // ── Phase 1: fetch Amazon, start signals in background ───────────────────────
   const handlePhase1 = useCallback(async (e: React.FormEvent) => {
