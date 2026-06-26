@@ -112,6 +112,7 @@ export default function AnalyzeView() {
   const autoStartedRef = useRef(false)
   const targetPanelRef = useRef<HTMLDivElement>(null)
   const painpointPanelRef = useRef<HTMLDivElement>(null)
+  const reportRef = useRef<HTMLDivElement>(null)
 
   // Pain point selection state (Step 2 — curated mode)
   const [analysisId, setAnalysisId] = useState<string | null>(null)
@@ -200,21 +201,26 @@ export default function AnalyzeView() {
   const plannedPriceRef = useRef<number | undefined>(undefined)
   const plannedPagesRef = useRef<number | undefined>(undefined)
 
-  // Auto-scroll al pannello di stop appena compare, così l'utente non lo perde sotto la piega
+  // Auto-scroll al pannello/sezione appena compare, così l'utente non lo perde sotto la piega
   useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined
+
     if (stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection) {
-      const t = setTimeout(() => {
+      t = setTimeout(() => {
         targetPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
-      return () => clearTimeout(t)
-    }
-    if (stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData) {
-      const t = setTimeout(() => {
+      }, 150)
+    } else if (stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData) {
+      t = setTimeout(() => {
         painpointPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
-      return () => clearTimeout(t)
+      }, 250)
+    } else if (stage === 'done' && report) {
+      t = setTimeout(() => {
+        reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 250)
     }
-  }, [stage, amazonDataState, skipTargetSelection, painPointsToReview.length, previewData])
+
+    return () => { if (t) clearTimeout(t) }
+  }, [stage, amazonDataState, skipTargetSelection, painPointsToReview.length, previewData, report])
 
   // ── Phase 1: fetch Amazon, start signals in background ───────────────────────
   const handlePhase1 = useCallback(async (e: React.FormEvent) => {
@@ -937,7 +943,11 @@ export default function AnalyzeView() {
           </div>
         </div>
 
-        {report && <ReportView report={report} />}
+        {report && (
+          <div ref={reportRef}>
+            <ReportView report={report} />
+          </div>
+        )}
         {stage === 'done' && reportId && (
           <div className="mt-4 text-center no-print">
             <a href={`/log/${reportId}`} className="text-sm text-zinc-400 hover:text-indigo-600 underline transition-colors">
