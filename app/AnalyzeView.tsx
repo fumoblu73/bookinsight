@@ -110,6 +110,8 @@ export default function AnalyzeView() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const autoStartedRef = useRef(false)
+  const targetPanelRef = useRef<HTMLDivElement>(null)
+  const painpointPanelRef = useRef<HTMLDivElement>(null)
 
   // Pain point selection state (Step 2 — curated mode)
   const [analysisId, setAnalysisId] = useState<string | null>(null)
@@ -197,6 +199,22 @@ export default function AnalyzeView() {
   const cpcRef          = useRef<number | undefined>(undefined)
   const plannedPriceRef = useRef<number | undefined>(undefined)
   const plannedPagesRef = useRef<number | undefined>(undefined)
+
+  // Auto-scroll al pannello di stop appena compare, così l'utente non lo perde sotto la piega
+  useEffect(() => {
+    if (stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection) {
+      const t = setTimeout(() => {
+        targetPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+      return () => clearTimeout(t)
+    }
+    if (stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData) {
+      const t = setTimeout(() => {
+        painpointPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+      return () => clearTimeout(t)
+    }
+  }, [stage, amazonDataState, skipTargetSelection, painPointsToReview.length, previewData])
 
   // ── Phase 1: fetch Amazon, start signals in background ───────────────────────
   const handlePhase1 = useCallback(async (e: React.FormEvent) => {
@@ -566,7 +584,7 @@ export default function AnalyzeView() {
           {/* ── Banner overage / capped Apify ─────────────────────────────── */}
           {!creditsLoading && credits?.apifyState === 'overage' && (
             <div className="mb-4 rounded-xl border px-5 py-3 bg-amber-50 border-amber-200 no-print text-sm text-amber-800">
-              ⚠️ Credito Apify incluso esaurito — da ora le analisi di viabilità sono a{' '}
+              ⚠️ Credito Apify incluso esaurito — da ora le analisi di fattibilità sono a{' '}
               <strong>pagamento a consumo</strong>. Overage attuale:{' '}
               <strong>${credits.apifyOverageUsd.toFixed(2)}</strong>, margine fino al tetto:{' '}
               <strong>${credits.apifyMarginToCapUsd.toFixed(2)}</strong>.{' '}
@@ -576,7 +594,7 @@ export default function AnalyzeView() {
           )}
           {!creditsLoading && credits?.apifyState === 'capped' && (
             <div className="mb-4 rounded-xl border px-5 py-3 bg-red-50 border-red-200 no-print text-sm text-red-800">
-              ⛔ Tetto di spesa Apify (${credits.apifyCapUsd.toFixed(2)}) raggiunto. Le analisi di viabilità
+              ⛔ Tetto di spesa Apify (${credits.apifyCapUsd.toFixed(2)}) raggiunto. Le analisi di fattibilità
               sono sospese fino al rinnovo del ciclo o all&apos;aumento del tetto su{' '}
               <a href="https://console.apify.com/billing" target="_blank" rel="noreferrer"
                 className="underline hover:text-red-900">Apify Billing</a>.
@@ -811,58 +829,60 @@ export default function AnalyzeView() {
           </form>
 
           {/* ── Bivio target: auto vs manuale — solo se non skipTargetSelection e non ancora deciso ── */}
-          {stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection && targetMode === 'undecided' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
-              <h3 className="text-base font-semibold text-zinc-800">Scelta del competitor target</h3>
-              <p className="text-xs text-zinc-500 mt-0.5 mb-4">
-                Vuoi che BookInsight scelga il libro target da battere, oppure preferisci selezionarlo tu?
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  type="button"
-                  onClick={() => { setSelectedTargetAsin(amazonDataState.competitorTarget.asin); handlePhase2() }}
-                  className="flex-1 px-4 py-3 rounded-xl border border-zinc-300 hover:border-indigo-400 hover:bg-indigo-50 text-sm font-medium text-zinc-800 transition-colors text-left"
-                >
-                  <span className="block font-semibold">Scegli automaticamente</span>
-                  <span className="block text-xs text-zinc-500 mt-0.5">BookInsight seleziona il bersaglio più attaccabile</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTargetMode('manual'); loadTargetFinder() }}
-                  className="flex-1 px-4 py-3 rounded-xl border border-zinc-300 hover:border-indigo-400 hover:bg-indigo-50 text-sm font-medium text-zinc-800 transition-colors text-left"
-                >
-                  <span className="block font-semibold">Seleziona manualmente</span>
-                  <span className="block text-xs text-zinc-500 mt-0.5">Scegli tu il competitor target tra i risultati</span>
-                </button>
+          <div ref={targetPanelRef}>
+            {stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection && targetMode === 'undecided' && (
+              <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
+                <h3 className="text-base font-semibold text-zinc-800">Scelta del competitor target</h3>
+                <p className="text-xs text-zinc-500 mt-0.5 mb-4">
+                  Vuoi che BookInsight scelga il libro target da battere, oppure preferisci selezionarlo tu?
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedTargetAsin(amazonDataState.competitorTarget.asin); handlePhase2() }}
+                    className="flex-1 px-4 py-3 rounded-xl border border-zinc-300 hover:border-indigo-400 hover:bg-indigo-50 text-sm font-medium text-zinc-800 transition-colors text-left"
+                  >
+                    <span className="block font-semibold">Scegli automaticamente</span>
+                    <span className="block text-xs text-zinc-500 mt-0.5">BookInsight seleziona il bersaglio più attaccabile</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTargetMode('manual'); loadTargetFinder() }}
+                    className="flex-1 px-4 py-3 rounded-xl border border-zinc-300 hover:border-indigo-400 hover:bg-indigo-50 text-sm font-medium text-zinc-800 transition-colors text-left"
+                  >
+                    <span className="block font-semibold">Seleziona manualmente</span>
+                    <span className="block text-xs text-zinc-500 mt-0.5">Scegli tu il competitor target tra i risultati</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ── TargetSelector: solo dopo scelta "Seleziona manualmente" ── */}
-          {stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection && targetMode === 'manual' && (
-            <div className="mb-8">
-              {targetFinderLoading && (
-                <div className="bg-white rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
-                  Ricerca dei competitor target in corso…
-                </div>
-              )}
-              {targetFinderError && (
-                <div className="bg-rose-50 rounded-2xl border border-rose-200 p-6 text-sm text-rose-700">
-                  {targetFinderError}
-                  <button className="ml-3 underline" onClick={loadTargetFinder}>Riprova</button>
-                </div>
-              )}
-              {targetFinderResult && !targetFinderLoading && (
-                <TargetSelector
-                  result={targetFinderResult}
-                  initialBsrMax={80000}
-                  keyword={keyword}
-                  market={market}
-                  onSelectTarget={(asin) => { setSelectedTargetAsin(asin); handlePhase2(asin) }}
-                />
-              )}
-            </div>
-          )}
+            {/* ── TargetSelector: solo dopo scelta "Seleziona manualmente" ── */}
+            {stage === 'awaiting_validation' && amazonDataState && !skipTargetSelection && targetMode === 'manual' && (
+              <div className="mb-8">
+                {targetFinderLoading && (
+                  <div className="bg-white rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
+                    Ricerca dei competitor target in corso…
+                  </div>
+                )}
+                {targetFinderError && (
+                  <div className="bg-rose-50 rounded-2xl border border-rose-200 p-6 text-sm text-rose-700">
+                    {targetFinderError}
+                    <button className="ml-3 underline" onClick={loadTargetFinder}>Riprova</button>
+                  </div>
+                )}
+                {targetFinderResult && !targetFinderLoading && (
+                  <TargetSelector
+                    result={targetFinderResult}
+                    initialBsrMax={80000}
+                    keyword={keyword}
+                    market={market}
+                    onSelectTarget={(asin) => { setSelectedTargetAsin(asin); handlePhase2(asin) }}
+                  />
+                )}
+              </div>
+            )}
+          </div>
 
           {/* ── Skip target recap card — visibile quando arriva da /target o con skipTarget=1 ── */}
           {(stage === 'awaiting_validation' || stage === 'loading_signals' || stage === 'loading_passo0') && amazonDataState && skipTargetSelection && (
@@ -895,24 +915,26 @@ export default function AnalyzeView() {
           )}
 
           {/* ── Pain point selection panel ──────────────────────────────────────── */}
-          {stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData && (
-            <PainPointSelectionPanel
-              painPoints={painPointsToReview}
-              selectedIds={selectedPainPointIds}
-              onToggle={(id) => setSelectedPainPointIds(prev => {
-                const next = new Set(prev)
-                if (next.has(id)) next.delete(id)
-                else next.add(id)
-                return next
-              })}
-              onSelectAll={() => setSelectedPainPointIds(
-                new Set(painPointsToReview.filter(p => p.id).map(p => p.id!))
-              )}
-              onDeselectAll={() => setSelectedPainPointIds(new Set())}
-              onContinue={handlePhase3}
-              previewData={previewData}
-            />
-          )}
+          <div ref={painpointPanelRef}>
+            {stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData && (
+              <PainPointSelectionPanel
+                painPoints={painPointsToReview}
+                selectedIds={selectedPainPointIds}
+                onToggle={(id) => setSelectedPainPointIds(prev => {
+                  const next = new Set(prev)
+                  if (next.has(id)) next.delete(id)
+                  else next.add(id)
+                  return next
+                })}
+                onSelectAll={() => setSelectedPainPointIds(
+                  new Set(painPointsToReview.filter(p => p.id).map(p => p.id!))
+                )}
+                onDeselectAll={() => setSelectedPainPointIds(new Set())}
+                onContinue={handlePhase3}
+                previewData={previewData}
+              />
+            )}
+          </div>
         </div>
 
         {report && <ReportView report={report} />}
