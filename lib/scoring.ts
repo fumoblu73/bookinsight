@@ -6,12 +6,18 @@ import type { Market, AdsIntelligence, RoiPerformance, RoiPerformanceByFixedPric
 export type { RoasSignal, InvestVerdict, RoiScenario, RoiEstimate }
 
 // ─── Pain Point scoring ───────────────────────────────────────────────────────
-// Formula: F×0.2 + I×0.4 + S×0.4
+// Formula: F×0.67 + I×0.33 — la frequenza pesa il doppio dell'intensità.
+// La solvibilità NON entra nella formula: è una classificazione-gate a 4 esiti
+// che decide la destinazione editoriale del pain point, non il suo punteggio.
+// 'fuori_portata' NON esclude: il pain point resta in lista, marcato
+// "richiede un professionista".
 // Override: Intensità (I) >= 9 → criticalSignal = true (incluso sempre)
-// Soglia inclusione: score >= 3.0, min 1 evidence mention, min 2 fonti distinte
+// Soglia inclusione: score >= PAIN_POINT_SCORE_THRESHOLD
+
+export const PAIN_POINT_SCORE_THRESHOLD = 3.0
 
 export function scorePainPoint(pp: Omit<PainPoint, 'score' | 'criticalSignal'>): PainPoint {
-  const score = Math.round((pp.F * 0.2 + pp.I * 0.4 + pp.S * 0.4) * 10) / 10
+  const score = Math.round((pp.F * 0.67 + pp.I * 0.33) * 10) / 10
   const criticalSignal = pp.I >= 9
   return { ...pp, score, criticalSignal }
 }
@@ -22,7 +28,7 @@ export function filterPainPoints(
   const scored = raw.map(pp => scorePainPoint(pp))
 
   return scored
-    .filter(pp => pp.criticalSignal || pp.score >= 3.0)
+    .filter(pp => pp.criticalSignal || pp.score >= PAIN_POINT_SCORE_THRESHOLD)
     .sort((a, b) => {
       // criticalSignal sempre in cima
       if (a.criticalSignal && !b.criticalSignal) return -1

@@ -255,7 +255,11 @@ export async function runPainPointsPhase(
         count: painPoints.length,
         criticalSignals: criticalCount,
         bySource,
-        list: painPoints.map(p => ({ pain_point: p.pain_point, score: p.score, fonte: p.fonte, criticalSignal: !!p.criticalSignal })),
+        list: painPoints.map(p => ({ pain_point: p.pain_point, score: p.score, F: p.F, I: p.I, solvibilita: p.solvibilita, fonte: p.fonte, criticalSignal: !!p.criticalSignal })),
+        solvibilitaDistribution: painPoints.reduce<Record<string, number>>((acc, p) => {
+          acc[p.solvibilita] = (acc[p.solvibilita] ?? 0) + 1
+          return acc
+        }, {}),
       },
     })
     if (aiSubNiches.length > 0) {
@@ -285,7 +289,7 @@ export async function runPainPointsPhase(
   let painPointsAmazon: PainPoint[] = []
   let amazonPainPointsDiagnostics: {
     rawCount: number
-    rawSample: Array<{ pain_point: string; F: number; I: number; S: number; computed_score?: number }>
+    rawSample: Array<{ pain_point: string; F: number; I: number; solvibilita: string; computed_score?: number }>
     aiReturnedEmpty: boolean
     parseError?: string
   } = { rawCount: 0, rawSample: [], aiReturnedEmpty: true }

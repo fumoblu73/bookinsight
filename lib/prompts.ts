@@ -19,7 +19,8 @@ function painPointsList(painPoints: PainPoint[]): string {
     .slice(0, 10)
     .map((p, i) =>
       `${i + 1}. [Score ${p.score}${p.criticalSignal ? ' ⚠CRITICO' : ''}] "${p.pain_point}" ` +
-      `(F=${p.F} I=${p.I} S=${p.S}) — ${p.evidence}`
+      `(F=${p.F} I=${p.I} solvibilità=${p.solvibilita}) — ${p.evidence}` +
+      (p.requisito_forma ? ` [requisito di forma: ${p.requisito_forma}]` : '')
     )
     .join('\n')
 }
@@ -126,6 +127,19 @@ CALIBRAZIONE I (Intensità emotiva) — scala obbligatoria:
 - I=7–8: frustrazione forte, "sono bloccato", "è impossibile", linguaggio emotivo diretto
 - I=9–10: disagio acuto, impatto sulla vita/lavoro, parole come "desperate", "ruining", "failed"
 
+CLASSIFICAZIONE SOLVIBILITÀ — quattro esiti, NON una scala numerica:
+La domanda NON è "un libro può risolverlo?" (a cui risponderesti pensando ai libri che già esistono),
+ma "COSA DOVREBBE FARE UN LIBRO perché questo problema sia affrontabile?".
+- "affrontabile": un libro nella forma consueta della nicchia (manuale, guida) lo copre così com'è
+- "vincolo_formato": non lo risolve un manuale da leggere, ma lo risolverebbe un workbook, un protocollo a fasi, un percorso a esercizi, un diario guidato. NON è un no: è un requisito di FORMA. In questo caso compila requisito_forma con cosa dovrebbe fare il libro (max 20 parole, concreto)
+- "mai_fatto": nessun libro lo affronta, non perché sia impossibile ma perché nessuno ci ha provato. Candidato a tesi centrale del libro
+- "fuori_portata": richiede un intervento professionale (medico, legale, terapeutico, finanziario regolamentato). È l'UNICO no duro
+
+REGOLA: i problemi relazionali e identitari (sentirsi incompresi, solitudine, vergogna, paura del giudizio)
+NON sono automaticamente "fuori_portata". Un libro può nominarli, normalizzarli e dare linguaggio:
+di norma sono "affrontabile" o "vincolo_formato". Usa "fuori_portata" solo se serve davvero un professionista.
+NON usare "affrontabile" come default comodo: se il problema richiede pratica guidata e non sola lettura, è "vincolo_formato".
+
 ISTRUZIONI:
 - Identifica 5-12 pain point distinti e concreti espressi dagli utenti
 - Per ogni pain point estrai sia il CONTENUTO (cosa dicono) sia la FORMA LINGUISTICA (come lo dicono), perché il secondo è materiale prezioso per il copywriting del libro
@@ -136,7 +150,8 @@ CAMPI DI OUTPUT PER OGNI PAIN POINT:
    - pain_point: descrizione concisa del problema in italiano (max 15 parole)
    - F (Frequenza): rispetta la calibrazione sopra
    - I (Intensità emotiva): rispetta la calibrazione sopra
-   - S (Specificità/Solvibilità con un libro): scala 1-10
+   - solvibilita: uno dei quattro esiti (rispetta la classificazione sopra)
+   - requisito_forma: cosa dovrebbe fare il libro, SOLO se solvibilita = "vincolo_formato"; altrimenti null
    - num_fonti: numero di thread/video DISTINTI in cui appare (minimo 1)
    - ${fonteInstr}
    - tipo: "gap_esecuzione" o "job_confermato"
@@ -182,7 +197,8 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
     "pain_point": "descrizione concisa del problema in italiano (max 15 parole)",
     "F": numero,
     "I": numero,
-    "S": numero,
+    "solvibilita": "affrontabile | vincolo_formato | mai_fatto | fuori_portata",
+    "requisito_forma": "cosa dovrebbe fare il libro (max 20 parole) se vincolo_formato, altrimenti null",
     "num_fonti": numero,
     "evidence": "prima evidence_quote o parafrasi (max 80 char)",
     "evidence_quotes": ["citazione 1 verbatim", "citazione 2 verbatim", "citazione 3 verbatim"],
@@ -603,14 +619,18 @@ Usa COME PROXY PRIMARIO il rating della recensione, modulato dal tono testuale:
 - I=7-8: recensione 1-2★, frustrazione esplicita ("waste", "useless", "terrible", linguaggio diretto e negativo)
 - I=9-10: recensione 1★ con linguaggio estremo ("worst book ever", "scam", "ruined", "throw it away")
 
-CALIBRAZIONE S (Specificità/Solvibilità con un libro) — scala obbligatoria 1-10:
-Quanto è risolvibile il problema con una scelta editoriale concreta nel nuovo libro?
-- S=1-3: difficile da risolvere senza riscrivere completamente il libro o cambiare genere
-- S=4-6: risolvibile con modifiche moderate (riorganizzazione capitoli, aggiunta esempi, sezioni didattiche extra)
-- S=7-8: facilmente risolvibile con una scelta editoriale precisa (large print, layout a pagina singola, QR code per video, lay-flat binding, illustrazioni a piena pagina, indice analitico, glossario, ecc.)
-- S=9-10: risolvibile banalmente con un singolo accorgimento (es. aumento font, formato fisico diverso)
+CLASSIFICAZIONE SOLVIBILITÀ — quattro esiti, NON una scala numerica:
+La domanda è "COSA DOVREBBE FARE il nuovo libro perché questo problema non si ripresenti?".
+- "affrontabile": basta una scelta di contenuto o di struttura dentro il formato manuale consueto (più esempi, capitolo mancante, progressione più chiara, glossario, indice analitico)
+- "vincolo_formato": serve una scelta di FORMA che il manuale standard non ha (large print, layout a pagina singola, lay-flat binding, workbook con spazi da compilare, protocollo a fasi, QR code per video, illustrazioni a tutta pagina). In questo caso compila requisito_forma con la scelta editoriale concreta (max 20 parole)
+- "mai_fatto": nessun libro della nicchia lo affronta, non perché sia impossibile ma perché nessuno ci ha provato. Candidato a differenziante centrale
+- "fuori_portata": il lettore chiede qualcosa che nessun libro può dare perché richiede un professionista (diagnosi medica, parere legale, terapia personalizzata) o assistenza uno-a-uno. È l'UNICO no duro, ed è raro in questo corpus
 
-REGOLA HARD: F, I, S sono SEMPRE numeri interi tra 1 e 10. NON usare mai 0 o valori fuori scala. NON usare i valori "1, 1, 1" come default: ogni pain point deve avere valori giustificati dalle calibrazioni sopra.
+REGOLA: NON usare "vincolo_formato" per un problema di layout risolvibile scrivendo meglio.
+Usalo quando il rimedio è una decisione di produzione fisica o di tipo di libro, non di contenuto.
+
+REGOLA HARD: F e I sono SEMPRE numeri interi tra 1 e 10. NON usare mai 0 o valori fuori scala.
+NON usare i valori "1, 1" come default: ogni pain point deve avere valori giustificati dalle calibrazioni sopra.
 
 ISTRUZIONI:
 Estrai pain point appartenenti a queste tre categorie (TUTTE valide):
@@ -653,7 +673,7 @@ c) Campo "evidence_quotes": citazioni LETTERALI dal testo originale delle recens
 
 d) Campo "voice_phrases": frasi brevi (2-6 parole) estratte letteralmente dal testo delle recensioni, che rappresentano il modo concreto in cui i lettori esprimono il problema. Stesse regole verbatim di evidence_quotes: copia letterale, nessuna parafrasi.
 
-Nel template sotto i campi numerici sono descritti tra <>: nel TUO output JSON devi restituire NUMERI INTERI per F, I, S, num_fonti — non stringhe.
+Nel template sotto i campi numerici sono descritti tra <>: nel TUO output JSON devi restituire NUMERI INTERI per F, I, num_fonti — non stringhe.
 
 Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
 [
@@ -661,7 +681,8 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
     "pain_point": "descrizione sintetica del problema (max 15 parole)",
     "F": "<intero 1-10, rispetta la calibrazione F sopra>",
     "I": "<intero 1-10, rispetta la calibrazione I sopra>",
-    "S": "<intero 1-10, rispetta la calibrazione S sopra>",
+    "solvibilita": "affrontabile | vincolo_formato | mai_fatto | fuori_portata",
+    "requisito_forma": "scelta editoriale concreta (max 20 parole) se vincolo_formato, altrimenti null",
     "num_fonti": "<numero di libri distinti in cui il problema appare, minimo 1>",
     "evidence": "parafrasi sintetica in italiano (max 200 chars) che riassume cosa dicono le recensioni",
     "fonte": "recensione_negativa | recensione_positiva (in base al rating prevalente delle recensioni di supporto)",
@@ -826,8 +847,9 @@ export function promptBonusSuggestions(
   // Blocco pain points
   const ppBlock = painPoints.map(pp => {
     const lines: string[] = [
-      `[${pp.id}] ${pp.pain_point} (F:${pp.F} I:${pp.I} S:${pp.S}, fonte:${pp.fonte})`,
+      `[${pp.id}] ${pp.pain_point} (F:${pp.F} I:${pp.I} solvibilità:${pp.solvibilita}, fonte:${pp.fonte})`,
     ]
+    if (pp.requisito_forma) lines.push(`  requisito di forma: ${pp.requisito_forma}`)
     if (pp.evidence_quotes?.length) {
       pp.evidence_quotes.slice(0, 2).forEach(q => lines.push(`  citazione: "${q}"`))
     }

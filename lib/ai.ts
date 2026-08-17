@@ -283,6 +283,8 @@ import {
   ThingToAvoid,
   FilteredBook,
   PivotSignal,
+  SOLVIBILITA_VALUES,
+  type Solvibilita,
 } from './types'
 
 import {
@@ -306,12 +308,24 @@ export async function runPasso0(amazon: AmazonData): Promise<Passo0Result> {
   return callSonnet<Passo0Result>(promptPasso0(amazon))
 }
 
+function normalizeSolvibilita(v: unknown): Solvibilita {
+  const s = String(v ?? '').trim().toLowerCase().replace(/\s+/g, '_')
+  return (SOLVIBILITA_VALUES as readonly string[]).includes(s) ? (s as Solvibilita) : 'affrontabile'
+}
+
+function normalizeRequisitoForma(v: unknown, solv: Solvibilita): string | undefined {
+  if (solv !== 'vincolo_formato') return undefined
+  const s = typeof v === 'string' ? v.trim() : ''
+  return s.length >= 3 ? s.slice(0, 200) : undefined
+}
+
 // §5A — Pain Points da Reddit (Sonnet)
 interface RawPainPoint {
   pain_point: string
   F: number
   I: number
-  S: number
+  solvibilita?: string
+  requisito_forma?: string | null
   num_fonti?: number
   evidence: string
   fonte?: 'reddit' | 'youtube'
@@ -373,12 +387,16 @@ export async function runPainPointsReddit(
       fonte = !redditAvailable && youtubeAvailable ? 'youtube' : 'reddit'
     }
 
+    const solvibilita = normalizeSolvibilita(r.solvibilita)
+    const requisito_forma = normalizeRequisitoForma(r.requisito_forma, solvibilita)
+
     return {
       id: `pp_${Math.random().toString(36).slice(2, 10)}`,
       pain_point: r.pain_point,
       F,
       I: Math.min(10, Math.max(1, Math.round(r.I))),
-      S: Math.min(10, Math.max(1, Math.round(r.S))),
+      solvibilita,
+      requisito_forma,
       evidence: r.evidence,
       fonte,
       tipo: r.tipo,
@@ -398,7 +416,8 @@ interface RawAmazonPainPoint {
   pain_point: string
   F: number
   I: number
-  S: number
+  solvibilita?: string
+  requisito_forma?: string | null
   num_fonti?: number
   evidence: string
   fonte?: string
@@ -412,7 +431,7 @@ export interface AmazonPainPointsResult {
   painPoints: PainPoint[]
   diagnostics: {
     rawCount: number
-    rawSample: Array<{ pain_point: string; F: number; I: number; S: number; computed_score?: number }>
+    rawSample: Array<{ pain_point: string; F: number; I: number; solvibilita: string; computed_score?: number }>
     aiReturnedEmpty: boolean
     parseError?: string
   }
@@ -440,8 +459,8 @@ export async function runPainPointsAmazonReviews(
       pain_point: String(r.pain_point ?? '').slice(0, 100),
       F: Number(r.F) || 0,
       I: Number(r.I) || 0,
-      S: Number(r.S) || 0,
-      computed_score: Math.round(((Number(r.F) || 0) * 0.2 + (Number(r.I) || 0) * 0.4 + (Number(r.S) || 0) * 0.4) * 10) / 10,
+      solvibilita: normalizeSolvibilita(r.solvibilita),
+      computed_score: Math.round(((Number(r.F) || 0) * 0.67 + (Number(r.I) || 0) * 0.33) * 10) / 10,
     }))
 
     const validRegisters = ['frustrazione', 'rabbia', 'ansia', 'rassegnazione', 'desiderio', 'confusione', 'orgoglio', 'neutro']
@@ -470,12 +489,16 @@ export async function runPainPointsAmazonReviews(
           ? r.fonte
           : 'recensione_negativa'
 
+      const solvibilita = normalizeSolvibilita(r.solvibilita)
+      const requisito_forma = normalizeRequisitoForma(r.requisito_forma, solvibilita)
+
       return {
         id: `pp_amz_${Math.random().toString(36).slice(2, 10)}`,
         pain_point: r.pain_point,
         F,
         I: Math.min(10, Math.max(1, Math.round(r.I))),
-        S: Math.min(10, Math.max(1, Math.round(r.S))),
+        solvibilita,
+        requisito_forma,
         evidence: r.evidence,
         fonte,
         tipo: r.tipo,

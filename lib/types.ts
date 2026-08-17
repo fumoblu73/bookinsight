@@ -184,13 +184,17 @@ export interface YouTubeData {
 
 // ─── Pain Point (output Haiku) ────────────────────────────────────────────────
 
+export const SOLVIBILITA_VALUES = ['affrontabile', 'vincolo_formato', 'mai_fatto', 'fuori_portata'] as const
+export type Solvibilita = typeof SOLVIBILITA_VALUES[number]
+
 export interface PainPoint {
   id?: string            // identificatore stabile per selezione utente (curated mode)
   pain_point: string
   F: number
   I: number
-  S: number
-  score: number          // calcolato nel codice: F*0.2 + I*0.4 + S*0.4
+  solvibilita: Solvibilita
+  requisito_forma?: string   // valorizzato solo se solvibilita === 'vincolo_formato'
+  score: number          // calcolato nel codice: F*0.67 + I*0.33 (la solvibilità NON entra nella formula)
   evidence: string
   fonte: 'reddit' | 'recensione_negativa' | 'recensione_positiva' | 'youtube'
   tipo?: 'gap_esecuzione' | 'job_confermato'

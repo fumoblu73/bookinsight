@@ -1022,7 +1022,7 @@ function PainPointCard({ pp, isSelected, onToggle }: {
           <div className="flex flex-wrap gap-1.5 mb-2">
             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">F:{pp.F}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">I:{pp.I}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">S:{pp.S}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200">{pp.solvibilita.replace(/_/g, ' ')}</span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded border ${fonteBadgeClass(pp.fonte)}`}>
               {pp.fonte.replace(/_/g, ' ')}
             </span>
