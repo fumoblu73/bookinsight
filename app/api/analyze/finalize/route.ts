@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AnalysisLog } from '@/lib/types'
 import { PainPointsIntermediate, runFinalizePhase } from '@/lib/analyze-phases'
-import { cacheGet, cacheDel, saveReport, updateReport } from '@/lib/upstash'
+import { cacheGetStrict, cacheDel, saveReport, updateReport } from '@/lib/upstash'
 import { isAnthropicBillingError } from '@/lib/ai'
 
 export const maxDuration = 300
@@ -31,10 +31,19 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Carica snapshot intermedio da Redis ────────────────────────────────────
-  const intermediate = await cacheGet<PainPointsIntermediate>(`analysis:${analysisId}`)
+  let intermediate: PainPointsIntermediate | null
+  try {
+    intermediate = await cacheGetStrict<PainPointsIntermediate>(`analysis:${analysisId}`)
+  } catch (err) {
+    console.error(`[finalize] Redis non raggiungibile per analysisId ${analysisId}:`, err instanceof Error ? err.message : err)
+    return NextResponse.json(
+      { error: 'Database temporaneamente non raggiungibile. I dati dell\'analisi non sono persi: riprova tra qualche minuto senza rilanciare la ricerca.' },
+      { status: 503 },
+    )
+  }
   if (!intermediate) {
     return NextResponse.json(
-      { error: 'Analisi scaduta o non trovata. Rilancia da /api/analyze/pain-points.' },
+      { error: 'Dati dell\'analisi non disponibili. Può essere scaduta (durano 30 minuti), oppure il completamento era già stato eseguito. Controlla in History se il report esiste già; altrimenti rilancia la ricerca.' },
       { status: 410 },
     )
   }

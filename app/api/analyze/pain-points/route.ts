@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Market, AmazonData, TrendsData, RedditData, YouTubeData } from '@/lib/types'
 import { runPainPointsPhase, PainPointsIntermediate } from '@/lib/analyze-phases'
-import { cacheSet } from '@/lib/upstash'
+import { cacheSet, redisHealthy } from '@/lib/upstash'
 import { isAnthropicBillingError } from '@/lib/ai'
 
 // Solo AI (3 chiamate Sonnet): nessun fetching esterno
@@ -50,6 +50,15 @@ export async function POST(req: NextRequest) {
     keyword: kw, posts: [], totalComments: 0, subredditsUsed: [], threadCount: 0, available: false, insufficientCorpus: true,
   }
 
+  // Redis è obbligatorio per questa fase: lo snapshot intermedio è l'unico ponte
+  // verso /finalize. Meglio fallire ora che dopo due minuti di chiamate AI.
+  if (!(await redisHealthy())) {
+    return NextResponse.json(
+      { error: 'Database temporaneamente non raggiungibile. L\'analisi non è stata avviata e non ti è stato addebitato nulla. Riprova tra qualche minuto.' },
+      { status: 503 },
+    )
+  }
+
   try {
     // ── Fase AI: passo0 + pain points + sub-niche ───────────────────────────
     const intermediate: PainPointsIntermediate = await runPainPointsPhase(
@@ -61,7 +70,14 @@ export async function POST(req: NextRequest) {
 
     // ── Salva snapshot intermedio su Redis ─────────────────────────────────
     const analysisId = generateAnalysisId()
-    await cacheSet(`analysis:${analysisId}`, intermediate, INTERMEDIATE_TTL_SECONDS)
+    const saved = await cacheSet(`analysis:${analysisId}`, intermediate, INTERMEDIATE_TTL_SECONDS)
+    if (!saved) {
+      console.error(`[pain-points] snapshot NON salvato per "${kw}" (analysisId ${analysisId})`)
+      return NextResponse.json(
+        { error: 'Analisi completata ma non salvata: il database non ha risposto. I risultati sono andati persi, riprova tra qualche minuto.' },
+        { status: 503 },
+      )
+    }
 
     // ── Risposta ────────────────────────────────────────────────────────────
     return NextResponse.json({

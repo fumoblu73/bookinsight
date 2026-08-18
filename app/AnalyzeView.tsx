@@ -471,8 +471,8 @@ export default function AnalyzeView() {
           setStage('error')
           return
         }
-        if (res.status === 410) {
-          setError('Analisi scaduta (30 min superati). Riavvia dalla ricerca.')
+        if (res.status === 410 || res.status === 503) {
+          setError(errMsg)
           setStage('error')
           return
         }

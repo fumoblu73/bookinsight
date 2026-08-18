@@ -16,24 +16,38 @@ function getRedis(): Redis {
 }
 
 // ─── Cache generica ──────────────────────────────────────────────────────────
+// cacheGet / cacheSet / cacheDel sono OPPORTUNISTICI: un guasto di Redis non
+// deve rompere le route che li usano come cache (trends, target). Loggano però
+// sempre, perché un guasto silenzioso è indistinguibile da un cache miss.
+// Per i dati OBBLIGATORI (snapshot analysis:*) usare le varianti Strict, che
+// propagano l'errore invece di mascherarlo da "chiave assente".
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
   try {
-    const redis = getRedis()
-    const raw = await redis.get<string>(key)
-    if (!raw) return null
-    return (typeof raw === 'string' ? JSON.parse(raw) : raw) as T
-  } catch {
+    return await cacheGetStrict<T>(key)
+  } catch (err) {
+    console.warn(`[upstash] cacheGet fallita su "${key}":`, err instanceof Error ? err.message : err)
     return null
   }
 }
 
-export async function cacheSet(key: string, value: unknown, exSeconds: number): Promise<void> {
+/** Come cacheGet, ma lancia se Redis non risponde. null = chiave realmente assente. */
+export async function cacheGetStrict<T>(key: string): Promise<T | null> {
+  const redis = getRedis()
+  const raw = await redis.get<string>(key)
+  if (!raw) return null
+  return (typeof raw === 'string' ? JSON.parse(raw) : raw) as T
+}
+
+/** Ritorna true se la scrittura è andata a buon fine. Non lancia mai. */
+export async function cacheSet(key: string, value: unknown, exSeconds: number): Promise<boolean> {
   try {
     const redis = getRedis()
     await redis.set(key, JSON.stringify(value), { ex: exSeconds })
-  } catch {
-    // cache failure non blocca la risposta
+    return true
+  } catch (err) {
+    console.warn(`[upstash] cacheSet fallita su "${key}":`, err instanceof Error ? err.message : err)
+    return false
   }
 }
 
@@ -41,8 +55,22 @@ export async function cacheDel(key: string): Promise<void> {
   try {
     const redis = getRedis()
     await redis.del(key)
-  } catch {
-    // cache failure non blocca la risposta
+  } catch (err) {
+    console.warn(`[upstash] cacheDel fallita su "${key}":`, err instanceof Error ? err.message : err)
+  }
+}
+
+/** Verifica che Redis risponda in lettura e scrittura. Non lancia mai. */
+export async function redisHealthy(): Promise<boolean> {
+  try {
+    const redis = getRedis()
+    const probe = `health:${Date.now()}`
+    await redis.set(probe, '1', { ex: 30 })
+    await redis.del(probe)
+    return true
+  } catch (err) {
+    console.warn('[upstash] health check fallito:', err instanceof Error ? err.message : err)
+    return false
   }
 }
 
