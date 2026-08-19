@@ -218,24 +218,28 @@ async function fetchSinglePostViaApify(
 }
 
 const BATCH_SIZE = 5
-const APIFY_PHASE_BUDGET_MS = 110_000
+// Soglia dall'ingresso in fetchRedditData (non dall'inizio della fase Apify):
+// include quindi traduzione + SerpApi. Con tetto per batch di 50s (client abort),
+// l'ultimo batch avviato appena sotto soglia chiude al più tardi a 90+50=140s,
+// dentro i 150s di maxDuration con 10s di margine.
+const REDDIT_FETCH_BUDGET_MS = 90_000
 
 async function fetchPostsViaApifyBatched(
   urls: string[],
   token: string,
+  fetchStart: number,
 ): Promise<{ allItems: ApifyItem[]; successCount: number; failureCount: number }> {
   const allItems: ApifyItem[] = []
   let successCount = 0
   let failureCount = 0
-  const phaseStart = Date.now()
 
   for (let i = 0; i < urls.length; i += BATCH_SIZE) {
     const batchIndex = Math.floor(i / BATCH_SIZE)
     const totalBatches = Math.ceil(urls.length / BATCH_SIZE)
 
     if (batchIndex > 0) {
-      const elapsed = Date.now() - phaseStart
-      if (elapsed > APIFY_PHASE_BUDGET_MS) {
+      const elapsed = Date.now() - fetchStart
+      if (elapsed > REDDIT_FETCH_BUDGET_MS) {
         console.log(
           `[reddit-apify] deadline raggiunta dopo ${Math.round(elapsed / 1000)}s, batch rimanenti saltati. ` +
           `Raccolti: ${successCount}/${urls.length}`
@@ -285,6 +289,7 @@ async function fetchPostsViaApifyBatched(
 // ─── Componente 4: fetchRedditData (flusso ibrido) ───────────────────────────
 
 export async function fetchRedditData(keyword: string): Promise<RedditData> {
+  const fetchStart = Date.now()
   const apifyToken = process.env.APIFY_TOKEN
 
   if (!apifyToken) {
@@ -314,8 +319,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const topCandidates = candidates.slice(0, APIFY_FETCH_COUNT)
   const urlsToFetch = topCandidates.map(c => c.url)
 
-  // STEP 4: Apify scrape batched (5 URL paralleli alla volta, entro budget 110s)
-  const { allItems, successCount, failureCount } = await fetchPostsViaApifyBatched(urlsToFetch, apifyToken)
+  // STEP 4: Apify scrape batched (5 URL paralleli alla volta, entro budget 90s dall'ingresso in fetchRedditData)
+  const { allItems, successCount, failureCount } = await fetchPostsViaApifyBatched(urlsToFetch, apifyToken, fetchStart)
 
   if (allItems.length === 0) {
     console.log(`[reddit-summary] keyword:"${keyword}" status:APIFY_ALL_FAILED successCount:0 failureCount:${failureCount}`)
