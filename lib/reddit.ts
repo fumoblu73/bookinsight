@@ -210,7 +210,11 @@ async function fetchSinglePostViaApify(
     }
 
     const items = await res.json() as ApifyItem[]
-    return { items, success: items.length > 0 }
+    if (items.length === 0) {
+      console.log(`[reddit-apify] singleUrl datasetVuoto url:${url.substring(0, 80)}`)
+      return { items: [], success: false }
+    }
+    return { items, success: true }
   } catch (err) {
     console.log(`[reddit-apify] singleUrl FAILED url:${url.substring(0, 80)} error:${err}`)
     return { items: [], success: false }
