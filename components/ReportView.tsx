@@ -56,6 +56,7 @@ export interface FullReport {
   subNiches: { keyword: string; bsr: number; reviewCount: number; vulnerable: boolean }[]
   topBooks: { asin: string; title: string; bsr: number; price: number; currency: string; reviewCount: number; rating: number; selfPublished: boolean; imageUrl?: string }[]
   redditMeta?: { available: boolean; insufficientCorpus: boolean; threadCount: number; subredditsUsed: string[] }
+  youtubeMeta?: { available: boolean; insufficientCorpus: boolean; videoCount: number; totalComments: number }
   complianceCategory: string
   complianceRisk: 'alto' | 'medio' | 'basso'
   amazon?: {
@@ -1265,6 +1266,21 @@ export default function ReportView({ report }: { report: FullReport }) {
         <div className="space-y-4">
 
           <SubCard title="Pain Points" accent="rose">
+            {(report.redditMeta?.available === false || report.youtubeMeta?.available === false) && (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-800">
+                  Analisi parziale — questi pain point non coprono tutte le fonti previste.
+                </p>
+                <p className="text-xs text-amber-700 mt-1">
+                  Fonti non disponibili in questa esecuzione:{' '}
+                  {[
+                    report.redditMeta?.available === false ? 'Reddit' : null,
+                    report.youtubeMeta?.available === false ? 'YouTube' : null,
+                  ].filter(Boolean).join(' · ')}
+                  . Le fonti esterne possono essere temporaneamente bloccate: rilanciare l&apos;analisi in un altro momento della giornata può dare un corpus più ricco.
+                </p>
+              </div>
+            )}
             {report.painPoints.length > 0 ? (
               <ul className="space-y-2">
                 {report.painPoints.slice(0, 5).map((pp, i) => (

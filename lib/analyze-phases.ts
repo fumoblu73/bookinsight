@@ -9,6 +9,7 @@ import {
 import {
   ProfitabilityBreakdown, CompetitiveDynamism,
   calcProfitabilityScore, calcRoiEstimate, calcCompetitiveDynamism, calcRoiPerformance,
+  comparePainPoints,
 } from './scoring'
 import {
   Passo0Result, KeyInsight, TrendForecastResult, GapAnalysisResult,
@@ -324,8 +325,10 @@ export async function runPainPointsPhase(
     }
   }
 
-  // Merge unico: i pain points Amazon entrano nell'array principale
-  const mergedPainPoints = [...painPoints, ...painPointsAmazon]
+  // Merge unico: i pain points Amazon entrano nell'array principale.
+  // Riordino obbligatorio: filterPainPoints ordina i due rami separatamente,
+  // la concatenazione da sola produrrebbe una classifica non ordinata.
+  const mergedPainPoints = [...painPoints, ...painPointsAmazon].sort(comparePainPoints)
 
   return {
     keyword,
@@ -579,6 +582,12 @@ export async function runFinalizePhase(
       insufficientCorpus: reddit.insufficientCorpus,
       threadCount: reddit.threadCount,
       subredditsUsed: reddit.subredditsUsed,
+    },
+    youtubeMeta: {
+      available: youtube?.available ?? false,
+      insufficientCorpus: youtube?.insufficientCorpus ?? false,
+      videoCount: youtube?.videos?.length ?? 0,
+      totalComments: youtube?.totalComments ?? 0,
     },
     passo0,
     trends,

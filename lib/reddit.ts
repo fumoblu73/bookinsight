@@ -189,7 +189,7 @@ async function fetchSinglePostViaApify(
 ): Promise<{ items: ApifyItem[]; success: boolean }> {
   try {
     const res = await fetch(
-      `https://api.apify.com/v2/acts/fatihtahta~reddit-scraper-search-fast/run-sync-get-dataset-items?token=${token}&timeout=30`,
+      `https://api.apify.com/v2/acts/fatihtahta~reddit-scraper-search-fast/run-sync-get-dataset-items?token=${token}&timeout=45`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -199,12 +199,13 @@ async function fetchSinglePostViaApify(
           maxComments: MAX_COMMENTS_PER_POST,
           includeNsfw: false,
         }),
-        signal: AbortSignal.timeout(35000),
+        signal: AbortSignal.timeout(50000),
       }
     )
 
     if (!res.ok) {
-      console.log(`[reddit-apify] singleUrl status:${res.status} url:${url.substring(0, 80)}`)
+      const bodyText = await res.text().catch(() => '')
+      console.log(`[reddit-apify] singleUrl status:${res.status} url:${url.substring(0, 80)} body:${bodyText.substring(0, 200)}`)
       return { items: [], success: false }
     }
 
@@ -216,20 +217,52 @@ async function fetchSinglePostViaApify(
   }
 }
 
+const BATCH_SIZE = 5
+const APIFY_PHASE_BUDGET_MS = 110_000
+
 async function fetchPostsViaApifyBatched(
   urls: string[],
   token: string,
 ): Promise<{ allItems: ApifyItem[]; successCount: number; failureCount: number }> {
-  const BATCH_SIZE = 3
   const allItems: ApifyItem[] = []
   let successCount = 0
   let failureCount = 0
+  const phaseStart = Date.now()
 
   for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+    const batchIndex = Math.floor(i / BATCH_SIZE)
+    const totalBatches = Math.ceil(urls.length / BATCH_SIZE)
+
+    if (batchIndex > 0) {
+      const elapsed = Date.now() - phaseStart
+      if (elapsed > APIFY_PHASE_BUDGET_MS) {
+        console.log(
+          `[reddit-apify] deadline raggiunta dopo ${Math.round(elapsed / 1000)}s, batch rimanenti saltati. ` +
+          `Raccolti: ${successCount}/${urls.length}`
+        )
+        break
+      }
+    }
+
     const batch = urls.slice(i, i + BATCH_SIZE)
-    const batchResults = await Promise.all(
+    let batchResults = await Promise.all(
       batch.map(url => fetchSinglePostViaApify(url, token))
     )
+    let batchSuccessCount = batchResults.filter(r => r.success).length
+
+    if (batchIndex === 0 && batchSuccessCount === 0) {
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      batchResults = await Promise.all(
+        batch.map(url => fetchSinglePostViaApify(url, token))
+      )
+      batchSuccessCount = batchResults.filter(r => r.success).length
+
+      if (batchSuccessCount === 0) {
+        console.log(`[reddit-apify] primo batch fallito due volte, fonte considerata non disponibile`)
+        failureCount += batchResults.length
+        break
+      }
+    }
 
     for (const result of batchResults) {
       if (result.success) {
@@ -241,7 +274,7 @@ async function fetchPostsViaApifyBatched(
     }
 
     console.log(
-      `[reddit-apify] batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(urls.length / BATCH_SIZE)} ` +
+      `[reddit-apify] batch ${batchIndex + 1}/${totalBatches} ` +
       `done, totalSuccess:${successCount} totalFailure:${failureCount}`
     )
   }
@@ -276,12 +309,12 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     }
   }
 
-  // STEP 3: Top 15 candidati per Apify (15 URL ÷ 3 paralleli = 5 batch × ~15s ≈ 75s)
+  // STEP 3: Top 15 candidati per Apify (15 URL ÷ 5 paralleli = 3 batch)
   const APIFY_FETCH_COUNT = 15
   const topCandidates = candidates.slice(0, APIFY_FETCH_COUNT)
   const urlsToFetch = topCandidates.map(c => c.url)
 
-  // STEP 4: Apify scrape batched (3 URL paralleli alla volta)
+  // STEP 4: Apify scrape batched (5 URL paralleli alla volta, entro budget 110s)
   const { allItems, successCount, failureCount } = await fetchPostsViaApifyBatched(urlsToFetch, apifyToken)
 
   if (allItems.length === 0) {

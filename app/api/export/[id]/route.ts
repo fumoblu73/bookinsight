@@ -23,6 +23,10 @@ export async function GET(_req: NextRequest, { params }: Props) {
       date: record.createdAt,
       entry_difficulty: report.scoringBreakdown?.entryDifficulty ?? null,
       trend_signal: report.scoringBreakdown?.trendSignal ?? null,
+      sources: {
+        reddit: report.redditMeta ?? null,
+        youtube: report.youtubeMeta ?? null,
+      },
     },
     bookmarket: {
       profitability_score: {

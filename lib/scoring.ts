@@ -22,6 +22,13 @@ export function scorePainPoint(pp: Omit<PainPoint, 'score' | 'criticalSignal'>):
   return { ...pp, score, criticalSignal }
 }
 
+/** Ordinamento canonico dei pain point: criticalSignal in cima, poi score decrescente. */
+export function comparePainPoints(a: PainPoint, b: PainPoint): number {
+  if (a.criticalSignal && !b.criticalSignal) return -1
+  if (!a.criticalSignal && b.criticalSignal) return 1
+  return b.score - a.score
+}
+
 export function filterPainPoints(
   raw: Omit<PainPoint, 'score' | 'criticalSignal'>[],
 ): PainPoint[] {
@@ -29,12 +36,7 @@ export function filterPainPoints(
 
   return scored
     .filter(pp => pp.criticalSignal || pp.score >= PAIN_POINT_SCORE_THRESHOLD)
-    .sort((a, b) => {
-      // criticalSignal sempre in cima
-      if (a.criticalSignal && !b.criticalSignal) return -1
-      if (!a.criticalSignal && b.criticalSignal) return 1
-      return b.score - a.score
-    })
+    .sort(comparePainPoints)
 }
 
 // ─── Entry Difficulty ─────────────────────────────────────────────────────────
