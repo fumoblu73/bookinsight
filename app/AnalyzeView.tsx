@@ -6,6 +6,7 @@ import type { FullReport } from '@/components/ReportView'
 import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData, PainPoint, TargetFinderResult, TargetCandidate } from '@/lib/types'
 import TargetSelector from '@/components/TargetSelector'
 import { calcRoyalty } from '@/lib/amazon'
+import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
@@ -1022,7 +1023,9 @@ function PainPointCard({ pp, isSelected, onToggle }: {
           <div className="flex flex-wrap gap-1.5 mb-2">
             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">F:{pp.F}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200 font-mono">I:{pp.I}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-zinc-100 text-zinc-600 border-zinc-200">{pp.solvibilita.replace(/_/g, ' ')}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${SOLVIBILITA_BADGE[pp.solvibilita]}`}>
+              {SOLVIBILITA_LABEL[pp.solvibilita]}
+            </span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded border ${fonteBadgeClass(pp.fonte)}`}>
               {pp.fonte.replace(/_/g, ' ')}
             </span>
@@ -1037,6 +1040,11 @@ function PainPointCard({ pp, isSelected, onToggle }: {
               </span>
             )}
           </div>
+          {pp.requisito_forma && (
+            <p className="text-xs text-violet-700 mb-2">
+              <span className="font-semibold">Requisito di forma:</span> {pp.requisito_forma}
+            </p>
+          )}
           {hasEvidence ? (
             <>
               <button

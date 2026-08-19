@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection, ThingToAvoid, PivotSignal } from '@/lib/types'
 import { calcRoiEstimate } from '@/lib/scoring'
+import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -696,6 +697,61 @@ function ExcludedBooks({ rawTop15, topBooks }: { rawTop15: RawBook[]; topBooks: 
   )
 }
 
+function PainPointsList({ painPoints }: { painPoints: FullReport['painPoints'] }) {
+  const [showAll, setShowAll] = useState(false)
+  const hiddenCount = Math.max(0, painPoints.length - 5)
+
+  return (
+    <>
+      <ul className="space-y-2">
+        {painPoints.map((pp, i) => (
+          <li
+            key={i}
+            className={`p-3 rounded-xl border list-none print:break-inside-avoid ${
+              pp.criticalSignal ? 'bg-rose-50 border-rose-200' : 'bg-zinc-50 border-zinc-200'
+            } ${i >= 5 && !showAll ? 'hidden print:list-item' : ''}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-sm text-zinc-800 leading-snug">{pp.pain_point}</span>
+              <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${
+                pp.criticalSignal ? 'bg-rose-100 text-rose-700' : 'bg-zinc-200 text-zinc-500'
+              }`}>
+                {pp.criticalSignal ? '⚠ ' : ''}{pp.score}
+              </span>
+            </div>
+
+            {pp.solvibilita && (
+              <div className="mt-1.5">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${SOLVIBILITA_BADGE[pp.solvibilita]}`}>
+                  {SOLVIBILITA_LABEL[pp.solvibilita]}
+                </span>
+              </div>
+            )}
+
+            {pp.requisito_forma && (
+              <p className="text-xs text-violet-700 mt-1.5">
+                <span className="font-semibold">Requisito di forma:</span> {pp.requisito_forma}
+              </p>
+            )}
+
+            <p className="text-xs text-zinc-400 mt-1.5 italic">{pp.evidence}</p>
+          </li>
+        ))}
+      </ul>
+
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(v => !v)}
+          className="mt-3 text-xs font-medium text-indigo-600 hover:text-indigo-800 print:hidden"
+        >
+          {showAll ? 'Mostra solo i primi 5' : `Mostra tutti (${hiddenCount} in più)`}
+        </button>
+      )}
+    </>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ReportView({ report }: { report: FullReport }) {
@@ -1282,19 +1338,7 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
             )}
             {report.painPoints.length > 0 ? (
-              <ul className="space-y-2">
-                {report.painPoints.slice(0, 5).map((pp, i) => (
-                  <li key={i} className={`p-3 rounded-xl border list-none print:break-inside-avoid ${pp.criticalSignal ? 'bg-rose-50 border-rose-200' : 'bg-zinc-50 border-zinc-200'}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm text-zinc-800 leading-snug">{pp.pain_point}</span>
-                      <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${pp.criticalSignal ? 'bg-rose-100 text-rose-700' : 'bg-zinc-200 text-zinc-500'}`}>
-                        {pp.criticalSignal ? '⚠ ' : ''}{pp.score}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-400 mt-1.5 italic">{pp.evidence}</p>
-                  </li>
-                ))}
-              </ul>
+              <PainPointsList painPoints={report.painPoints} />
             ) : (
               <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-1">
                 <p className="text-xs font-semibold text-amber-700">
@@ -1450,7 +1494,7 @@ export default function ReportView({ report }: { report: FullReport }) {
 
         </div>
         <SectionNote>
-          Questa è la sezione più importante del report: ti dice cosa scrivere e perché i lettori sceglieranno il tuo libro al posto degli altri. I Pain Points sono problemi reali espressi dai lettori in prima persona, estratti da tre fonti distinte: le discussioni Reddit (cosa chiedono i lettori prima di acquistare), i commenti YouTube sotto video correlati alla keyword (cosa dicono mentre cercano soluzioni) e le recensioni Amazon dei top competitor (cosa criticano dopo aver letto). Ogni pain point ha un punteggio che riflette tre dimensioni: Frequenza (quanto spesso viene citato), Intensità (quanto è frustrante) e Solvability (quanto è risolvibile con un libro). I problemi con il simbolo ⚠ sono segnali critici ad alta intensità: non affrontarli sarebbe un&apos;opportunità sprecata. I Problemi non risolti dai competitor sono le lacune concrete dei libri esistenti, ricavate dall&apos;analisi del testo reale delle recensioni negative. Gli Angoli non coperti sono approcci editoriali completamente inesplorati: un formato diverso, un tono più pratico, un sotto-segmento ignorato. Il Libro proposto è la sintesi operativa: titolo, sottotitolo, hook e differenziatori redatti dall&apos;AI come punto di partenza concreto. La Gap Inventory classifica ogni opportunità per priorità — Alta, Media, Bassa: parti sempre dalle priorità Alta quando costruisci la scaletta del libro.
+          Questa è la sezione più importante del report: ti dice cosa scrivere e perché i lettori sceglieranno il tuo libro al posto degli altri. I Pain Points sono problemi reali espressi dai lettori in prima persona, estratti da tre fonti distinte: le discussioni Reddit (cosa chiedono i lettori prima di acquistare), i commenti YouTube sotto video correlati alla keyword (cosa dicono mentre cercano soluzioni) e le recensioni Amazon dei top competitor (cosa criticano dopo aver letto). Ogni pain point ha un punteggio che nasce da due dimensioni: Frequenza (in quanti thread, video o libri distinti il problema ricorre) e Intensità (quanto è frustrante per chi lo vive), con la frequenza che pesa il doppio. La solvibilità non entra nel punteggio: è una classificazione a parte, mostrata come etichetta colorata sotto ogni pain point, che dice cosa dovrebbe fare un libro perché quel problema sia davvero affrontabile. &ldquo;Affrontabile&rdquo; significa che un libro nella forma consueta lo copre già. &ldquo;Vincolo di formato&rdquo; non è un no, ma un requisito preciso — un workbook, un protocollo a fasi, un percorso a esercizi — indicato subito sotto il pain point. &ldquo;Mai fatto&rdquo; segnala che nessuno ci ha ancora provato: è il candidato naturale a tesi centrale del libro. &ldquo;Richiede un professionista&rdquo; è l&apos;unico vero no — resta in elenco perché è utile sapere che il lettore ha anche quel bisogno, ma non può reggere un capitolo. I problemi con il simbolo ⚠ sono segnali critici ad alta intensità: non affrontarli sarebbe un&apos;opportunità sprecata. I Problemi non risolti dai competitor sono le lacune concrete dei libri esistenti, ricavate dall&apos;analisi del testo reale delle recensioni negative. Gli Angoli non coperti sono approcci editoriali completamente inesplorati: un formato diverso, un tono più pratico, un sotto-segmento ignorato. Il Libro proposto è la sintesi operativa: titolo, sottotitolo, hook e differenziatori redatti dall&apos;AI come punto di partenza concreto. La Gap Inventory classifica ogni opportunità per priorità — Alta, Media, Bassa: parti sempre dalle priorità Alta quando costruisci la scaletta del libro.
         </SectionNote>
       </Section>
 
