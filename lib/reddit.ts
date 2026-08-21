@@ -7,8 +7,11 @@ const MAX_POSTS = 15
  *  (misurato: 42-47% su r/ADHD) e viene scartata prima dell'analisi. */
 const APIFY_MAX_COMMENTS = 40
 
-/** Quanti commenti utili teniamo per post, dopo il filtro e l'ordinamento per punteggio. */
-const MAX_COMMENTS_PER_POST = 20
+/** Quanti commenti utili teniamo per post, dopo il filtro e l'ordinamento per punteggio.
+ *  Alzato da 20 a 30: nel run del 21 agosto su "amish survival guide" il filtro
+ *  lasciava 434 commenti utili su 521 scaricati, ma lo slice a 20 ne teneva solo 281 —
+ *  oltre 150 commenti già pagati venivano scartati. */
+const MAX_COMMENTS_PER_POST = 30
 
 function extractPostId(link: string): string | null {
   const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
