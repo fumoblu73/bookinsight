@@ -2,6 +2,12 @@ import { RedditData, RedditPost, RedditComment } from './types'
 
 const MIN_RESULTS_FOR_ANALYSIS = 5
 const MAX_POSTS = 15
+/** Quanti commenti chiediamo ad Apify. Più alto del taglio finale perché
+ *  una quota consistente arriva cancellata o è boilerplate dei moderatori
+ *  (misurato: 42-47% su r/ADHD) e viene scartata prima dell'analisi. */
+const APIFY_MAX_COMMENTS = 40
+
+/** Quanti commenti utili teniamo per post, dopo il filtro e l'ordinamento per punteggio. */
 const MAX_COMMENTS_PER_POST = 20
 
 function extractPostId(link: string): string | null {
@@ -196,7 +202,7 @@ async function fetchSinglePostViaApify(
         body: JSON.stringify({
           urls: [url],
           scrapeComments: true,
-          maxComments: MAX_COMMENTS_PER_POST,
+          maxComments: APIFY_MAX_COMMENTS,
           includeNsfw: false,
         }),
         signal: AbortSignal.timeout(50000),
@@ -206,12 +212,14 @@ async function fetchSinglePostViaApify(
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '')
       console.log(`[reddit-apify] singleUrl status:${res.status} url:${url.substring(0, 80)} body:${bodyText.substring(0, 200)}`)
+      console.log(`[reddit-apify] headers:${JSON.stringify(Object.fromEntries(res.headers.entries())).substring(0, 400)}`)
       return { items: [], success: false }
     }
 
     const items = await res.json() as ApifyItem[]
     if (items.length === 0) {
       console.log(`[reddit-apify] singleUrl datasetVuoto url:${url.substring(0, 80)}`)
+      console.log(`[reddit-apify] headers:${JSON.stringify(Object.fromEntries(res.headers.entries())).substring(0, 400)}`)
       return { items: [], success: false }
     }
     return { items, success: true }
@@ -340,9 +348,30 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
 
   // Raggruppa commenti per postId estratto dall'URL del commento
   const commentsByPostId = new Map<string, RedditComment[]>()
+  let skippedRemoved = 0
+  let skippedBoilerplate = 0
   for (const c of commentsRaw) {
     const postId = (c.postId as string) ?? ''
     if (!postId) continue
+
+    const rawBody = typeof c.body === 'string' ? c.body.trim() : ''
+    const author = typeof c.author === 'string' ? c.author : ''
+
+    const isRemoved =
+      c.is_deleted_or_removed === true ||
+      rawBody === '' ||
+      rawBody === '[removed]' ||
+      rawBody === '[deleted]'
+
+    const isBoilerplate =
+      author === 'AutoModerator' ||
+      (c.stickied === true && c.distinguished === 'moderator')
+
+    if (isRemoved || isBoilerplate) {
+      skippedRemoved += isRemoved ? 1 : 0
+      skippedBoilerplate += isBoilerplate && !isRemoved ? 1 : 0
+      continue
+    }
 
     const createdAt = c.created_utc
       ? Math.floor(new Date(c.created_utc as string).getTime() / 1000)
@@ -426,6 +455,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     `subreddits:${subredditsUsed.length} ` +
     `commentsScrapedTotal:${commentsRaw.length} ` +
     `commentsKept:${totalComments} ` +
+    `commentsSkippedRemoved:${skippedRemoved} ` +
+    `commentsSkippedBoilerplate:${skippedBoilerplate} ` +
     `flow:hybrid_v5_fatihtahta`
   )
 
