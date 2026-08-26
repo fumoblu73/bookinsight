@@ -183,7 +183,9 @@ export async function runPainPointsPhase(
     summary: trends.availability === 'full'
       ? `${trends.timelineData.length} mesi di dati · YoY ${trends.yoyGrowth >= 0 ? '+' : ''}${trends.yoyGrowth}% · ${trends.relatedQueries.length} query correlate`
       : trends.availability === 'partial'
-      ? `Timeline non disponibile, ma ${trends.relatedQueries.length} query correlate recuperate`
+      ? (trends.timelineData.length > 0
+          ? `${trends.timelineData.length} mesi di dati · YoY ${trends.yoyGrowth >= 0 ? '+' : ''}${trends.yoyGrowth}% · nessuna query correlata`
+          : `Timeline non disponibile, ma ${trends.relatedQueries.length} query correlate recuperate`)
       : 'Dati non disponibili (timeline + query correlate vuote)',
     details: {
       available: trends.available,
