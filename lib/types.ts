@@ -200,9 +200,6 @@ export interface PainPoint {
   tipo?: 'gap_esecuzione' | 'job_confermato'
   linguaggio?: string    // solo per job_confermato
   criticalSignal?: boolean  // override: Intensità >= 9
-  vocalMinority?: boolean
-  vocalMinoritySuspect?: boolean
-  weakSignal?: boolean   // fonte singola
 
   // Voice-of-customer — per copywriting del libro
   evidence_quotes?: string[]
