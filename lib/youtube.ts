@@ -41,7 +41,13 @@ function isValidComment(text: string, likeCount: number): boolean {
 async function searchVideos(keyword: string, market: Market): Promise<string[]> {
   const { relevanceLanguage, regionCode } = MARKET_YOUTUBE_PARAMS[market]
   const query = encodeURIComponent(`${keyword} tutorial`)
-  const url = `${YT_API}/search?part=id&type=video&q=${query}&maxResults=${MAX_VIDEOS}&order=viewCount&relevanceLanguage=${relevanceLanguage}&regionCode=${regionCode}&key=${getApiKey()}`
+  // Selezione per pertinenza, non per visualizzazioni: su keyword generiche come
+  // "game design" l'ordinamento per viewCount restituisce intrattenimento di massa
+  // (tutorial Minecraft, video da decine di milioni di visualizzazioni) invece di
+  // discussione tematica. L'ordinamento per visualizzazioni resta applicato
+  // localmente più sotto per dare priorità ai video più visti dentro l'insieme
+  // già selezionato per pertinenza.
+  const url = `${YT_API}/search?part=id&type=video&q=${query}&maxResults=${MAX_VIDEOS}&order=relevance&relevanceLanguage=${relevanceLanguage}&regionCode=${regionCode}&key=${getApiKey()}`
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
   if (!res.ok) throw new Error(`YouTube search: ${res.status}`)
   const data = await res.json() as { items?: { id: { videoId: string } }[] }
@@ -117,7 +123,8 @@ export async function fetchYouTubeData(keyword: string, market: Market = 'US'): 
       totalComments += sliced.comments.length
     }
 
-    console.log(`[youtube] "${keyword}" → ${videoIds.length} video → ${totalComments} commenti filtrati`)
+    const videosWithComments = capped.filter(v => v.comments.length > 0).length
+    console.log(`[youtube] "${keyword}" → ${videoIds.length} video → ${totalComments} commenti filtrati → ${videosWithComments}/${MAX_VIDEOS} video con commenti`)
 
     return {
       keyword,
