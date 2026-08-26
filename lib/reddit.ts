@@ -192,6 +192,16 @@ async function searchRedditMulti(queries: string[]): Promise<RankedCandidate[]> 
 
 // ─── Componente 3: Scrape Apify — URL singola batched ────────────────────────
 
+function relevantApifyHeaders(headers: Headers): string {
+  const filtered = Object.fromEntries(
+    [...headers.entries()].filter(([name]) => {
+      const lower = name.toLowerCase()
+      return lower.includes('apify') || lower.includes('run')
+    })
+  )
+  return JSON.stringify(filtered).substring(0, 400)
+}
+
 async function fetchSinglePostViaApify(
   url: string,
   token: string,
@@ -215,14 +225,14 @@ async function fetchSinglePostViaApify(
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '')
       console.log(`[reddit-apify] singleUrl status:${res.status} url:${url.substring(0, 80)} body:${bodyText.substring(0, 200)}`)
-      console.log(`[reddit-apify] headers:${JSON.stringify(Object.fromEntries(res.headers.entries())).substring(0, 400)}`)
+      console.log(`[reddit-apify] headers:${relevantApifyHeaders(res.headers)}`)
       return { items: [], success: false }
     }
 
     const items = await res.json() as ApifyItem[]
     if (items.length === 0) {
       console.log(`[reddit-apify] singleUrl datasetVuoto url:${url.substring(0, 80)}`)
-      console.log(`[reddit-apify] headers:${JSON.stringify(Object.fromEntries(res.headers.entries())).substring(0, 400)}`)
+      console.log(`[reddit-apify] headers:${relevantApifyHeaders(res.headers)}`)
       return { items: [], success: false }
     }
     return { items, success: true }
