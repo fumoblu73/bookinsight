@@ -1118,7 +1118,7 @@ function PainPointSelectionPanel({
           </div>
           <div>
             <div className="text-lg font-bold text-zinc-700">{previewData.scoring.entryDifficulty}</div>
-            <div className="text-xs text-zinc-400">Difficoltà entrata</div>
+            <div className="text-xs text-zinc-400">Sforzo per competere</div>
           </div>
           {previewData.redditSummary.available && (
             <div>

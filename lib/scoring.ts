@@ -39,32 +39,35 @@ export function filterPainPoints(
     .sort(comparePainPoints)
 }
 
-// ─── Entry Difficulty ─────────────────────────────────────────────────────────
-// Basata sul LEADER (posizione 1), NON sul competitor_target
-// BSR leader: <5k=facile, 5k-50k=medio, >50k=difficile
-// Reviews leader: <50=facile, 50-200=medio, >200=difficile
+// ─── Entry Difficulty → Sforzo per competere ──────────────────────────────────
+// Indicatore GREZZO di sforzo per competere, NON un go/no-go.
+// Aggregato: mediana del numero di recensioni dei top-5 (su quanti ce ne sono,
+// 3/4/5). Il BSR NON entra: è già la componente Domanda dello scoring.
+// Soglie sulla mediana recensioni: <100 FACILE · 100-800 MEDIO · >800 DIFFICILE.
+// L'attaccabilità vera (gap/pain point) NON vive qui: questo misura solo quanto
+// è presidiata l'arena, non se un libro nuovo la può vincere.
 
 export type DifficultyLevel = 'FACILE' | 'MEDIO' | 'DIFFICILE'
 
-export function calcEntryDifficulty(leader: FilteredBook): DifficultyLevel {
-  const bsr = leader.bsr
-  const rev = leader.reviewCount
+/**
+ * Mediana del numero di recensioni. Accetta qualunque oggetto con `reviewCount`
+ * così può essere usata sia sui FilteredBook (scoring) sia sul tipo ridotto dei
+ * top-book nel report (display), garantendo un unico calcolo condiviso.
+ * n pari → media dei due valori centrali; n dispari → valore centrale.
+ */
+export function calcMedianReviews(books: { reviewCount: number }[]): number {
+  const vals = books.map(b => b.reviewCount).sort((a, b) => a - b)
+  const n = vals.length
+  if (n === 0) return 0
+  const mid = Math.floor(n / 2)
+  return n % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid]
+}
 
-  let bsrScore: number
-  if (bsr < 5_000)       bsrScore = 3  // difficile
-  else if (bsr < 50_000) bsrScore = 2  // medio
-  else                   bsrScore = 1  // facile
-
-  let revScore: number
-  if (rev > 200)      revScore = 3
-  else if (rev >= 50) revScore = 2
-  else                revScore = 1
-
-  const total = bsrScore + revScore
-
-  if (total >= 5) return 'DIFFICILE'
-  if (total >= 3) return 'MEDIO'
-  return 'FACILE'
+export function calcEntryDifficulty(topBooks: FilteredBook[]): DifficultyLevel {
+  const median = calcMedianReviews(topBooks)
+  if (median < 100) return 'FACILE'
+  if (median > 800) return 'DIFFICILE'
+  return 'MEDIO'
 }
 
 // ─── Trend Signal ─────────────────────────────────────────────────────────────
@@ -149,9 +152,8 @@ export function calcProfitabilityScore(
   else if (avgPrice >= 6)  priceScore = 2
   else                      priceScore = 1
 
-  // ── C. Competizione (Entry Difficulty invertita) ──────────────────────────
-  const leader = topBooks[0]
-  const entryDifficulty = calcEntryDifficulty(leader)
+  // ── C. Competizione (Sforzo per competere: mediana recensioni top-5) ───────
+  const entryDifficulty = calcEntryDifficulty(topBooks)
   const competitionScore: number =
     entryDifficulty === 'FACILE'    ? 9 :
     entryDifficulty === 'MEDIO'     ? 6 :

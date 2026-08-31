@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection, ThingToAvoid, PivotSignal } from '@/lib/types'
-import { calcRoiEstimate } from '@/lib/scoring'
+import { calcRoiEstimate, calcMedianReviews } from '@/lib/scoring'
 import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -951,7 +951,18 @@ export default function ReportView({ report }: { report: FullReport }) {
               <span className="text-zinc-500">Prezzo medio: <strong className="text-zinc-800">{fmt(sb.avgPrice)} ({fmt(sb.minPrice)}–{fmt(sb.maxPrice)})</strong></span>
               <span className="text-zinc-500">Pagine medie: <strong className="text-zinc-800">{sb.avgPages} ({sb.minPages}–{sb.maxPages})</strong></span>
               <span className="text-zinc-500">📏 Lunghezza target: <strong className="text-indigo-700">~{Math.round(sb.avgPages / 10) * 10} pag.</strong></span>
-              <span className="text-zinc-500">Difficoltà: <strong className={difficultyColor(sb.entryDifficulty)}>{sb.entryDifficulty}</strong></span>
+              <span className="text-zinc-500">Sforzo per competere: <strong className={difficultyColor(sb.entryDifficulty)}>{sb.entryDifficulty}</strong></span>
+              {(() => {
+                const books = (report.amazon?.topBooks ?? report.topBooks)?.slice(0, 5) ?? []
+                if (books.length === 0) return null
+                const sortedDesc = books.map(b => b.reviewCount).sort((a, b) => b - a)
+                const median = Math.round(calcMedianReviews(books))
+                return (
+                  <span className="text-zinc-500">
+                    Recensioni top-5: <strong className="text-zinc-800">{sortedDesc.map(v => v.toLocaleString('it-IT')).join(' · ')}</strong> (mediana <strong className="text-zinc-800">{median.toLocaleString('it-IT')}</strong>)
+                  </span>
+                )
+              })()}
               <span className="text-zinc-500">Trend: <strong className={trendColor(sb.trendSignal)}>{sb.trendSignal}</strong></span>
               <span className="text-zinc-500">Compliance: <strong className="text-zinc-800">{report.complianceCategory}</strong> <span className="text-zinc-400">({report.complianceRisk})</span></span>
             </div>
