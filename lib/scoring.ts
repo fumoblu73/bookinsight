@@ -228,6 +228,62 @@ const ROI_TARGETS = [
   { label: 'roi_100'   as const, multiplier: 2.0 },
 ]
 
+// ─── Verdetto d'investimento ───────────────────────────────────────────────────
+// Funzione pura, sincrona, senza dipendenze di rete: ReportView la richiama (via
+// calcRoiEstimate) a ogni ricalcolo lato browser quando l'utente cambia i costi.
+// Punto previsto per A2: aggiungere qui un campo opzionale col segnale della gap
+// analysis, senza toccare i chiamanti esistenti.
+
+export interface VerdictInput {
+  baseRatio: number                                  // ratioVsBudget dello scenario base
+  profitabilityScore?: number                        // 0-100, da Scoring.score
+  entryDifficulty?: 'FACILE' | 'MEDIO' | 'DIFFICILE' // da Scoring.entryDifficulty
+}
+
+export interface VerdictResult {
+  investVerdict: InvestVerdict
+  degradedFrom?: InvestVerdict
+  degradeReason?: string
+}
+
+export function calcVerdict(input: VerdictInput): VerdictResult {
+  const { baseRatio, profitabilityScore, entryDifficulty } = input
+
+  // Verdetto numerico dal ratio vs budget dello scenario base
+  const numericVerdict: InvestVerdict =
+    baseRatio >= 2.0 ? 'INVEST' :
+    baseRatio >= 1.0 ? 'PARTIAL' :
+    'PASS'
+
+  // Degrade rule contestuale: il verdetto numerico viene declassato
+  // se lo score di profittabilità è basso E la nicchia è difficile da attaccare.
+  // Le due condizioni devono valere INSIEME (AND): un solo segnale negativo non basta.
+  let investVerdict: InvestVerdict = numericVerdict
+  let degradedFrom: InvestVerdict | undefined
+  let degradeReason: string | undefined
+
+  if (
+    typeof profitabilityScore === 'number' &&
+    entryDifficulty === 'DIFFICILE'
+  ) {
+    if (numericVerdict === 'INVEST' && profitabilityScore < 50) {
+      investVerdict = 'PARTIAL'
+      degradedFrom = 'INVEST'
+      degradeReason = `score ${profitabilityScore}/100 < 50 + sforzo per competere DIFFICILE`
+    } else if (numericVerdict === 'PARTIAL' && profitabilityScore < 40) {
+      investVerdict = 'PASS'
+      degradedFrom = 'PARTIAL'
+      degradeReason = `score ${profitabilityScore}/100 < 40 + sforzo per competere DIFFICILE`
+    }
+  }
+
+  return {
+    investVerdict,
+    ...(degradedFrom ? { degradedFrom } : {}),
+    ...(degradeReason ? { degradeReason } : {}),
+  }
+}
+
 // ─── Investment / ROI Re-anchor ───────────────────────────────────────────────
 // §7: 3 scenari ancorati al competitor target, §6.2
 
@@ -299,6 +355,7 @@ export function calcRoiEstimate(
       monthlyAdCost:  Array(12).fill(0) as number[],
       netProfit12m: 0, breakEvenMonths: 999, ratioVsBudget: 0,
     })
+    const zeroVerdict = calcVerdict({ baseRatio: 0, profitabilityScore, entryDifficulty })
     return {
       anchoredOnTarget: true, targetAsin: competitorTarget.asin,
       targetDailySalesMin: targetMin, targetDailySalesMax: targetMax,
@@ -310,7 +367,10 @@ export function calcRoiEstimate(
         zero('ottimistico',  CAPTURE_FRACTIONS.ottimistico),
       ],
       costPerAdSale: Math.round(costPerAdSale * 100) / 100,
-      adSaleIsProfitable, bepSignal: 'ROSSO', investVerdict: 'PASS', warnings,
+      adSaleIsProfitable, bepSignal: 'ROSSO', warnings,
+      investVerdict: zeroVerdict.investVerdict,
+      ...(zeroVerdict.degradedFrom ? { degradedFrom: zeroVerdict.degradedFrom } : {}),
+      ...(zeroVerdict.degradeReason ? { degradeReason: zeroVerdict.degradeReason } : {}),
     }
   }
 
@@ -355,34 +415,11 @@ export function calcRoiEstimate(
     return { label, captureFraction, monthlyRevenue, monthlyAdCost, netProfit12m, breakEvenMonths, ratioVsBudget }
   })
 
-  // 7. Verdetto dallo scenario base (indice 1)
+  // 7. Verdetto dallo scenario base (indice 1), inclusa la degrade rule
   const baseRatio = scenarios[1].ratioVsBudget
-  const numericVerdict: InvestVerdict =
-    baseRatio >= 2.0 ? 'INVEST' :
-    baseRatio >= 1.0 ? 'PARTIAL' :
-    'PASS'
-
-  // 7.bis Degrade rule contestuale: il verdetto numerico viene declassato
-  // se lo score di profittabilità è basso E la nicchia è difficile da attaccare.
-  // Le due condizioni devono valere INSIEME (AND): un solo segnale negativo non basta.
-  let investVerdict: InvestVerdict = numericVerdict
-  let degradedFrom: InvestVerdict | undefined
-  let degradeReason: string | undefined
-
-  if (
-    typeof profitabilityScore === 'number' &&
-    entryDifficulty === 'DIFFICILE'
-  ) {
-    if (numericVerdict === 'INVEST' && profitabilityScore < 50) {
-      investVerdict = 'PARTIAL'
-      degradedFrom = 'INVEST'
-      degradeReason = `score ${profitabilityScore}/100 < 50 + entry DIFFICILE`
-    } else if (numericVerdict === 'PARTIAL' && profitabilityScore < 40) {
-      investVerdict = 'PASS'
-      degradedFrom = 'PARTIAL'
-      degradeReason = `score ${profitabilityScore}/100 < 40 + entry DIFFICILE`
-    }
-  }
+  const { investVerdict, degradedFrom, degradeReason } = calcVerdict({
+    baseRatio, profitabilityScore, entryDifficulty,
+  })
 
   // 8. Segnale BEP dallo scenario base
   const baseBep = scenarios[1].breakEvenMonths

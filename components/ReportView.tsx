@@ -1652,7 +1652,7 @@ export default function ReportView({ report }: { report: FullReport }) {
                       {typeof liveRoi.scenarios?.[1]?.ratioVsBudget === 'number' && (
                         <> (ROI {Math.round(liveRoi.scenarios[1].ratioVsBudget * 100) / 100}× sul budget)</>
                       )}
-                      . Però la nicchia ha un Profitability Score basso e un&apos;entry difficulty DIFFICILE: il verdetto è stato corretto a <span className="font-semibold">{liveRoi.investVerdict}</span> per riflettere il contesto strategico complessivo.
+                      . Però la nicchia ha un Profitability Score basso e uno sforzo per competere DIFFICILE: il verdetto è stato corretto a <span className="font-semibold">{liveRoi.investVerdict}</span> per riflettere il contesto strategico complessivo.
                     </p>
                     <p>
                       <span className="font-semibold text-zinc-900">Cosa significa per te:</span>{' '}
