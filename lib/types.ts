@@ -155,8 +155,24 @@ export interface RedditData {
   subredditsUsed: string[]
   threadCount: number
   available: boolean
-  insufficientCorpus: boolean   // true se < 20 commenti
+  insufficientCorpus: boolean   // avviso legacy di copertura limitata; NON è un gate AI
+  corpusQuality?: RedditCorpusQuality // opzionale per dati/report precedenti alla 9.0.1
 }
+
+export interface RedditCorpusQuality {
+  usable: boolean
+  coverage: 'none' | 'limited' | 'diversified'
+  collectedCommentCount?: number // commenti presenti nel payload, prima del filtro locale
+  usableCommentCount: number
+  usableThreadCount: number
+  transmittedCommentCount?: number // dopo deduplica, filtro e limiti del prompt
+  transmittedThreadCount?: number
+  subredditCount: number // subreddit dei thread effettivamente trasmessi
+  limitations: Array<'no_usable_comments' | 'few_comments' | 'few_threads' | 'few_subreddits'>
+}
+
+export type RedditMeta = Pick<RedditData,
+  'available' | 'insufficientCorpus' | 'threadCount' | 'subredditsUsed' | 'corpusQuality'>
 
 // ─── YouTube ──────────────────────────────────────────────────────────────────
 
@@ -197,6 +213,7 @@ export interface PainPoint {
   score: number          // calcolato nel codice: F*0.67 + I*0.33 (la solvibilità NON entra nella formula)
   evidence: string
   fonte: 'reddit' | 'recensione_negativa' | 'recensione_positiva' | 'youtube'
+  redditCorpusQuality?: RedditCorpusQuality // contesto del campione, non componente dello score
   tipo?: 'gap_esecuzione' | 'job_confermato'
   linguaggio?: string    // solo per job_confermato
   criticalSignal?: boolean  // override: Intensità >= 9

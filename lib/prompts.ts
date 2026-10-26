@@ -1,7 +1,15 @@
 import { AmazonData, TrendsData, RedditData, YouTubeData, PainPoint, AmazonReview, Market, SubNiche, TargetInterpretationSummary, BookReviews, FilteredBook } from './types'
 import { ProfitabilityBreakdown, RoiEstimate, DifficultyLevel, TrendSignal } from './scoring'
+import { preparePainPointCorpus, prepareRedditCorpus, redditCoverageNote, REDDIT_CORPUS_LIMITS } from './reddit-corpus'
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
+
+function painPointSampleNotes(painPoints: PainPoint[]): string {
+  const notes = painPoints.filter(p => p.fonte === 'reddit').map(p => p.redditCorpusQuality
+    ? redditCoverageNote(p.redditCorpusQuality)
+    : 'Reddit: copertura non specificata nei dati salvati. Le frequenze riguardano solo il campione osservato e non dimostrano domanda consolidata.')
+  return [...new Set(notes)].join('\n')
+}
 
 function booksTable(amazon: AmazonData): string {
   return amazon.topBooks
@@ -19,7 +27,7 @@ function painPointsList(painPoints: PainPoint[]): string {
     .slice(0, 10)
     .map((p, i) =>
       `${i + 1}. [Score ${p.score}${p.criticalSignal ? ' ⚠CRITICO' : ''}] "${p.pain_point}" ` +
-      `(F=${p.F} I=${p.I} solvibilità=${p.solvibilita}) — ${p.evidence}` +
+      `(fonte=${p.fonte}; F=${p.F} I=${p.I} solvibilità=${p.solvibilita}) — ${p.evidence}` +
       (p.requisito_forma ? ` [requisito di forma: ${p.requisito_forma}]` : '')
     )
     .join('\n')
@@ -66,23 +74,25 @@ export function promptPainPointsReddit(
   youtube?: YouTubeData,
   market?: Market,
 ): string {
+  const prepared = preparePainPointCorpus(reddit, youtube)
+  if (!prepared.reddit.quality.usable && !prepared.youtube) {
+    return 'Nessun corpus Reddit o YouTube utilizzabile. Restituisci esclusivamente un array JSON vuoto: []'
+  }
   const redditLanguageNote = market && NON_ENGLISH_MARKETS.has(market)
     ? `NOTA IMPORTANTE: il mercato selezionato è ${market} (non anglofono). Reddit è prevalentemente in inglese: il corpus potrebbe contenere discussioni in inglese sullo stesso argomento invece che in lingua locale. Questo è accettabile — i pain point universali emergono anche da comunità anglofone. Tuttavia, le recensioni Amazon in lingua locale sono la fonte primaria più affidabile per questo mercato. Dai priorità ai segnali dalle recensioni rispetto a quelli Reddit se ci sono discrepanze.\n\n`
     : ''
 
-  const corpus = reddit.posts
-    .slice(0, 15)
+  const corpus = prepared.reddit.posts
     .map(p => {
       const comments = p.comments
-        .slice(0, 20)
-        .map(c => `    [score ${c.score}] ${c.body.substring(0, 300)}`)
+        .map(c => `    [score ${c.score}] ${c.body.substring(0, REDDIT_CORPUS_LIMITS.maxCommentChars)}`)
         .join('\n')
-      return `POST (r/${p.subreddit}, score ${p.score}): "${p.title}"\n${p.selftext ? '  ' + p.selftext.substring(0, 400) + '\n' : ''}${comments}`
+      return `POST (r/${p.subreddit}, score ${p.score}): "${p.title}"\n${p.selftext ? '  ' + p.selftext.substring(0, REDDIT_CORPUS_LIMITS.maxSelftextChars) + '\n' : ''}${comments}`
     })
     .join('\n\n---\n\n')
 
-  const ytCorpus = youtube?.available && youtube.videos.length > 0
-    ? youtube.videos.map(v => {
+  const ytCorpus = prepared.youtube
+    ? prepared.youtube.videos.map(v => {
         const comments = v.comments
           .map(c => `  [${c.likeCount} likes] ${c.text.substring(0, 300)}`)
           .join('\n')
@@ -90,8 +100,8 @@ export function promptPainPointsReddit(
       }).join('\n\n---\n\n')
     : null
 
-  const redditSection = reddit.available && !reddit.insufficientCorpus
-    ? `CORPUS REDDIT (${reddit.totalComments} commenti totali da ${reddit.subredditsUsed.join(', ')}):\n${corpus}\n`
+  const redditSection = prepared.reddit.quality.usable
+    ? `CORPUS REDDIT:\n${redditCoverageNote(prepared.reddit.quality)}\n${corpus}\n`
     : ''
 
   const ytSection = ytCorpus
@@ -102,15 +112,18 @@ NOTA: i commenti YouTube provengono da spettatori di video tutorial — tendono 
 `
     : ''
 
-  const fonteInstr = ytCorpus && reddit.available && !reddit.insufficientCorpus
-    ? '- fonte: "reddit" se estratto da Reddit, "youtube" se estratto da YouTube'
+  const fonteInstr = ytCorpus && prepared.reddit.quality.usable
+    ? 'fonte: "reddit" se estratto da Reddit, "youtube" se estratto da YouTube'
     : ytCorpus
-    ? '- fonte: sempre "youtube"'
-    : '- fonte: sempre "reddit"'
+    ? 'fonte: sempre "youtube"'
+    : 'fonte: sempre "reddit"'
 
   return `Sei un ricercatore di mercato specializzato in libri non-fiction. Analizza le discussioni sulla keyword "${keyword}" ed estrai i pain point reali degli utenti.
 
 ${redditLanguageNote}${redditSection}${ytSection}
+REGOLA FONTI: ogni pain point deve avere una fonte esplicita e citazioni provenienti solo da quella piattaforma. Non attribuire mai una testimonianza Reddit a YouTube o viceversa. Se lo stesso problema emerge da entrambe le piattaforme, crea due evidenze separate con la rispettiva fonte; num_fonti conta solo i thread/video della piattaforma indicata. Non inventare pain point per raggiungere il numero richiesto: se i dati supportano meno di 5 problemi, restituiscine meno, anche nessuno.
+Per Reddit num_fonti non può superare ${prepared.reddit.posts.length}, il numero di thread effettivamente inclusi nel prompt. Un solo commento è una testimonianza qualitativa, mai prova di domanda consolidata; per una menzione isolata rispetta F=1–2 come indicato sotto.
+
 REGOLA COMMENTI BREVI DI CONFERMA: Se un commento è una conferma breve del problema espresso nel post padre o nei commenti precedenti (es. "stesso problema", "anche io", "idem", "exactly", "same here", "this!", "+1", "agree") — NON assegnargli un pain point autonomo. Invece, incrementa di +1 il punteggio F del pain point del post padre o del commento descrittivo più recente sullo stesso problema. Haiku ha tutto il contesto necessario: conosce il titolo del post e i commenti precedenti. La stessa regola si applica al corpus YouTube.
 
 CALIBRAZIONE F (Frequenza) — scala obbligatoria:
@@ -120,6 +133,7 @@ CALIBRAZIONE F (Frequenza) — scala obbligatoria:
 - F=7–8: presente in 8+ thread o sub-tema dominante nel corpus
 - F=9–10: il problema più citato, quasi ogni thread ne parla
 REGOLA HARD: se num_fonti=1, F NON può superare 4.
+Con copertura Reddit limitata, la dominanza in pochi thread NON basta per una F elevata: ancora F ai thread distinti osservati. Le conferme nello stesso thread non aumentano num_fonti. Non estrapolare percentuali o domanda di mercato dalle frequenze del campione.
 
 CALIBRAZIONE I (Intensità emotiva) — scala obbligatoria:
 - I=1–3: osservazione neutra, nessun disagio espresso
@@ -223,7 +237,8 @@ export function promptKeyInsights(
   painPoints: PainPoint[],
   overrideSubNiches?: SubNiche[],
 ): string {
-  const topPains = painPoints.slice(0, 5).map(p => `"${p.pain_point}" (score ${p.score})`).join(', ')
+  const redditQuality = prepareRedditCorpus(reddit).quality
+  const topPains = painPoints.slice(0, 5).map(p => `"${p.pain_point}" (fonte=${p.fonte}; score ${p.score})`).join(', ')
   const trendSummary = trends.available
     ? `YoY ${trends.yoyGrowth > 0 ? '+' : ''}${trends.yoyGrowth}%, trend: ${scoring.trendSignal}`
     : 'dati trend non disponibili'
@@ -240,7 +255,7 @@ DATI DISPONIBILI:
 - Prezzo medio: ${amazon.topBooks[0]?.currency ?? '$'}${scoring.avgPrice.toFixed(2)} (${scoring.minPrice.toFixed(2)}–${scoring.maxPrice.toFixed(2)}) · Pagine medie: ${scoring.avgPages} (${scoring.minPages}–${scoring.maxPages})
 - Entry Difficulty: ${scoring.entryDifficulty}
 - Trend: ${trendSummary}
-- Reddit: ${reddit.available ? `${reddit.totalComments} commenti` : 'non disponibile'}
+- Reddit: ${redditCoverageNote(redditQuality)}
 - Top pain point: ${topPains || 'non estratti'}
 - Sub-nicchie: ${subNicheSummary}
 - Competitor target: "${amazon.competitorTarget.title}" (BSR ${amazon.competitorTarget.bsr.toLocaleString()}, ${amazon.competitorTarget.reviewCount} rec.)
@@ -318,6 +333,7 @@ export function promptGapAnalysis(
 ): string {
   const topPains = painPointsList(painPoints)
   const books = booksTable(amazon)
+  const redditQuality = prepareRedditCorpus(reddit).quality
 
   const ytBlock = youtube?.available && youtube.totalComments > 0
     ? `\nYOUTUBE (${youtube.videos.length} video · ${youtube.totalComments} commenti): sì`
@@ -338,7 +354,7 @@ ${reviewsBlock(amazon)}
 TOP PAIN POINT (da Reddit/YouTube/discussioni online):
 ${topPains || 'Nessun pain point estratto — basati su competitor e recensioni.'}
 
-REDDIT/DISCUSSIONI ONLINE: ${reddit.available ? `sì (${reddit.threadCount} thread da ${reddit.subredditsUsed.join(', ')})` : 'non disponibile'}${ytBlock}${userNotesBlock}
+REDDIT/DISCUSSIONI ONLINE: ${redditCoverageNote(redditQuality)}${ytBlock}${userNotesBlock}
 
 ISTRUZIONI:
 - Usa le recensioni positive per capire cosa apprezzano i lettori (aspetti da eguagliare o superare)
@@ -795,6 +811,7 @@ NON tradurre forzatamente quando la traduzione italiana risulta artificiale o pe
 
 ═══ PAIN POINT DEI LETTORI ═══
 ${ppBlock}
+${painPointSampleNotes(painPoints)}
 
 ═══ RECENSIONI NEGATIVE COMPETITOR ═══
 ${reviewBlock}
@@ -887,6 +904,7 @@ KEYWORD: "${keyword}" (mercato: ${market})
 
 ═══ PAIN POINT DEI LETTORI ═══
 ${ppBlock}
+${painPointSampleNotes(painPoints)}
 
 ═══ RECENSIONI NEGATIVE COMPETITOR ═══
 ${reviewBlock}
@@ -1006,6 +1024,7 @@ ${reviewBlock}
 
 ═══ PAIN POINTS TOP (ordinati per score) ═══
 ${ppBlock}
+${painPointSampleNotes(painPoints)}
 
 ═══ GAP ANALYSIS ═══
 ${gapBlock}
@@ -1125,6 +1144,7 @@ ${booksStats}
 
 ═══ PAIN POINTS PRINCIPALI ═══
 ${painsBlock}
+${painPointSampleNotes(painPoints)}
 
 ═══ GAP ANALYSIS ═══
 ${gapBlock}
