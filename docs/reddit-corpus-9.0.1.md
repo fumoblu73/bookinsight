@@ -23,7 +23,11 @@ Si escludono commenti vuoti, `[removed]`/`[deleted]`, AutoModerator e testi
 composti solo da link, punteggiatura o emoji. Il filtro del collector sui
 messaggi fissati dei moderatori resta attivo. Le conferme brevi leggibili
 rimangono nel contesto: l'AI deve associarle al problema descritto nel thread,
-senza inventare un problema autonomo. Pertinenza semantica e qualità della
+senza inventare un problema autonomo. Sono testimonianze da conservare, ma
+**non incrementano automaticamente F né num_fonti nello stesso thread/video**.
+F continua a seguire la calibrazione per thread/video distinti e il cap
+preesistente; non sono introdotti bonus nel codice di scoring. La stessa regola
+si applica alle conferme nei commenti YouTube. Pertinenza semantica e qualità della
 testimonianza restano da valutare nell'analisi AI, non si deducono dal conteggio.
 Un post con solo titolo/selftext e senza commenti utilizzabili non supera il gate.
 
@@ -74,13 +78,56 @@ dello scraper non conta come comunità nota.
   Nel report le evidenze sociali mostrano esplicitamente la fonte Reddit/YouTube;
   l'assenza del campo nei report precedenti non causa errori.
   Evidenze Reddit con `num_fonti` non intero, inferiore a 1 o superiore ai thread
-  inclusi vengono scartate prima dello scoring: questa validazione evita che il
-  modello inventi thread per un segnale isolato, senza introdurre nuovi cap F/I.
+  inclusi vengono scartate prima dello scoring. Questo è soltanto un controllo
+  di plausibilità numerica globale: non verifica quanti di quei thread sostengano
+  il singolo pain point e non introduce nuovi cap F/I.
 - La soglia YouTube esistente rimane invariata. Prompt, gate AI e normalizzazione
   usano la stessa ammissione: YouTube disponibile, non insufficiente e con testi.
 
 Non cambiano la formula `0,67F + 0,33I`, il cap F su fonte singola, la
 classificazione S, il Profitability Score, ROI, verdetto o algoritmo U/T/M.
+
+## Limiti dell'attribuzione delle citazioni
+
+Il controllo di `fonte` verifica che il valore sia Reddit o YouTube e che la
+piattaforma sia ammessa nel prompt. Una dichiarazione riferita a una piattaforma
+esclusa viene scartata; una fonte omessa viene inferita soltanto quando è ammessa
+una sola piattaforma. Questo controllo **non certifica la provenienza delle
+citazioni**. Quando entrambe le piattaforme sono ammesse, il codice conserva la
+fonte dichiarata dal modello senza verificarne la corrispondenza ai testi.
+
+Gli ID dei commenti Reddit servono alla deduplica del corpus, ma non sono
+associati alle `evidence_quotes` restituite dall'AI. Il prompt attuale mostra
+testi, titoli e contesto, senza richiedere riferimenti agli ID originali.
+`PainPoint.id` è un ID generato per la selezione nell'interfaccia, non un ID del
+commento di origine; inoltre `voice_data` salva estratti senza gli ID originali.
+
+Il post-processing delle `evidence_quotes` controlla solo tipo stringa,
+lunghezza da 10 a 200 caratteri, spazi esterni e massimo 4 citazioni. Non confronta
+ogni citazione con i testi effettivamente trasmessi né verifica un collegamento
+a ID di commento/thread/video. Anche `evidence` e `voice_phrases` non sono
+verificati rispetto alla fonte originale. La richiesta di citazioni verbatim
+nel prompt è un'istruzione al modello, non una validazione implementata.
+
+Rimangono quindi possibili citazioni inventate, parafrasate, misattribuite o
+miste tra piattaforme anche quando il campo `fonte` è valido. I test attestano
+ammissione della piattaforma e conservazione dell'etichetta dichiarata, non la
+provenienza verificata di tutte le citazioni. Una verifica puntuale tramite ID
+originali resta da implementare; non viene introdotta in questa modifica.
+
+## Vercel: anteprime della PR e produzione
+
+Con l'integrazione Git di Vercel attiva, l'apertura di una PR o il push sul suo
+branch può generare automaticamente un **deployment di anteprima (Preview)**,
+anche senza eseguire comandi di deploy. È un ambiente distinto dal **deployment
+di produzione**, normalmente collegato al Production Branch configurato nel
+progetto Vercel o a una promozione esplicita. Il nome del Production Branch non
+si deduce dai soli branch di questo repository.
+
+Non vengono eseguiti comandi di deploy, promozioni in produzione, merge o
+modifiche alle impostazioni Vercel. Questo non implica che non possano esistere
+anteprime automatiche associate alla PR. In questa revisione non si accede né
+si modifica la configurazione esterna per impedirle o promuoverle.
 
 ## Caso segnalato: "just add water meals"
 
@@ -88,7 +135,7 @@ classificazione S, il Profitability Score, ROI, verdetto o algoritmo U/T/M.
 | --- | --- | --- |
 | Reddit: 3 thread, 64 commenti utilizzabili | `insufficientCorpus=true`, testi esclusi | `usable=true`, `coverage=limited`, 64 commenti inviati |
 | Avviso | Flag usato come blocco | Copertura limitata esplicita nei prompt e nel report |
-| YouTube: 8 video, 26 commenti | Unica fonte sociale ammessa | Entrambe le piattaforme ammesse, evidenze attribuite separatamente |
+| YouTube: 8 video, 26 commenti | Unica fonte sociale ammessa | Entrambe le piattaforme ammesse, etichette di fonte mantenute separate; citazioni non validate per ID |
 
 La fixture del caso segnalato distribuisce i commenti in **22/21/21**: **64
 raccolti nel payload, 64 utilizzabili e 64 trasmessi**, verificati contando le
@@ -98,7 +145,8 @@ distribuzione: con **40/12/12** nel payload, 64 sono utilizzabili ma solo **54**
 sono inseriti nel prompt (30 + 12 + 12). Anche questo caso è coperto da test.
 
 Il test riproduce questi volumi con testi sintetici e un estrattore iniettato.
-Verifica l'ammissione e l'attribuzione, non il contenuto del report reale né
+Verifica l'ammissione e la gestione del campo `fonte`, non la provenienza delle
+citazioni tramite ID, il contenuto del report reale né
 quanti pain point un modello live estrarrebbe. I report archiviati non vengono
 rianalizzati automaticamente.
 
@@ -129,8 +177,9 @@ modifica.
 
 ## Esito della verifica locale
 
-- Nuovi test Reddit: **34/34**, inclusi volumi del caso segnalato, confini delle
-  soglie, commenti inutilizzabili, duplicati, attribuzione e dati legacy.
+- Nuovi test Reddit: **37/37**, inclusi volumi del caso segnalato, confini delle
+  soglie, commenti inutilizzabili, duplicati, gestione del campo fonte, dati legacy
+  e istruzioni sulle conferme brevi senza incremento automatico F/num_fonti.
 - Rendering completo del report: **3/3**, inclusi report senza `corpusQuality`,
   conservazione di fonti/evidenze, assenza di fonte e avviso del commento singolo.
 - Target: **21/21**; scoring/verdetto/ROI: **24/24**.
@@ -144,7 +193,8 @@ modifica.
 - `git diff --check`: superato. Moduli di scoring, Amazon, YouTube, target,
   dipendenze e configurazione Next invariati.
 
-Limiti residui: soglie euristiche, testi troncati ai limiti descritti e verifica
-semantica affidata all'AI. Non è stata eseguita una nuova analisi live della
+Limiti residui: soglie euristiche, testi troncati ai limiti descritti, provenienza
+delle citazioni non validata tramite ID e verifica semantica affidata all'AI.
+Non è stata eseguita una nuova analisi live della
 keyword né verificata la persistenza su Redis; nessun servizio esterno,
 credenziale o variabile di produzione è stato modificato.

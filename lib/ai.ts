@@ -370,8 +370,8 @@ export async function runPainPointsReddit(
     } else {
       return [] // fonte ambigua o non valida: non inventare un'attribuzione
     }
-    // Valida l'evidenza prima dello scoring: il modello non può inventare
-    // thread aggiuntivi per far apparire ricorrente un segnale isolato.
+    // Controlla solo la plausibilità numerica rispetto ai thread trasmessi.
+    // Non verifica i thread effettivi del pain point né le citazioni tramite ID.
     if (fonte === 'reddit' && r.num_fonti !== undefined &&
       (!Number.isInteger(r.num_fonti) || r.num_fonti < 1 || r.num_fonti > corpus.reddit.posts.length)) return []
     const F_raw = Math.min(10, Math.max(1, Math.round(r.F)))

@@ -104,6 +104,55 @@ test('le conferme brevi restano contestualizzabili nel thread', () => {
   assert.match(prompt, /NON assegnargli un pain point autonomo/)
 })
 
+test('conferme nello stesso thread: conserva le testimonianze senza incremento automatico F o num_fonti', () => {
+  const confirmations = ['stesso problema', 'anche io', 'idem', 'same here', 'this!', '+1', 'agree']
+  const reddit = redditFixture([1 + confirmations.length])
+  confirmations.forEach((text, i) => { reddit.posts[0].comments[i + 1].body = text })
+  const prompt = promptPainPointsReddit(reddit.keyword, reddit)
+  const { quality } = prepareRedditCorpus(reddit)
+  assert.equal(quality.usableCommentCount, 8)
+  assert.equal(quality.transmittedCommentCount, 8)
+  assert.equal(quality.transmittedThreadCount, 1)
+  for (const text of confirmations) assert.ok(prompt.includes(`[score 1] ${text}`))
+  assert.match(prompt, /Conserva queste conferme come testimonianze contestualizzate/)
+  assert.match(prompt, /NON incrementare automaticamente F per ogni conferma/)
+  assert.match(prompt, /NON aumentare num_fonti per conferme nello stesso thread/)
+  assert.match(prompt, /Valuta F in base ai thread\/video DISTINTI/)
+  assert.doesNotMatch(prompt, /incrementa di \+1 il punteggio F/)
+})
+
+test('conferme YouTube: stesse istruzioni e commenti conservati nello stesso video', () => {
+  const youtube = youtubeFixture()
+  youtube.videos[0].comments[1].text = 'same here'
+  youtube.videos[0].comments[2].text = '+1'
+  const prompt = promptPainPointsReddit('test', redditFixture(), youtube)
+  assert.ok(prompt.includes('[1 likes] same here'))
+  assert.ok(prompt.includes('[1 likes] +1'))
+  assert.match(prompt, /corpus YouTube: conserva le conferme nello stesso video come testimonianze, senza incrementare automaticamente F o num_fonti/)
+  assert.doesNotMatch(prompt, /incrementa di \+1 il punteggio F/)
+})
+
+test('le conferme nel corpus non aggiungono bonus a F, I, S o score durante la normalizzazione', async () => {
+  const one = redditFixture([1])
+  const many = redditFixture([8])
+  many.posts[0].comments.slice(1).forEach(c => { c.body = 'same here' })
+  // Risposta AI controllata: verifica il prompt e il post-processing locale,
+  // senza pretendere di misurare il comportamento di un modello live.
+  const extract = async (prompt: string) => {
+    assert.match(prompt, /NON incrementare automaticamente F per ogni conferma/)
+    return [{ ...rawPain('reddit'), F: 2, I: 7, num_fonti: 1 }]
+  }
+  const [single] = await runPainPointsReddit('test', one, undefined, 'US', extract)
+  const [confirmed] = await runPainPointsReddit('test', many, undefined, 'US', extract)
+  for (const result of [single, confirmed]) {
+    assert.equal(result.F, 2)
+    assert.equal(result.I, 7)
+    assert.equal(result.solvibilita, 'affrontabile')
+    assert.equal(result.score, Math.round((2 * 0.67 + 7 * 0.33) * 10) / 10)
+  }
+  assert.equal(single.score, confirmed.score)
+})
+
 test('3 thread e 64 commenti: corpus Reddit ammesso integralmente con avviso', async () => {
   const reddit = redditFixture([22, 21, 21])
   const { quality } = prepareRedditCorpus(reddit)
