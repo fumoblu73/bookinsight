@@ -1,7 +1,7 @@
 import { RedditData, RedditPost, RedditComment } from './types'
+import { prepareRedditCorpus, REDDIT_CORPUS_LIMITS } from './reddit-corpus'
 
-const MIN_RESULTS_FOR_ANALYSIS = 5
-const MAX_POSTS = 15
+const MAX_POSTS = REDDIT_CORPUS_LIMITS.maxPosts
 /** Quanti commenti chiediamo ad Apify. Più alto del taglio finale perché
  *  una quota consistente arriva cancellata o è boilerplate dei moderatori
  *  (misurato: 42-47% su r/ADHD) e viene scartata prima dell'analisi. */
@@ -11,7 +11,7 @@ const APIFY_MAX_COMMENTS = 40
  *  Alzato da 20 a 30: nel run del 21 agosto su "amish survival guide" il filtro
  *  lasciava 434 commenti utili su 521 scaricati, ma lo slice a 20 ne teneva solo 281 —
  *  oltre 150 commenti già pagati venivano scartati. */
-const MAX_COMMENTS_PER_POST = 30
+const MAX_COMMENTS_PER_POST = REDDIT_CORPUS_LIMITS.maxCommentsPerPost
 
 function extractPostId(link: string): string | null {
   const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
@@ -322,6 +322,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     return {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
+      corpusQuality: prepareRedditCorpus().quality,
     }
   }
 
@@ -336,6 +337,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     return {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
+      corpusQuality: prepareRedditCorpus().quality,
     }
   }
 
@@ -352,6 +354,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     return {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
+      corpusQuality: prepareRedditCorpus().quality,
     }
   }
 
@@ -453,6 +456,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const subredditsUsed = [...new Set(posts.map(p => p.subreddit))]
   const totalComments = posts.reduce((acc, p) => acc + p.comments.length, 0)
   const postsWithComments = posts.filter(p => p.comments.length > 0).length
+  const corpusQuality = prepareRedditCorpus({ available: true, posts }).quality
 
   console.log(
     `[reddit-summary] keyword:"${keyword}" ` +
@@ -470,6 +474,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     `commentsKept:${totalComments} ` +
     `commentsSkippedRemoved:${skippedRemoved} ` +
     `commentsSkippedBoilerplate:${skippedBoilerplate} ` +
+    `corpusUsable:${corpusQuality.usable} coverage:${corpusQuality.coverage} ` +
     `flow:hybrid_v5_fatihtahta`
   )
 
@@ -480,6 +485,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     subredditsUsed,
     threadCount: posts.length,
     available: true,
-    insufficientCorpus: posts.length < MIN_RESULTS_FOR_ANALYSIS,
+    insufficientCorpus: corpusQuality.coverage !== 'diversified',
+    corpusQuality,
   }
 }

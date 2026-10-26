@@ -20,6 +20,7 @@ import {
   runBonusSuggestions, runConceptDirections, runThingsToAvoid, runPivotSignals,
 } from './ai'
 import { cacheGet } from './upstash'
+import { prepareRedditCorpus } from './reddit-corpus'
 
 // ─── Tipi intermedi ───────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ export async function runPainPointsPhase(
   })
 
   // ── Log: Reddit ───────────────────────────────────────────────────────────
+  const redditQuality = prepareRedditCorpus(reddit).quality
   const postsBySubreddit = reddit.posts.reduce<Record<string, number>>((acc, p) => {
     acc[p.subreddit] = (acc[p.subreddit] ?? 0) + 1; return acc
   }, {})
@@ -130,13 +132,14 @@ export async function runPainPointsPhase(
   const postsWithComments = reddit.posts.filter(p => p.comments.length > 0).length
   logEntries.push({
     step: 'reddit', label: 'Reddit',
-    status: !reddit.available ? 'error' : reddit.insufficientCorpus ? 'warn' : 'ok',
+    status: !reddit.available ? 'error' : redditQuality.coverage !== 'diversified' ? 'warn' : 'ok',
     summary: reddit.available
-      ? `${reddit.threadCount} thread · ${reddit.totalComments} commenti · ${reddit.subredditsUsed.length} subreddit`
+      ? `${reddit.threadCount} thread · ${reddit.totalComments} commenti · ${reddit.subredditsUsed.length} subreddit · ${redditQuality.usable ? `corpus utilizzabile, copertura ${redditQuality.coverage === 'limited' ? 'limitata' : 'diversificata'}` : 'nessun commento utilizzabile'}`
       : 'Nessun dato disponibile',
     details: {
       available: reddit.available,
-      insufficientCorpus: reddit.insufficientCorpus,
+      insufficientCorpus: redditQuality.coverage !== 'diversified',
+      corpusQuality: redditQuality,
       threadCount: reddit.threadCount,
       totalComments: reddit.totalComments,
       selftextNonEmpty,
@@ -337,7 +340,7 @@ export async function runPainPointsPhase(
     market,
     amazon,
     trends,
-    reddit,
+    reddit: { ...reddit, insufficientCorpus: redditQuality.coverage !== 'diversified', corpusQuality: redditQuality },
     youtube,
     painPoints: mergedPainPoints,
     subNiches: unifiedSubNiches,
@@ -367,6 +370,8 @@ export async function runFinalizePhase(
   } = options
 
   const { amazon, trends, reddit, youtube, scoring, passo0, subNiches, complianceCategory, complianceRisk, competitiveDynamism } = intermediate
+  // Gli snapshot intermedi precedenti alla 9.0.1 possono non avere corpusQuality.
+  const redditQuality = prepareRedditCorpus(reddit).quality
 
   // Filtra pain points: se selectedPainPointIds è vuoto usa tutti
   const activePainPoints = selectedPainPointIds.length > 0
@@ -581,7 +586,8 @@ export async function runFinalizePhase(
     topBooks: amazon.topBooks,
     redditMeta: {
       available: reddit.available,
-      insufficientCorpus: reddit.insufficientCorpus,
+      insufficientCorpus: redditQuality.coverage !== 'diversified',
+      corpusQuality: redditQuality,
       threadCount: reddit.threadCount,
       subredditsUsed: reddit.subredditsUsed,
     },
@@ -620,6 +626,7 @@ export async function runFinalizePhase(
           comments: p.comments.map(c => ({ body: c.body, score: c.score })),
         })),
         available: reddit.available,
+        corpusQuality: redditQuality,
         totalComments: reddit.totalComments,
         subredditsUsed: reddit.subredditsUsed,
       },

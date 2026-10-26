@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection, ThingToAvoid, PivotSignal } from '@/lib/types'
+import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, BonusSuggestion, ConceptDirection, ThingToAvoid, PivotSignal, RedditMeta, RedditCorpusQuality, PainPoint } from '@/lib/types'
 import { calcRoiEstimate, calcMedianReviews } from '@/lib/scoring'
 import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
+import { redditCoverageNote } from '@/lib/reddit-corpus'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ export interface FullReport {
   }
   trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null; staleData?: boolean; availability?: 'full' | 'partial' | 'none' }
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
-  painPoints: { pain_point: string; score: number; F: number; I: number; solvibilita?: 'affrontabile' | 'vincolo_formato' | 'mai_fatto' | 'fuori_portata'; requisito_forma?: string; evidence: string; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
+  painPoints: { pain_point: string; score: number; F: number; I: number; solvibilita?: 'affrontabile' | 'vincolo_formato' | 'mai_fatto' | 'fuori_portata'; requisito_forma?: string; evidence: string; fonte?: PainPoint['fonte']; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
   gapAnalysis: {
     passo1_problemi_non_risolti: { items: string[] }
     passo2_angoli_mancanti: { items: string[] }
@@ -56,7 +57,7 @@ export interface FullReport {
   budget: number
   subNiches: { keyword: string; bsr: number; reviewCount: number; vulnerable: boolean }[]
   topBooks: { asin: string; title: string; bsr: number; price: number; currency: string; reviewCount: number; rating: number; selfPublished: boolean; imageUrl?: string }[]
-  redditMeta?: { available: boolean; insufficientCorpus: boolean; threadCount: number; subredditsUsed: string[] }
+  redditMeta?: RedditMeta
   youtubeMeta?: { available: boolean; insufficientCorpus: boolean; videoCount: number; totalComments: number }
   complianceCategory: string
   complianceRisk: 'alto' | 'medio' | 'basso'
@@ -78,6 +79,7 @@ export interface FullReport {
       available: boolean
       totalComments: number
       subredditsUsed: string[]
+      corpusQuality?: RedditCorpusQuality
     }
     youtube: {
       videos: Array<{ title: string; viewCount: number; comments: Array<{ text: string; likeCount: number }> }>
@@ -735,6 +737,9 @@ function PainPointsList({ painPoints }: { painPoints: FullReport['painPoints'] }
             )}
 
             <p className="text-xs text-zinc-400 mt-1.5 italic">{pp.evidence}</p>
+            {(pp.fonte === 'reddit' || pp.fonte === 'youtube') && (
+              <p className="text-xs text-zinc-500 mt-1">Fonte: {pp.fonte === 'reddit' ? 'Reddit' : 'YouTube'}</p>
+            )}
           </li>
         ))}
       </ul>
@@ -1333,15 +1338,26 @@ export default function ReportView({ report }: { report: FullReport }) {
         <div className="space-y-4">
 
           <SubCard title="Pain Points" accent="rose">
-            {(report.redditMeta?.available === false || report.youtubeMeta?.available === false) && (
+            {report.redditMeta?.available && (report.redditMeta.corpusQuality?.coverage === 'limited' ||
+              (!report.redditMeta.corpusQuality && report.redditMeta.insufficientCorpus)) && (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-800">Copertura Reddit limitata</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  {report.redditMeta.corpusQuality
+                    ? redditCoverageNote(report.redditMeta.corpusQuality)
+                    : 'Il report salvato segnala un campione Reddit limitato. Le frequenze osservate non rappresentano l’intero mercato.'}
+                </p>
+              </div>
+            )}
+            {(report.redditMeta?.available === false || report.redditMeta?.corpusQuality?.usable === false || report.youtubeMeta?.available === false) && (
               <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
                 <p className="text-xs font-semibold text-amber-800">
                   Analisi parziale — questi pain point non coprono tutte le fonti previste.
                 </p>
                 <p className="text-xs text-amber-700 mt-1">
-                  Fonti non disponibili in questa esecuzione:{' '}
+                  Fonti escluse dall&apos;analisi delle testimonianze in questa esecuzione:{' '}
                   {[
-                    report.redditMeta?.available === false ? 'Reddit' : null,
+                    report.redditMeta?.available === false || report.redditMeta?.corpusQuality?.usable === false ? 'Reddit' : null,
                     report.youtubeMeta?.available === false ? 'YouTube' : null,
                   ].filter(Boolean).join(' · ')}
                   . Le fonti esterne possono essere temporaneamente bloccate: rilanciare l&apos;analisi in un altro momento della giornata può dare un corpus più ricco.
@@ -1355,8 +1371,10 @@ export default function ReportView({ report }: { report: FullReport }) {
                 <p className="text-xs font-semibold text-amber-700">
                   {!report.redditMeta?.available
                     ? 'Nessun post Reddit trovato per questa keyword nel periodo analizzato.'
-                    : report.redditMeta?.insufficientCorpus
-                    ? `Dati Reddit insufficienti — trovati ${report.redditMeta.threadCount} thread ma troppo pochi commenti qualificati.`
+                    : report.redditMeta.corpusQuality?.usable === false
+                    ? 'Nessun commento Reddit utilizzabile nel corpus raccolto.'
+                    : !report.redditMeta.corpusQuality && report.redditMeta.insufficientCorpus
+                    ? `Campione Reddit limitato — ${report.redditMeta.threadCount} thread nel report salvato.`
                     : 'Pain points non estratti dal corpus Reddit.'}
                 </p>
                 <p className="text-xs text-amber-600">

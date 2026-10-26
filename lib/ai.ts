@@ -293,6 +293,7 @@ import {
   TrendSignal,
   filterPainPoints,
 } from './scoring'
+import { preparePainPointCorpus } from './reddit-corpus'
 
 // §3 — Competitor target: angolo, target reader, USP
 export interface Passo0Result {
@@ -342,17 +343,37 @@ export async function runPainPointsReddit(
   reddit: RedditData,
   youtube?: YouTubeData,
   market?: Market,
+  // Dipendenza iniettabile per verificare l'intera estrazione senza API esterne.
+  extract: (prompt: string) => Promise<RawPainPoint[]> = callSonnet,
 ): Promise<PainPoint[]> {
-  if ((!reddit.available || reddit.insufficientCorpus) && (!youtube?.available || youtube.insufficientCorpus)) return []
+  const corpus = preparePainPointCorpus(reddit, youtube)
+  const redditAvailable = corpus.reddit.quality.usable
+  const youtubeAvailable = !!corpus.youtube
+  if (!redditAvailable && !youtubeAvailable) return []
 
-  const raw = await callSonnet<RawPainPoint[]>(
+  const raw = await extract(
     promptPainPointsReddit(keyword, reddit, youtube, market),
   )
 
   const validRegisters = ['frustrazione', 'rabbia', 'ansia', 'rassegnazione', 'desiderio', 'confusione', 'orgoglio', 'neutro']
 
   // Normalizza i campi opzionali e calcola score
-  const normalized = raw.map(r => {
+  const normalized = raw.flatMap(r => {
+    let fonte: 'reddit' | 'youtube'
+    if (r.fonte === 'reddit' || r.fonte === 'youtube') {
+      // Una fonte esclusa non può essere rietichettata come l'altra piattaforma.
+      if ((r.fonte === 'reddit' && !redditAvailable) || (r.fonte === 'youtube' && !youtubeAvailable)) return []
+      fonte = r.fonte
+    } else if (r.fonte == null && redditAvailable !== youtubeAvailable) {
+      // Compatibilità con output precedenti privi di fonte: solo se univoca.
+      fonte = redditAvailable ? 'reddit' : 'youtube'
+    } else {
+      return [] // fonte ambigua o non valida: non inventare un'attribuzione
+    }
+    // Controlla solo la plausibilità numerica rispetto ai thread trasmessi.
+    // Non verifica i thread effettivi del pain point né le citazioni tramite ID.
+    if (fonte === 'reddit' && r.num_fonti !== undefined &&
+      (!Number.isInteger(r.num_fonti) || r.num_fonti < 1 || r.num_fonti > corpus.reddit.posts.length)) return []
     const F_raw = Math.min(10, Math.max(1, Math.round(r.F)))
     // Hard cap: se fonte singola, F non può superare 4
     const F = (r.num_fonti ?? 1) <= 1 ? Math.min(F_raw, 4) : F_raw
@@ -372,25 +393,10 @@ export async function runPainPointsReddit(
       ? r.emotional_register as PainPoint['emotional_register']
       : undefined
 
-    const redditAvailable = reddit.available && !reddit.insufficientCorpus
-    const youtubeAvailable = youtube?.available && !youtube.insufficientCorpus
-    let fonte: 'reddit' | 'youtube'
-    if (r.fonte === 'youtube' || r.fonte === 'reddit') {
-      if (r.fonte === 'reddit' && !redditAvailable && youtubeAvailable) {
-        fonte = 'youtube'
-      } else if (r.fonte === 'youtube' && !youtubeAvailable && redditAvailable) {
-        fonte = 'reddit'
-      } else {
-        fonte = r.fonte
-      }
-    } else {
-      fonte = !redditAvailable && youtubeAvailable ? 'youtube' : 'reddit'
-    }
-
     const solvibilita = normalizeSolvibilita(r.solvibilita)
     const requisito_forma = normalizeRequisitoForma(r.requisito_forma, solvibilita)
 
-    return {
+    return [{
       id: `pp_${Math.random().toString(36).slice(2, 10)}`,
       pain_point: r.pain_point,
       F,
@@ -399,13 +405,14 @@ export async function runPainPointsReddit(
       requisito_forma,
       evidence: r.evidence,
       fonte,
+      redditCorpusQuality: fonte === 'reddit' ? corpus.reddit.quality : undefined,
       tipo: r.tipo,
       linguaggio: r.linguaggio ?? undefined,
       evidence_quotes: cleanEvidenceQuotes.length > 0 ? cleanEvidenceQuotes : undefined,
       voice_phrases: cleanVoicePhrases.length > 0 ? cleanVoicePhrases : undefined,
       emotional_register,
       context: r.context?.trim() || undefined,
-    }
+    }]
   })
 
   return filterPainPoints(normalized)

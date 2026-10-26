@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
         available: effectiveReddit.available,
         postCount: effectiveReddit.threadCount,
         commentCount: effectiveReddit.totalComments,
+        corpusQuality: intermediate.reddit.corpusQuality,
       },
     })
   } catch (err) {
