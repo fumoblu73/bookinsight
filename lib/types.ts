@@ -134,6 +134,7 @@ export interface RedditComment {
   author: string
   createdUtc: number
   month: string   // YYYY-MM per metadata stagionalità
+  provenance?: SocialCommentProvenance
 }
 
 export interface RedditPost {
@@ -181,6 +182,87 @@ export interface YouTubeComment {
   text: string
   likeCount: number
   publishedAt: string  // ISO date
+  provenance?: SocialCommentProvenance
+}
+
+// Metadati aggiuntivi: non partecipano a filtri, ranking o scoring.
+export interface SocialCommentProvenance {
+  originalId?: string
+  idStatus: 'original' | 'synthetic' | 'missing'
+  containerId?: string
+  parentId?: string
+  authorId?: string
+  authorName?: string
+  commentUrl?: string
+}
+
+export type SocialPlatform = 'reddit' | 'youtube'
+
+export interface SocialContext {
+  contextId: string
+  platform: SocialPlatform
+  containerId?: string
+  title: string
+  transmittedText: string
+  sourceUrl?: string
+  sourceUrlOrigin?: 'received' | 'reconstructed'
+}
+
+export interface SocialRecord {
+  recordId: string
+  platform: SocialPlatform
+  contextId: string
+  containerId?: string
+  sourceCommentId?: string
+  identityStatus: 'original' | 'synthetic' | 'missing' | 'conflict'
+  authorKey?: string
+  authorIdentityType: 'account_id' | 'username' | 'unknown'
+  authorStatus: 'identified' | 'deleted' | 'unknown'
+  parentId?: string
+  parentRecordId?: string
+  commentUrl?: string
+  commentUrlOrigin?: 'received' | 'reconstructed'
+  publishedAt?: string
+  text: string
+  transmittedText: string
+  truncated: boolean
+  duplicateOf?: string
+  possibleCopy: boolean
+}
+
+export interface SocialCorpusManifest {
+  version: '9.0.2'
+  contexts: SocialContext[]
+  records: SocialRecord[]
+}
+
+export interface SocialAssociation {
+  painPointId: string
+  recordId: string
+  supportType: 'direct' | 'confirmation'
+  quote: string
+  contextRecordIds: string[]
+}
+
+export interface SocialMetrics {
+  U: number | null
+  T: number | null
+  M: number | null
+  status: 'complete' | 'partial' | 'failed' | 'not_run'
+  completeness: { U: boolean; T: boolean; M: boolean }
+  unknownAuthorMentions: number
+  uncertainIdentityMentions: number
+  ambiguousConfirmations: number
+  rejectedAssociations: number
+  reviewedComments: number
+  totalComments: number
+}
+
+export interface SocialEvidenceReport {
+  version: '9.0.2'
+  manifest: SocialCorpusManifest
+  associations: SocialAssociation[]
+  metrics: Record<string, SocialMetrics>
 }
 
 export interface YouTubeVideo {

@@ -396,6 +396,16 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     const bucket = commentsByPostId.get(postId)!
     bucket.push({
       id: String(c.id ?? `c_${postId}_${bucket.length}`),
+      provenance: {
+        originalId: typeof c.id === 'string' ? c.id : undefined,
+        idStatus: typeof c.id === 'string' && c.id ? 'original' : 'synthetic',
+        containerId: postId,
+        // Questi campi sono opzionali: nessuna parentela viene dedotta dal ranking.
+        parentId: typeof c.parent_id === 'string' ? c.parent_id
+          : typeof c.parentId === 'string' ? c.parentId : undefined,
+        commentUrl: typeof c.url === 'string' ? c.url
+          : typeof c.permalink === 'string' ? c.permalink : undefined,
+      },
       body: (c.body as string) ?? '',
       score: (c.score as number) ?? 0,
       author: (c.author as string) ?? '',

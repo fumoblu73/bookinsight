@@ -77,7 +77,7 @@ async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
       snippet: {
         topLevelComment: {
           id: string
-          snippet: { textOriginal: string; likeCount: number; publishedAt: string }
+          snippet: { textOriginal: string; likeCount: number; publishedAt: string; authorChannelId?: { value?: string }; authorDisplayName?: string }
         }
       }
     }[]
@@ -88,6 +88,13 @@ async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
       text: i.snippet.topLevelComment.snippet.textOriginal,
       likeCount: i.snippet.topLevelComment.snippet.likeCount,
       publishedAt: i.snippet.topLevelComment.snippet.publishedAt,
+      provenance: {
+        originalId: i.snippet.topLevelComment.id,
+        idStatus: 'original' as const,
+        containerId: videoId,
+        authorId: i.snippet.topLevelComment.snippet.authorChannelId?.value,
+        authorName: i.snippet.topLevelComment.snippet.authorDisplayName,
+      },
     }))
     .filter(c => isRecentEnough(c.publishedAt) && isValidComment(c.text, c.likeCount))
     .sort((a, b) => b.likeCount - a.likeCount)

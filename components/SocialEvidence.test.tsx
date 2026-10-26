@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { renderToStaticMarkup } from 'react-dom/server'
+import SocialEvidence from './SocialEvidence'
+import type { SocialEvidenceReport } from '../lib/types'
+
+function evidence(): SocialEvidenceReport {
+  return {
+    version: '9.0.2',
+    metrics: { pp1: {
+      U: 1, T: 1, M: 2, status: 'complete', completeness: { U: false, T: true, M: true },
+      unknownAuthorMentions: 1, uncertainIdentityMentions: 0, ambiguousConfirmations: 0, rejectedAssociations: 0,
+      reviewedComments: 2, totalComments: 2,
+    } },
+    manifest: { version: '9.0.2', contexts: [{ contextId: 'ctx', platform: 'reddit', containerId: 'p1', title: 'Meals', transmittedText: 'Meals' }], records: [{
+      recordId: 'r1', platform: 'reddit', contextId: 'ctx', containerId: 'p1', sourceCommentId: 'c1', identityStatus: 'original',
+      authorIdentityType: 'unknown', authorStatus: 'deleted', text: 'A real problem with meals.', transmittedText: 'A real problem with meals.', truncated: true,
+      possibleCopy: false, commentUrl: 'https://www.reddit.com/r/camping/comments/p1/meals/c1/', commentUrlOrigin: 'received',
+    }] },
+    associations: [{ painPointId: 'pp1', recordId: 'r1', supportType: 'direct', quote: 'A real problem with meals.', contextRecordIds: [] }],
+  }
+}
+
+test('rendering: conteggi, autori sconosciuti, link sorgente e troncamento', () => {
+  const report = evidence()
+  const before = JSON.stringify(report)
+  const html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /U: 1 · T: 1 · M: 2/)
+  assert.match(html, /menzioni con autore sconosciuto/)
+  assert.match(html, /Testimonianze e provenienza/)
+  assert.match(html, /https:\/\/www.reddit.com\/r\/camping\/comments\/p1\/meals\/c1\//)
+  assert.match(html, /Autore: cancellato/)
+  assert.match(html, /troncato a 300/)
+  assert.equal(JSON.stringify(report), before)
+})
+
+test('legacy e fallimenti mostrano N/D; zero valido e attribuzione parziale restano distinti', () => {
+  assert.match(renderToStaticMarkup(<SocialEvidence />), /U\/T\/M non disponibili/)
+  const report = evidence()
+  Object.assign(report.metrics.pp1, { U: null, T: null, M: null, status: 'failed' })
+  let html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /attribuzione non riuscita/)
+  assert.ok(!html.includes('M: 0'))
+  Object.assign(report.metrics.pp1, { U: 0, T: 0, M: 0, status: 'partial', reviewedComments: 1 })
+  html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /U: 0 · T: 0 · M: 0/)
+  assert.match(html, /Attribuzione parziale: 1\/2/)
+  assert.match(html, /Nessun supporto validato/)
+})
+
+test('nessun link attivo per URL arbitrari in report importati', () => {
+  const report = evidence()
+  report.manifest.records[0].commentUrl = 'javascript:alert(1)'
+  const html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.ok(!html.includes('href='))
+})

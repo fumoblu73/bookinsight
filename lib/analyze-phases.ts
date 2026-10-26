@@ -1,6 +1,7 @@
 import {
   AmazonData, TrendsData, RedditData, YouTubeData,
   PainPoint, SubNiche, LogEntry, Market, BonusSuggestion, ConceptDirection, ThingToAvoid, PivotSignal,
+  SocialCorpusManifest,
 } from './types'
 import {
   ComplianceCategory, ComplianceRisk,
@@ -18,9 +19,12 @@ import {
   runKeyInsights, runTrendForecast, runGapAnalysis,
   runSeriesStrategy, runRoiNarrative, runPainPointsAmazonReviews,
   runBonusSuggestions, runConceptDirections, runThingsToAvoid, runPivotSignals,
+  callSocialAttribution,
 } from './ai'
 import { cacheGet } from './upstash'
 import { prepareRedditCorpus } from './reddit-corpus'
+import { buildSocialManifest } from './social-corpus'
+import { aggregateSocialEvidence, runSocialAttribution } from './social-attribution'
 
 // ─── Tipi intermedi ───────────────────────────────────────────────────────────
 
@@ -40,6 +44,7 @@ export interface PainPointsIntermediate {
   passo0: Passo0Result
   logEntries: LogEntry[]
   timestamp: string
+  socialManifest?: SocialCorpusManifest // assente negli snapshot legacy: nessun ricalcolo implicito
 }
 
 export interface FinalizeOptions {
@@ -77,6 +82,7 @@ export async function runPainPointsPhase(
   const competitiveDynamism = calcCompetitiveDynamism(amazon.rawTop15, amazon.scrapedAt)
 
   const logEntries: LogEntry[] = []
+  const socialManifest = buildSocialManifest(reddit, youtube)
 
   // ── Log: Amazon SERP ─────────────────────────────────────────────────────
   logEntries.push({
@@ -343,6 +349,7 @@ export async function runPainPointsPhase(
     reddit: { ...reddit, insufficientCorpus: redditQuality.coverage !== 'diversified', corpusQuality: redditQuality },
     youtube,
     painPoints: mergedPainPoints,
+    socialManifest,
     subNiches: unifiedSubNiches,
     complianceRisk,
     complianceCategory,
@@ -377,6 +384,14 @@ export async function runFinalizePhase(
   const activePainPoints = selectedPainPointIds.length > 0
     ? intermediate.painPoints.filter(p => p.id && selectedPainPointIds.includes(p.id))
     : intermediate.painPoints
+
+  // In parallelo alla finalizzazione: non entra nei prompt o nei calcoli esistenti.
+  const attributionStarted = Date.now()
+  const attributionController = new AbortController()
+  const socialEvidenceTask = intermediate.socialManifest
+    ? runSocialAttribution(intermediate.socialManifest, activePainPoints, callSocialAttribution, { signal: attributionController.signal })
+      .catch(() => aggregateSocialEvidence(intermediate.socialManifest!, activePainPoints, []))
+    : Promise.resolve(undefined)
 
   // Prefetch Target Finder (opzionale, per ROI accurato)
   const prefetch = await cacheGet<{ monthsToParity: number; arcReviews: number }>(
@@ -441,6 +456,7 @@ export async function runFinalizePhase(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     finalizeLogs.push({ step: 'insights', label: 'Insight & Gap Analysis (AI)', status: 'error', summary: msg, durationMs: Date.now() - t2, details: {}, error: msg })
+    attributionController.abort()
     throw err
   }
 
@@ -570,7 +586,20 @@ export async function runFinalizePhase(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     finalizeLogs.push({ step: 'strategy', label: 'Strategia e ROI (AI)', status: 'error', summary: msg, durationMs: Date.now() - t3, details: {}, error: msg })
+    attributionController.abort()
     throw err
+  }
+
+  const socialEvidence = await socialEvidenceTask
+  if (socialEvidence) {
+    const statuses = Object.values(socialEvidence.metrics)
+    finalizeLogs.push({
+      step: 'social-evidence', label: 'Testimonianze U/T/M',
+      status: statuses.every(m => m.status === 'complete') ? 'ok' : 'warn',
+      summary: `${statuses.filter(m => m.status === 'complete').length}/${statuses.length} attribuzioni completate`,
+      durationMs: Date.now() - attributionStarted,
+      details: { version: socialEvidence.version, metrics: socialEvidence.metrics },
+    })
   }
 
   const report = {
@@ -601,6 +630,7 @@ export async function runFinalizePhase(
     trends,
     trendForecast,
     painPoints: activePainPoints,
+    ...(socialEvidence ? { socialEvidence } : {}),
     gapAnalysis,
     seriesStrategy,
     roi,
@@ -619,11 +649,12 @@ export async function runFinalizePhase(
     voice_data: {
       reddit: {
         posts: reddit.posts.map(p => ({
+          ...p,
           title: p.title,
           selftext: p.selftext ?? '',
           subreddit: p.subreddit,
           score: p.score,
-          comments: p.comments.map(c => ({ body: c.body, score: c.score })),
+          comments: p.comments.map(c => ({ ...c })),
         })),
         available: reddit.available,
         corpusQuality: redditQuality,
@@ -632,9 +663,10 @@ export async function runFinalizePhase(
       },
       youtube: youtube?.available ? {
         videos: (youtube.videos ?? []).map(v => ({
+          ...v,
           title: v.title,
           viewCount: v.viewCount,
-          comments: v.comments.map(c => ({ text: c.text, likeCount: c.likeCount })),
+          comments: v.comments.map(c => ({ ...c })),
         })),
         available: youtube.available,
         totalComments: youtube.totalComments,

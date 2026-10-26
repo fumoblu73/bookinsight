@@ -249,6 +249,22 @@ export async function callHaiku<T>(userPrompt: string, options?: { temperature?:
 
 // ─── Funzioni specifiche per ogni sezione ─────────────────────────────────────
 
+/** Attribuzione 9.0.2 separata dall'estrazione esistente. Nessun retry nascosto
+ * oltre il budget complessivo del passaggio opzionale. */
+export async function callSocialAttribution(prompt: string, signal: AbortSignal): Promise<unknown> {
+  const response = await getClient().messages.create({
+    model: MODEL_HAIKU,
+    max_tokens: 8192,
+    temperature: 0,
+    system: SYSTEM_HAIKU,
+    messages: [{ role: 'user', content: stripLoneSurrogates(prompt) }],
+  }, { signal, timeout: 12_000, maxRetries: 0 })
+  if (response.stop_reason !== 'end_turn') throw new Error('Attribuzione incompleta')
+  const block = response.content.find(b => b.type === 'text')
+  if (!block || block.type !== 'text') throw new Error('Attribuzione senza testo')
+  return parseJSON<unknown>(block.text, 'social-attribution')
+}
+
 import {
   promptPasso0,
   promptPainPointsReddit,

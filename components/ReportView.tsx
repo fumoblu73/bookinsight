@@ -5,6 +5,8 @@ import type { Market, FilteredBook, RawBook, RoiEstimate, AdsIntelligence, Bonus
 import { calcRoiEstimate, calcMedianReviews } from '@/lib/scoring'
 import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 import { redditCoverageNote } from '@/lib/reddit-corpus'
+import type { SocialEvidenceReport } from '../lib/types'
+import SocialEvidence from './SocialEvidence'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,8 @@ export interface FullReport {
   }
   trends: { available: boolean; yoyGrowth: number; timelineData: { date: string; value: number }[]; relatedQueries: { query: string; value: number; growthYoY: number }[]; peakMonth?: string | null; staleData?: boolean; availability?: 'full' | 'partial' | 'none' }
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
-  painPoints: { pain_point: string; score: number; F: number; I: number; solvibilita?: 'affrontabile' | 'vincolo_formato' | 'mai_fatto' | 'fuori_portata'; requisito_forma?: string; evidence: string; fonte?: PainPoint['fonte']; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
+  painPoints: { id?: string; pain_point: string; score: number; F: number; I: number; solvibilita?: 'affrontabile' | 'vincolo_formato' | 'mai_fatto' | 'fuori_portata'; requisito_forma?: string; evidence: string; fonte?: PainPoint['fonte']; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
+  socialEvidence?: SocialEvidenceReport
   gapAnalysis: {
     passo1_problemi_non_risolti: { items: string[] }
     passo2_angoli_mancanti: { items: string[] }
@@ -699,7 +702,7 @@ function ExcludedBooks({ rawTop15, topBooks }: { rawTop15: RawBook[]; topBooks: 
   )
 }
 
-function PainPointsList({ painPoints }: { painPoints: FullReport['painPoints'] }) {
+function PainPointsList({ painPoints, socialEvidence }: { painPoints: FullReport['painPoints']; socialEvidence?: SocialEvidenceReport }) {
   const [showAll, setShowAll] = useState(false)
   const hiddenCount = Math.max(0, painPoints.length - 5)
 
@@ -738,7 +741,10 @@ function PainPointsList({ painPoints }: { painPoints: FullReport['painPoints'] }
 
             <p className="text-xs text-zinc-400 mt-1.5 italic">{pp.evidence}</p>
             {(pp.fonte === 'reddit' || pp.fonte === 'youtube') && (
-              <p className="text-xs text-zinc-500 mt-1">Fonte: {pp.fonte === 'reddit' ? 'Reddit' : 'YouTube'}</p>
+              <>
+                <p className="text-xs text-zinc-500 mt-1">Fonte: {pp.fonte === 'reddit' ? 'Reddit' : 'YouTube'}</p>
+                <SocialEvidence painPointId={pp.id} evidence={socialEvidence} />
+              </>
             )}
           </li>
         ))}
@@ -1365,7 +1371,7 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
             )}
             {report.painPoints.length > 0 ? (
-              <PainPointsList painPoints={report.painPoints} />
+              <PainPointsList painPoints={report.painPoints} socialEvidence={report.socialEvidence} />
             ) : (
               <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-1">
                 <p className="text-xs font-semibold text-amber-700">
