@@ -1,0 +1,10 @@
+{
+  "painPoint": "Pasti liofilizzati commerciali troppo costosi per escursioni lunghe",
+  "cases": [
+    { "commentId": "Ugz_oAM6JCAcVUsrDmJ4AaABAg", "expectedMatch": false, "reason": "Un suggerimento economico e un costo unitario non dichiarano un costo eccessivo." },
+    { "commentId": "UgyK0piY234N2Ram-AJ4AaABAg", "expectedMatch": false, "reason": "La correzione di porzioni e prezzo unitario non e una testimonianza di costo eccessivo." },
+    { "commentId": "UgyXzwjsqqeIRM1HSo14AaABAg", "expectedMatch": true, "reason": "Il commento dichiara esplicitamente far too expensive per le escursioni lunghe." },
+    { "commentId": "Ugz4TEtkgjeEPvSc8tp4AaABAg", "expectedMatch": true, "reason": "Il commento dichiara esplicitamente so expensive e il confronto con il costo dei pasti in escursione." },
+    { "commentId": "Ugy5DfW1gm3tlTRTdYd4AaABAg", "expectedMatch": true, "reason": "Il commento dichiara esplicitamente crazy expensive." }
+  ]
+}

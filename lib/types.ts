@@ -258,11 +258,27 @@ export interface SocialMetrics {
   totalComments: number
 }
 
+export interface SocialVerificationDecision {
+  recordId: string
+  painPointId: string
+  verdict: 'supported' | 'unsupported' | 'unclear'
+  reason: 'explicit_problem' | 'explicit_need' | 'resolved_problem' | 'linked_confirmation' | 'topic_only' | 'contradiction' | 'insufficient_evidence'
+  problemQuote?: string
+}
+
 export interface SocialEvidenceReport {
   version: '9.0.2'
   manifest: SocialCorpusManifest
   associations: SocialAssociation[]
   metrics: Record<string, SocialMetrics>
+  reviewedRecordIds?: Record<string, string[]>
+  verification?: { version: 'problem-support-v1'; decisions: SocialVerificationDecision[] }
+  processing?: {
+    budgetExhausted: boolean
+    attemptedRecordIds: string[]
+    unstartedRecordIds: string[]
+    failures: { contextId: string; stage: 'extraction' | 'verification'; reason: string; status?: number }[]
+  }
 }
 
 export interface YouTubeVideo {

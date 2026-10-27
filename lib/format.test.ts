@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { formatItalianDate, formatItalianNumber } from './format'
+import { formatItalianDate, formatItalianNumber, formatReportFileDate } from './format'
 
 test('raggruppamento esplicito anche per i numeri a quattro cifre del collaudo', () => {
   for (const [number, expected] of [[999, '999'], [1040, '1.040'], [2100, '2.100'], [7586, '7.586'], [10000, '10.000']] as const) {
@@ -21,7 +21,9 @@ test('date coerenti al cambio di giorno e di ora legale, indipendenti dal fuso d
     for (const timezone of ['UTC', 'America/Los_Angeles', 'Asia/Tokyo']) {
       process.env.TZ = timezone
       assert.equal(formatItalianDate('2026-10-26T23:30:00Z', options), '27 ottobre 2026')
+      assert.equal(formatReportFileDate('2026-10-26T23:30:00Z'), '261027')
       assert.equal(formatItalianDate('2026-07-01T22:30:00Z', options), '02 luglio 2026')
+      assert.equal(formatReportFileDate('2026-07-01T22:30:00Z'), '260702')
     }
   } finally {
     if (previous === undefined) delete process.env.TZ

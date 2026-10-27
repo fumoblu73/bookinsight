@@ -57,6 +57,12 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   t.mock.method(ai, 'runThingsToAvoid', async () => [])
   t.mock.method(ai, 'runPivotSignals', async () => [])
   let fail = false
+  t.mock.method(ai, 'callSocialVerification', async (prompt: string) => {
+    const data = JSON.parse(prompt.split('DATI:\n')[1])
+    return { checks: data.checks.map((c: { recordId: string; painPointId: string; text: string }) => ({
+      recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', reason: 'explicit_problem', problemQuote: c.text,
+    })) }
+  })
   const attribution = t.mock.method(ai, 'callSocialAttribution', async (prompt: string) => {
     if (fail) throw new Error('Simulated API failure')
     const data = JSON.parse(prompt.split('DATI:\n')[1])

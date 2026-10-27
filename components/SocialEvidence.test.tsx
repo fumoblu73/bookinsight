@@ -31,6 +31,7 @@ test('rendering: conteggi, autori sconosciuti, link sorgente e troncamento', () 
   assert.match(html, /https:\/\/www.reddit.com\/r\/camping\/comments\/p1\/meals\/c1\//)
   assert.match(html, /Autore: cancellato/)
   assert.match(html, /troncato a 300/)
+  assert.match(html, /precedono la nuova verifica di pertinenza/)
   assert.equal(JSON.stringify(report), before)
 })
 
@@ -53,4 +54,13 @@ test('nessun link attivo per URL arbitrari in report importati', () => {
   report.manifest.records[0].commentUrl = 'javascript:alert(1)'
   const html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
   assert.ok(!html.includes('href='))
+})
+
+test('budget esaurito e distinto da un guasto quando nessun risultato e disponibile', () => {
+  const report = evidence()
+  Object.assign(report.metrics.pp1, { U: null, T: null, M: null, status: 'not_run' })
+  report.processing = { budgetExhausted: true, attemptedRecordIds: [], unstartedRecordIds: ['r1'], failures: [] }
+  const html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /tempo di analisi esaurito/)
+  assert.ok(!html.includes('attribuzione non riuscita'))
 })

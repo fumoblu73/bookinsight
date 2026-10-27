@@ -1,7 +1,8 @@
 import type {
   PainPoint, SocialAssociation, SocialCorpusManifest, SocialEvidenceReport,
-  SocialMetrics, SocialRecord,
+  SocialMetrics, SocialRecord, SocialVerificationDecision,
 } from './types'
+import { parseSocialVerification, promptSocialVerification, verificationCandidates, verificationKey } from './social-verification'
 
 export interface AttributionBatch {
   records: SocialRecord[]
@@ -15,17 +16,26 @@ export interface AttributionBatch {
 const ATTRIBUTION_BATCH_SIZE = 15
 
 export function attributionBatches(manifest: SocialCorpusManifest, painPoints: PainPoint[]): AttributionBatch[] {
-  const batches: AttributionBatch[] = []
+  const platforms = new Map<string, AttributionBatch[][]>()
   for (const context of manifest.contexts) {
     const pains = painPoints.filter(p => p.id && p.fonte === context.platform)
       .map(({ id, pain_point, fonte }) => ({ id, pain_point, fonte }))
     if (!pains.length) continue
     const records = manifest.records.filter(r => r.contextId === context.contextId && !r.duplicateOf)
-    for (let i = 0; i < records.length; i += ATTRIBUTION_BATCH_SIZE) {
-      batches.push({ records: records.slice(i, i + ATTRIBUTION_BATCH_SIZE), contextRecords: records, painPoints: pains, context })
+    const chunks: AttributionBatch[] = []
+    for (let i = 0; i < records.length; i += ATTRIBUTION_BATCH_SIZE) chunks.push({ records: records.slice(i, i + ATTRIBUTION_BATCH_SIZE), contextRecords: records, painPoints: pains, context })
+    if (chunks.length) {
+      if (!platforms.has(context.platform)) platforms.set(context.platform, [])
+      platforms.get(context.platform)!.push(chunks)
     }
   }
-  return batches
+  // Prima un gruppo per contenitore, alternando le piattaforme; poi gli altri.
+  const alternate = <T,>(queues: T[][]): T[] => {
+    const ordered: T[] = []
+    for (let i = 0; queues.some(q => i < q.length); i++) for (const q of queues) if (i < q.length) ordered.push(q[i])
+    return ordered
+  }
+  return alternate([...platforms.values()].map(alternate))
 }
 
 export function promptSocialAttribution(batch: AttributionBatch): string {
@@ -67,7 +77,7 @@ ${JSON.stringify({
   })}`
 }
 
-type BatchResult = { batch: AttributionBatch; output?: unknown }
+type BatchResult = { batch: AttributionBatch; output?: unknown; verification?: SocialVerificationDecision[] }
 function object(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown> : undefined
@@ -84,6 +94,7 @@ function shortConfirmation(text: string): boolean {
  */
 export function aggregateSocialEvidence(
   manifest: SocialCorpusManifest, painPoints: PainPoint[], results: BatchResult[],
+  options: { requireVerification?: boolean; processing?: SocialEvidenceReport['processing'] } = {},
 ): SocialEvidenceReport {
   const records = new Map(manifest.records.map(r => [r.recordId, r]))
   const socialPains = painPoints.filter(p => p.id && (p.fonte === 'reddit' || p.fonte === 'youtube'))
@@ -92,6 +103,8 @@ export function aggregateSocialEvidence(
   const rejected = new Map<string, number>()
   const ambiguous = new Map<string, Set<string>>()
   const candidates = new Map<string, SocialAssociation>()
+  const verification = results.flatMap(r => r.verification ?? [])
+  const verified = new Map(verification.map(v => [verificationKey(v.recordId, v.painPointId), v]))
   const reject = (painPointId: string) => rejected.set(painPointId, (rejected.get(painPointId) ?? 0) + 1)
   const markAmbiguous = (painPointId: string, recordId: string) => {
     if (!ambiguous.has(painPointId)) ambiguous.set(painPointId, new Set())
@@ -131,9 +144,17 @@ export function aggregateSocialEvidence(
         if (support === 'direct' && (shortConfirmation(record.transmittedText) || refs.length > 0)) {
           markAmbiguous(id, record.recordId); continue
         }
+        const review = verified.get(verificationKey(record.recordId, id))
+        if (options.requireVerification) {
+          if (!review || review.verdict === 'unclear') { invalidPains.add(id); continue }
+          if (review.verdict === 'unsupported') continue
+          if (support === 'direct' && (!review.problemQuote || review.problemQuote.length > 300 ||
+            !normalize(record.transmittedText).includes(normalize(review.problemQuote)))) { invalidPains.add(id); continue }
+        }
         const association: SocialAssociation = {
           painPointId: id, recordId: record.recordId, supportType: support,
-          quote, contextRecordIds: [...new Set(refs as string[])],
+          quote: options.requireVerification && support === 'direct' ? review!.problemQuote! : quote,
+          contextRecordIds: [...new Set(refs as string[])],
         }
         const key = `${id}:${record.recordId}`
         const previous = candidates.get(key)
@@ -189,14 +210,20 @@ export function aggregateSocialEvidence(
       U: available ? new Set(countable.flatMap(r => r.authorKey ? [r.authorKey] : [])).size : null,
       T: available ? new Set(countable.map(r => `${r.platform}:${r.containerId}`)).size : null,
       M: available ? new Set(countable.map(r => `${r.platform}:${r.sourceCommentId}`)).size : null,
-      status: complete ? 'complete' : available ? 'partial' : corpus.length ? 'failed' : 'not_run',
+      status: complete ? 'complete' : available ? 'partial' : corpus.length &&
+        (!options.processing || corpus.some(r => options.processing!.attemptedRecordIds.includes(r.recordId))) ? 'failed' : 'not_run',
       completeness: { U: complete && !unknown && !uncertain, T: complete && !uncertain, M: complete && !uncertain },
       unknownAuthorMentions: unknown, uncertainIdentityMentions: uncertain,
       ambiguousConfirmations: ambiguous.get(id)?.size ?? 0, rejectedAssociations,
       reviewedComments, totalComments: corpus.length,
     }
   }
-  return { version: '9.0.2', manifest, associations, metrics }
+  return {
+    version: '9.0.2', manifest, associations, metrics,
+    reviewedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => reviewed.has(`${p.id}:${r.recordId}`)).map(r => r.recordId)])),
+    ...(options.requireVerification ? { verification: { version: 'problem-support-v1' as const, decisions: verification } } : {}),
+    ...(options.processing ? { processing: options.processing } : {}),
+  }
 }
 
 export type AttributionExtractor = (prompt: string, signal: AbortSignal) => Promise<unknown>
@@ -206,7 +233,7 @@ export type AttributionExtractor = (prompt: string, signal: AbortSignal) => Prom
  */
 export async function runSocialAttribution(
   manifest: SocialCorpusManifest, painPoints: PainPoint[], extract: AttributionExtractor,
-  options: { timeoutMs?: number; concurrency?: number; signal?: AbortSignal } = {},
+  options: { timeoutMs?: number; concurrency?: number; signal?: AbortSignal; verify?: AttributionExtractor } = {},
 ): Promise<SocialEvidenceReport> {
   const controller = new AbortController()
   const cancel = () => controller.abort()
@@ -215,34 +242,58 @@ export async function runSocialAttribution(
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 45_000)
   const batches = attributionBatches(manifest, painPoints)
   const results: BatchResult[] = []
+  const attempted = new Set<string>()
+  const failures: NonNullable<SocialEvidenceReport['processing']>['failures'] = []
+  const verify = options.verify ?? extract
+  const bounded = async (request: () => Promise<unknown>) => {
+    if (controller.signal.aborted) throw new Error('Budget attribuzione esaurito')
+    let onAbort: () => void = () => {}
+    try {
+      const aborted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(new Error('Budget attribuzione esaurito'))
+        controller.signal.addEventListener('abort', onAbort, { once: true })
+      })
+      return await Promise.race([request(), aborted])
+    } finally { controller.signal.removeEventListener('abort', onAbort) }
+  }
+  const failure = (batch: AttributionBatch, stage: 'extraction' | 'verification', err: unknown) => {
+    const entry = {
+      contextId: batch.context.contextId, stage,
+      reason: controller.signal.aborted ? 'budget_exhausted' : err instanceof Error ? err.name : 'unknown',
+      status: typeof (err as { status?: unknown } | null)?.status === 'number' ? (err as { status: number }).status : undefined,
+    }
+    failures.push(entry)
+    console.warn('[social-attribution] batch failed', { ...entry, records: batch.records.length })
+  }
   let cursor = 0
   const worker = async () => {
     while (cursor < batches.length && !controller.signal.aborted) {
       const batch = batches[cursor++]
+      batch.records.forEach(r => attempted.add(r.recordId))
+      const result: BatchResult = { batch, verification: [] }
+      results.push(result)
       try {
-        let onAbort: () => void = () => {}
+        result.output = await bounded(() => extract(promptSocialAttribution(batch), controller.signal))
+      } catch (err) { failure(batch, 'extraction', err); continue }
+      const checks = verificationCandidates(batch, result.output)
+      for (let i = 0; i < checks.length && !controller.signal.aborted; i += 8) {
+        const chunk = checks.slice(i, i + 8)
         try {
-          const aborted = new Promise<never>((_, reject) => {
-            onAbort = () => reject(new Error('Budget attribuzione esaurito'))
-            controller.signal.addEventListener('abort', onAbort, { once: true })
-          })
-          const output = await Promise.race([extract(promptSocialAttribution(batch), controller.signal), aborted])
-          results.push({ batch, output })
-        } finally { controller.signal.removeEventListener('abort', onAbort) }
-      } catch (err) {
-        // Nessun prompt, testo, credenziale o messaggio grezzo del provider nei log.
-        console.warn('[social-attribution] batch failed', {
-          contextId: batch.context.contextId, records: batch.records.length,
-          reason: controller.signal.aborted ? 'budget_exhausted' : err instanceof Error ? err.name : 'unknown',
-          status: typeof (err as { status?: unknown } | null)?.status === 'number' ? (err as { status: number }).status : undefined,
-        })
-        results.push({ batch })
+          const output = await bounded(() => verify(promptSocialVerification(chunk), controller.signal))
+          result.verification!.push(...parseSocialVerification(chunk, output))
+        } catch (err) { failure(batch, 'verification', err) }
       }
     }
   }
   try {
     await Promise.all(Array.from({ length: Math.max(1, Math.min(3, options.concurrency ?? 3)) }, worker))
-    return aggregateSocialEvidence(manifest, painPoints, results)
+    return aggregateSocialEvidence(manifest, painPoints, results, {
+      requireVerification: true,
+      processing: {
+        budgetExhausted: controller.signal.aborted, attemptedRecordIds: [...attempted],
+        unstartedRecordIds: batches.flatMap(b => b.records).filter(r => !attempted.has(r.recordId)).map(r => r.recordId), failures,
+      },
+    })
   } finally {
     clearTimeout(timer)
     options.signal?.removeEventListener('abort', cancel)

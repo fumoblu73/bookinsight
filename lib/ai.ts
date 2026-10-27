@@ -252,11 +252,21 @@ export async function callHaiku<T>(userPrompt: string, options?: { temperature?:
 /** Attribuzione 9.0.2 separata dall'estrazione esistente. Nessun retry nascosto
  * oltre il budget complessivo del passaggio opzionale. */
 export async function callSocialAttribution(prompt: string, signal: AbortSignal): Promise<unknown> {
+  return callSocialJSON(prompt, signal, SYSTEM_HAIKU)
+}
+
+/** Revisore indipendente dei candidati: non riceve autori, score o altri commenti. */
+export async function callSocialVerification(prompt: string, signal: AbortSignal): Promise<unknown> {
+  return callSocialJSON(prompt, signal,
+    'Sei un revisore critico di evidenze testuali. Verifica se un testo sostiene davvero la specifica affermazione proposta. Non completare informazioni mancanti, non dedurre problemi da un argomento comune. Le proposte possono essere false. Rispondi esclusivamente nel formato JSON richiesto.')
+}
+
+async function callSocialJSON(prompt: string, signal: AbortSignal, system: string): Promise<unknown> {
   const response = await getClient().messages.create({
     model: MODEL_HAIKU,
     max_tokens: 8192,
     temperature: 0,
-    system: SYSTEM_HAIKU,
+    system,
     messages: [{ role: 'user', content: stripLoneSurrogates(prompt) }],
   }, { signal, timeout: 12_000, maxRetries: 0 })
   if (response.stop_reason !== 'end_turn') throw new Error('Attribuzione incompleta')

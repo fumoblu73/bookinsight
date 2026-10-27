@@ -7,7 +7,7 @@ import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 import { redditCoverageNote } from '@/lib/reddit-corpus'
 import type { SocialEvidenceReport } from '../lib/types'
 import SocialEvidence from './SocialEvidence'
-import { formatItalianDate, formatItalianNumber } from '../lib/format'
+import { formatItalianDate, formatItalianNumber, formatReportFileDate } from '../lib/format'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -900,11 +900,7 @@ export default function ReportView({ report }: { report: FullReport }) {
         <div className="flex gap-2 shrink-0">
           <button
             onClick={() => {
-              const d = new Date(report.createdAt)
-              const aa = String(d.getFullYear()).slice(-2)
-              const mm = String(d.getMonth() + 1).padStart(2, '0')
-              const gg = String(d.getDate()).padStart(2, '0')
-              const filename = `${aa}${mm}${gg} BookInsight - ${report.keyword} (${report.market})`
+              const filename = `${formatReportFileDate(report.createdAt)} BookInsight - ${report.keyword} (${report.market})`
               const prev = document.title
               document.title = filename
               window.print()

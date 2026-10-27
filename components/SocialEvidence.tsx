@@ -7,7 +7,7 @@ export default function SocialEvidence({ painPointId, evidence }: {
 }) {
   const metrics = painPointId ? evidence?.metrics[painPointId] : undefined
   if (!metrics || metrics.M === null) return (
-    <p className="mt-2 text-xs text-zinc-500">U/T/M non disponibili{metrics?.status === 'failed' ? ': attribuzione non riuscita' : ''}.</p>
+    <p className="mt-2 text-xs text-zinc-500">U/T/M non disponibili{evidence?.processing?.budgetExhausted ? ': tempo di analisi esaurito' : metrics?.status === 'failed' ? ': attribuzione non riuscita' : ''}.</p>
   )
   const associations = evidence!.associations.filter(a => a.painPointId === painPointId)
   return (
@@ -17,6 +17,7 @@ export default function SocialEvidence({ painPointId, evidence }: {
       </p>
       <p>U: autori identificabili · T: thread/video distinti · M: commenti pertinenti distinti.</p>
       <p>Conteggi confermati nel campione analizzato; non misurano la prevalenza nel mercato.</p>
+      {!evidence?.verification && <p className="text-amber-700">Questi conteggi precedono la nuova verifica di pertinenza.</p>}
       {metrics.status === 'partial' && <p className="text-amber-700">Attribuzione parziale: {metrics.reviewedComments}/{metrics.totalComments} commenti esaminati; i conteggi possono essere incompleti.</p>}
       {metrics.unknownAuthorMentions > 0 && <p>{metrics.unknownAuthorMentions} menzioni con autore sconosciuto: U include solo gli autori identificabili.</p>}
       {metrics.uncertainIdentityMentions > 0 && <p>{metrics.uncertainIdentityMentions} evidenze con identità incerta, escluse dai conteggi confermati.</p>}

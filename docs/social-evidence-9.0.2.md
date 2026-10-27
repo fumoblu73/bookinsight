@@ -29,10 +29,12 @@ Non viene introdotta alcuna ponderazione o formula combinata U/T/M.
    400 per selftext; viene riprodotta la pulizia delle surrogate del wrapper.
    Titolo e selftext sono solo contesto e non incrementano M.
 3. Lo snapshot intermedio conserva il manifest insieme ai dati originali.
-4. In finalizzazione un passaggio separato Haiku associa i commenti ai soli
-   pain point sociali selezionati. È eseguito in parallelo alla finalizzazione,
-   senza cambiare le chiamate AI o i payload strategici esistenti.
-5. Il codice valida associazioni e citazioni, calcola U/T/M e salva il risultato
+4. In finalizzazione un passaggio separato Haiku propone associazioni ai soli
+   pain point sociali selezionati. Un secondo revisore, con istruzioni indipendenti,
+   verifica il sostegno al problema per ciascuna associazione candidata.
+   Entrambi operano in parallelo alla finalizzazione, senza cambiare le chiamate
+   AI o i payload strategici esistenti.
+5. Il codice valida riferimenti, citazioni ed esiti del revisore, calcola U/T/M e salva il risultato
    in `report.socialEvidence`. Nessun numero dichiarato dall'AI diventa un
    conteggio. `voice_data` conserva anche gli ID e metadati dei collector.
 6. Il report espone conteggi, completezza e testimonianze consultabili;
@@ -113,17 +115,40 @@ conferma ambigua, esclusa dai conteggi. Non si deduce parentela dal ranking.
 Un controllo conservativo intercetta anche alcune conferme brevi comuni
 erroneamente dichiarate autonome; non sostituisce l'analisi semantica.
 
+Il revisore riceve problema, testo del singolo commento, citazione proposta e
+tipo di sostegno. Per `direct` non riceve titolo, post o commenti altrui;
+per `confirmation` riceve soltanto il padre esplicito disponibile nel manifest.
+Non riceve identità degli autori o score. Restituisce `supported`, `unsupported`
+o `unclear` con una motivazione strutturata. Un'approvazione richiede anche una
+citazione letterale del problema, verificata nel testo del commento o nel padre.
+Prezzi neutrali, consigli senza problemi espressi e smentite non sostengono il
+problema. Il revisore non applica soglie di prezzo o di convenienza.
+
+Solo le proposte approvate possono diventare associazioni. Il rifiuto motivato
+è una decisione negativa valida; una verifica mancante, malformata, duplicata o
+incerta lascia il record non verificato per quel pain point. Non lo trasforma
+in un'assenza confermata. Il report conserva `verification.decisions` e, per ogni
+pain point, `reviewedRecordIds`, così una regressione non può scambiare un caso
+mai esaminato per un'esclusione corretta. Le conferme approvate devono comunque
+superare il controllo deterministico della parentela e della catena di sostegno.
+
 ## Completezza e limiti operativi
 
-- Budget complessivo di 45 secondi, massimo tre richieste concorrenti,
-  batch di 15 commenti dello stesso contenitore. Il secondo collaudo ha
-  completato solo 13/40 commenti con un gruppo lungo da 27: i gruppi più
-  piccoli limitano la lunghezza della risposta entro il timeout per richiesta.
-  Tutti i record ammessi restano candidati; il budget complessivo resta invariato.
+- Budget complessivo condiviso di 45 secondi, massimo tre richieste concorrenti,
+  batch di attribuzione da 15 commenti dello stesso contenitore e verifiche da
+  massimo otto associazioni candidate. Le due fasi condividono gli stessi worker.
+  Il secondo passaggio introduce chiamate e costo AI aggiuntivi; non estende il
+  budget temporale e può ridurre la copertura completata nei campioni più grandi.
+  La coda alterna piattaforme e contenitori prima di elaborarne i gruppi successivi,
+  evitando che il prefisso Reddit occupi tutto il tempo disponibile.
 - Ogni richiesta ha timeout di 12 secondi, nessun retry SDK e massimo 8192
   token di output. Risposte interrotte/troncate sono trattate come fallimenti.
 - Batch completati, omessi e falliti sono distinguibili. I conteggi di una
   lavorazione parziale sono accompagnati da stato e numero di commenti esaminati.
+  `processing` conserva record avviati, record mai avviati, esaurimento del budget
+  e fallimenti distinti fra attribuzione e verifica. Una fonte mai avviata resta
+  `not_run`; una fonte avviata senza decisioni valide è `failed`. In entrambi i
+  casi i conteggi non disponibili restano null.
   I fallimenti registrano nei log contesto interno, dimensione del gruppo,
   classe dell'errore e stato HTTP se disponibile, senza testo o messaggi grezzi
   del provider.
@@ -138,9 +163,12 @@ erroneamente dichiarate autonome; non sostituisce l'analisi semantica.
 - Nessuna migrazione dei report archiviati: U/T/M non disponibili quando
   mancano i nuovi dati. Gli snapshot intermedi legacy non vengono rianalizzati
   implicitamente. TTL snapshot di 30 minuti e report di 90 giorni invariati.
+  I report con conteggi precedenti al revisore mantengono i valori salvati e
+  mostrano che precedono la nuova verifica di pertinenza.
 
-La validazione certifica coerenza dei riferimenti e presenza delle citazioni,
-non la pertinenza semantica delle associazioni, che resta affidata al modello.
+La validazione certifica coerenza dei riferimenti, presenza delle citazioni e
+completamento del protocollo di verifica. La pertinenza resta una valutazione AI:
+il secondo revisore riduce gli errori osservati, senza garantire assenza di errori.
 Il prompt richiede che il commento documenti il problema specifico: la sola
 coincidenza di argomento, target o situazione non basta. Consigli e abitudini
 devono indicare anche il problema affrontato; emozioni o inesperienza non
@@ -170,7 +198,9 @@ duplicati, identità sintetiche e conflittuali, permalink, tagli del prompt,
 Unicode, citazioni inventate, più citazioni/problemi per commento, conferme
 esplicite e ambigue, cicli, batch mancanti, timeout e guasti, piattaforme separate,
 collector simulati, finalizzazione curated, persistenza/export JSON e rendering
-legacy. La finalizzazione con e senza attribuzione viene confrontata per
+legacy. Le nuove regressioni coprono il rifiuto semantico, le verifiche mancanti,
+la distribuzione di 850 record fra le fonti e i gruppi mai avviati per budget.
+La finalizzazione con e senza attribuzione viene confrontata per
 numeri, pain point e prompt Gap Analysis realmente generato.
 
 Esecuzione senza credenziali o servizi esterni:
@@ -204,22 +234,31 @@ Se una nuova estrazione parafrasa il nome del problema, verificare che sia
 equivalente e passare il suo ID come secondo argomento. La selezione resta
 esplicita: la verifica non cerca un problema per semplici parole comuni.
 
-La valutazione richiede tutti i commenti esaminati per quel pain point:
-l'assenza causata da un batch fallito non vale come esclusione corretta.
+Una seconda fixture mantiene due prezzi neutrali e tre lamentele esplicite,
+come controllo separato non copiato nel prompt del revisore:
+
+```bash
+node scripts/check-social-relevance.mjs /percorso/report.json ID_PROBLEMA_COSTO scripts/fixtures/social-cost-relevance-9.0.2.json
+```
+
+La valutazione richiede una decisione valida per ogni commento di controllo;
+nei report legacy, senza registro per record, richiede la copertura completa.
+L'assenza causata da un batch fallito non vale come esclusione corretta.
 Non riscrive report, associazioni o conteggi archiviati.
 
 Le viste report e storico usano un formato numerico con raggruppamento
-esplicito, anche per quattro cifre, e date nel fuso Europe/Rome. Questo evita
+esplicito, anche per quattro cifre, e date nel fuso Europe/Rome. Il prefisso
+YYMMDD del nome PDF usa lo stesso fuso della data visibile, anche se il browser
+è in America o Asia e l'istante cade vicino alla mezzanotte. Questo evita
 differenze tra ICU del server e browser durante l'hydration e non cambia
 valori, formule, precisione richiesta, ordinamento o payload dell'AI.
 
 Esito locale:
 
-- 108 verifiche superate: Reddit 37, report legacy 3, scoring/ROI 24,
-  target 21, nuove evidenze 19, pipeline/export 1, rendering U/T/M 3.
-  I due casi aggiunti durante la revisione riproducevano e ora prevengono
-  la perdita dell'identità canale con display name `[deleted]` e l'accettazione
-  di prefissi Reddit scambiati fra commento e post.
+- Nove file di test superati: Reddit, report legacy, scoring/ROI, target,
+  corpus e aggregazione, pipeline/export, rendering U/T/M, formattazione e
+  verifica indipendente. Sono inclusi i casi di identità canale con display
+  name `[deleted]` e prefissi Reddit scambiati fra commento e post.
 - TypeScript dell'intero progetto e `git diff --check`: superati.
 - Lint: 5 errori e 13 avvisi già presenti nella base; zero nuove segnalazioni.
 - `lib/scoring.ts`, `lib/prompts.ts`, `lib/reddit-corpus.ts`, `lib/upstash.ts`,
