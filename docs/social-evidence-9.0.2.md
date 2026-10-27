@@ -135,6 +135,11 @@ erroneamente dichiarate autonome; non sostituisce l'analisi semantica.
 
 La validazione certifica coerenza dei riferimenti e presenza delle citazioni,
 non la pertinenza semantica delle associazioni, che resta affidata al modello.
+Il prompt richiede che il commento documenti il problema specifico: la sola
+coincidenza di argomento, target o situazione non basta. Consigli e abitudini
+devono indicare anche il problema affrontato; emozioni o inesperienza non
+vengono dedotte dal contesto. Le citazioni vanno copiate come estratti contigui,
+senza traduzioni, correzioni o ricostruzioni di testo troncato.
 Le `evidence_quotes` legacy dell'estrazione non vengono riscritte o certificate:
 le nuove associazioni validate sono conservate separatamente.
 
@@ -173,6 +178,26 @@ git diff --check
 Limiti delle verifiche locali: persistenza e API sono simulate, senza analisi
 AI live o scritture su Redis reale. La build e questi test non sostituiscono
 il collaudo dell'anteprima con le integrazioni configurate.
+
+Il collaudo live del 27 ottobre ha trovato un falso positivo semantico:
+una descrizione di porzioni da parte di un escursionista solo era associata
+all'ansia da primo viaggio. Il caso positivo con ansia esplicita e quello
+negativo con sole porzioni sono registrati in
+`scripts/fixtures/social-relevance-9.0.2.json`. Per valutare un nuovo risultato
+sullo stesso corpus, senza simulare l'AI:
+
+```bash
+node scripts/check-social-relevance.mjs /percorso/report-o-export.json
+```
+
+La valutazione richiede tutti i commenti esaminati per quel pain point:
+l'assenza causata da un batch fallito non vale come esclusione corretta.
+Non riscrive report, associazioni o conteggi archiviati.
+
+Le viste report e storico usano un formato numerico con raggruppamento
+esplicito, anche per quattro cifre, e date nel fuso Europe/Rome. Questo evita
+differenze tra ICU del server e browser durante l'hydration e non cambia
+valori, formule, precisione richiesta, ordinamento o payload dell'AI.
 
 Esito locale:
 

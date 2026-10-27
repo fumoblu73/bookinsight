@@ -1,0 +1,15 @@
+{
+  "painPoint": "Ansia da pianificazione pasti per il primo viaggio in solitaria",
+  "cases": [
+    {
+      "commentId": "UgxUCaFPLI22Ak5jbhJ4AaABAg",
+      "expectedMatch": true,
+      "reason": "Il commento dichiara esplicitamente meal prep anxiety e il primo viaggio in solitaria."
+    },
+    {
+      "commentId": "UgxdDC2CAqDySQ36dTN4AaABAg",
+      "expectedMatch": false,
+      "reason": "Descrive come dividere le porzioni; essere un solo hiker non documenta ansia o inesperienza."
+    }
+  ]
+}

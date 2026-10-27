@@ -7,6 +7,7 @@ import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 import { redditCoverageNote } from '@/lib/reddit-corpus'
 import type { SocialEvidenceReport } from '../lib/types'
 import SocialEvidence from './SocialEvidence'
+import { formatItalianDate, formatItalianNumber } from '../lib/format'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -336,7 +337,7 @@ function prioritaCls(p: string) {
   return 'bg-zinc-100 text-zinc-500'
 }
 function fmt(n: number, dec = 2) {
-  return n.toLocaleString('it-IT', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+  return formatItalianNumber(n, { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
 
 // Parsa la strategia lancio in punti numerati (es. "1) ...", "1. ...")
@@ -782,7 +783,7 @@ export default function ReportView({ report }: { report: FullReport }) {
       window.removeEventListener('afterprint', closeAll)
     }
   }, [])
-  const date = new Date(report.createdAt).toLocaleDateString('it-IT', {
+  const date = formatItalianDate(report.createdAt, {
     day: '2-digit', month: 'long', year: 'numeric'
   })
 
@@ -958,7 +959,7 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
             </div>
             <div className="flex flex-wrap gap-5 mt-5 pt-4 border-t border-zinc-100 text-sm">
-              <span className="text-zinc-500">BSR medio: <strong className="text-zinc-800">{sb.avgBsr.toLocaleString('it-IT')}</strong></span>
+              <span className="text-zinc-500">BSR medio: <strong className="text-zinc-800">{formatItalianNumber(sb.avgBsr)}</strong></span>
               <span className="text-zinc-500">Prezzo medio: <strong className="text-zinc-800">{fmt(sb.avgPrice)} ({fmt(sb.minPrice)}–{fmt(sb.maxPrice)})</strong></span>
               <span className="text-zinc-500">Pagine medie: <strong className="text-zinc-800">{sb.avgPages} ({sb.minPages}–{sb.maxPages})</strong></span>
               <span className="text-zinc-500">📏 Lunghezza target: <strong className="text-indigo-700">~{Math.round(sb.avgPages / 10) * 10} pag.</strong></span>
@@ -970,7 +971,7 @@ export default function ReportView({ report }: { report: FullReport }) {
                 const median = Math.round(calcMedianReviews(books))
                 return (
                   <span className="text-zinc-500">
-                    Recensioni top-5: <strong className="text-zinc-800">{sortedDesc.map(v => v.toLocaleString('it-IT')).join(' · ')}</strong> (mediana <strong className="text-zinc-800">{median.toLocaleString('it-IT')}</strong>)
+                    Recensioni top-5: <strong className="text-zinc-800">{sortedDesc.map(v => formatItalianNumber(v)).join(' · ')}</strong> (mediana <strong className="text-zinc-800">{formatItalianNumber(median)}</strong>)
                   </span>
                 )
               })()}
@@ -995,8 +996,8 @@ export default function ReportView({ report }: { report: FullReport }) {
                       </a>
                     </div>
                     <div className="flex items-center gap-3 shrink-0 text-zinc-500">
-                      <span>BSR <strong className="text-zinc-700">{s.bsr.toLocaleString('it-IT')}</strong></span>
-                      <span><strong className="text-zinc-700">{s.reviewCount.toLocaleString('it-IT')}</strong> rec.</span>
+                      <span>BSR <strong className="text-zinc-700">{formatItalianNumber(s.bsr)}</strong></span>
+                      <span><strong className="text-zinc-700">{formatItalianNumber(s.reviewCount)}</strong> rec.</span>
                       {s.vulnerable && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700">
                           Opportunità
@@ -1077,9 +1078,9 @@ export default function ReportView({ report }: { report: FullReport }) {
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
                 {[
                   ['ASIN', <a key="a" href={`https://www.amazon.com/dp/${report.competitorTarget.asin}`} target="_blank" rel="noreferrer" className="text-indigo-600 underline underline-offset-2">{report.competitorTarget.asin}</a>],
-                  ['BSR', report.competitorTarget.bsr.toLocaleString('it-IT')],
+                  ['BSR', formatItalianNumber(report.competitorTarget.bsr)],
                   ['Prezzo', `${report.competitorTarget.currency}${report.competitorTarget.price}`],
-                  ['Recensioni', report.competitorTarget.reviewCount.toLocaleString('it-IT')],
+                  ['Recensioni', formatItalianNumber(report.competitorTarget.reviewCount)],
                   ['Rating', `${report.competitorTarget.rating}/5`],
                   ['Pagine', report.competitorTarget.pages],
                 ].map(([k, v]) => (
@@ -1157,7 +1158,7 @@ export default function ReportView({ report }: { report: FullReport }) {
                         {b.title}
                       </p>
                       <div className="text-[9px] text-zinc-400 text-center leading-tight w-full space-y-0.5">
-                        <p><span className="font-semibold text-zinc-600">{b.bsr.toLocaleString('it-IT')}</span> BSR</p>
+                        <p><span className="font-semibold text-zinc-600">{formatItalianNumber(b.bsr)}</span> BSR</p>
                         <p>★ {b.rating.toFixed(1)} · <span className="font-semibold text-zinc-600">{b.reviewCount >= 1000 ? `${(b.reviewCount / 1000).toFixed(1)}k` : b.reviewCount}</span> rec.</p>
                       </div>
                     </a>
@@ -1195,10 +1196,10 @@ export default function ReportView({ report }: { report: FullReport }) {
                         </div>
                         <p className="text-sm font-semibold text-zinc-800 leading-snug line-clamp-2 mb-1.5">{b.title}</p>
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-zinc-500 mb-2">
-                          <span>BSR <strong className="text-zinc-700">{b.bsr.toLocaleString('it-IT')}</strong></span>
+                          <span>BSR <strong className="text-zinc-700">{formatItalianNumber(b.bsr)}</strong></span>
                           <span>{b.currency}<strong className="text-zinc-700">{b.price.toFixed(2)}</strong></span>
                           <span>★ <strong className="text-zinc-700">{b.rating.toFixed(1)}</strong></span>
-                          <span><strong className="text-zinc-700">{b.reviewCount.toLocaleString('it-IT')}</strong> rec.</span>
+                          <span><strong className="text-zinc-700">{formatItalianNumber(b.reviewCount)}</strong> rec.</span>
                           {full && full.royalty > 0 && <span className="text-emerald-700 font-medium">{b.currency}{full.royalty.toFixed(2)} royalty/cop.</span>}
                           {full && (full.pages ?? 0) > 0 && <span className="text-zinc-500">{full.pages} pag.</span>}
                         </div>
@@ -1637,7 +1638,7 @@ export default function ReportView({ report }: { report: FullReport }) {
               {report.competitorTarget.title}
             </a>
             <div className="flex gap-3 text-xs text-zinc-400 shrink-0 flex-wrap">
-              <span>BSR {report.competitorTarget.bsr.toLocaleString('it-IT')}</span>
+              <span>BSR {formatItalianNumber(report.competitorTarget.bsr)}</span>
               <span>{report.competitorTarget.currency}{report.competitorTarget.price}</span>
               <span>{report.competitorTarget.reviewCount} rec.</span>
               <span>{roi.targetDailySalesMin}–{roi.targetDailySalesMax} vend/g</span>
@@ -1922,7 +1923,7 @@ export default function ReportView({ report }: { report: FullReport }) {
                         {roiPerf.byFixedPrice.map(row => (
                           <tr key={row.label}>
                             <td className="py-2.5 text-sm font-medium text-zinc-900">{labelMap[row.label] ?? row.label}</td>
-                            <td className="py-2.5 text-right text-sm text-zinc-800">{row.monthlySalesNeeded.toLocaleString('it-IT')}</td>
+                            <td className="py-2.5 text-right text-sm text-zinc-800">{formatItalianNumber(row.monthlySalesNeeded)}</td>
                             <td className="py-2.5 text-right text-sm text-zinc-800">{row.vsCompetitorAvg.toFixed(2)}x</td>
                             <td className="py-2.5 text-right text-sm text-zinc-800">{row.monthsToBreakeven === 999 ? '—' : fmt(row.monthsToBreakeven, 1)}</td>
                           </tr>

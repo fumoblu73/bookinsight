@@ -34,11 +34,19 @@ Non creare nuovi problemi, non valutare F/I/S, non calcolare conteggi o score.
 Esamina OGNI recordId di recordsToReview rispetto a TUTTI i painPoints della stessa piattaforma.
 Restituisci esattamente una decisione per ciascun record richiesto, anche se matches è vuoto.
 Una menzione può riguardare più problemi; più citazioni dello stesso problema sono una sola associazione.
+PERTINENZA: il commento deve documentare il problema specifico descritto dal pain point,
+non soltanto parlare dello stesso argomento, target o situazione. Leggi il nucleo del problema e le sue qualificazioni.
+Per direct il testo deve indicare un ostacolo, bisogno insoddisfatto, conseguenza negativa oppure un problema vissuto e poi risolto.
+Consigli, ricette, preferenze, confronti e descrizioni di abitudini non bastano: associa solo se il testo indica anche quale problema specifico affrontano.
+Non dedurre emozioni, inesperienza o difficoltà da attività, identità o contesto; non attribuire un problema che il commento nega di avere.
+La citazione deve sostenere il legame con il problema, non limitarsi a parole condivise con il pain point.
+Se manca questo sostegno, restituisci matches vuoto per quel problema. Non riempire le categorie con esempi deboli.
 supportType: direct per una testimonianza autonoma, confirmation per una conferma con padre esplicito,
 ambiguous per una conferma priva di contesto sufficiente. "Anch'io", "same here", "+1", "agree", "this!" non sono testimonianze autonome.
 Una confirmation deve indicare in contextRecordIds il parentRecordId effettivo, oppure il contextId se parentId indica quel post (t3_).
 Non dedurre la parentela dall'ordine dei testi. Il contesto di sfondo non aggiunge record da esaminare.
-quote: estratto letterale non vuoto da text del commento (massimo 300 caratteri).
+quote: un unico estratto contiguo copiato esattamente da text del commento (massimo 300 caratteri).
+Non tradurre, correggere refusi, aggiungere puntini, cambiare punteggiatura o ricostruire parole della coda troncata.
 Usa solo gli ID forniti. Nessuna attribuzione a una piattaforma diversa.
 Rispondi SOLO JSON: {"decisions":[{"recordId":"...","matches":[{"painPointId":"...","supportType":"direct|confirmation|ambiguous","quote":"...","contextRecordIds":[]}]}]}.
 DATI:

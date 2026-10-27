@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { formatItalianDate, formatItalianNumber } from '../../lib/format'
 
 export interface HistoryRow {
   id: string
@@ -133,7 +134,7 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {sorted.map(r => {
-              const date = new Date(r.createdAt).toLocaleString('it-IT', {
+              const date = formatItalianDate(r.createdAt, {
                 day: '2-digit', month: '2-digit', year: '2-digit',
                 hour: '2-digit', minute: '2-digit',
               })
@@ -194,7 +195,7 @@ export default function HistoryTable({ rows }: { rows: HistoryRow[] }) {
                                 ? 'text-red-600 font-medium'
                                 : 'text-zinc-600'
                           }>
-                            {r.monthlyRevenue < 0 ? '−' : ''}${Math.abs(Math.round(r.monthlyRevenue)).toLocaleString('it-IT')}
+                            {r.monthlyRevenue < 0 ? '−' : ''}${formatItalianNumber(Math.abs(Math.round(r.monthlyRevenue)))}
                           </span>
                         )
                       : <span className="text-zinc-300">—</span>
