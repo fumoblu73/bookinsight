@@ -1,5 +1,6 @@
 import type { AttributionBatch } from './social-attribution'
 import type { SocialVerificationDecision } from './types'
+import { resolveSocialQuote } from './social-quotes'
 
 export interface VerificationCandidate {
   recordId: string
@@ -81,12 +82,15 @@ export function parseSocialVerification(checks: VerificationCandidate[], output:
     const d = object(raw[i])!, candidate = allowed.get(keys[i])!
     const { verdict, reason, problemExpressed, referentIdentified } = d
     if (!['yes', 'no', 'unclear'].includes(String(problemExpressed)) || !['yes', 'no', 'unclear'].includes(String(referentIdentified))) continue
-    const quote = typeof d.problemQuote === 'string' ? d.problemQuote.trim() : ''
+    let quote = typeof d.problemQuote === 'string' ? d.problemQuote.trim() : ''
+    let quoteAdjusted = false
     if (verdict === 'supported') {
       if (problemExpressed !== 'yes' || referentIdentified !== 'yes') continue
       const reasons = candidate.supportType === 'direct' ? ['explicit_problem', 'explicit_need', 'resolved_problem'] : ['linked_confirmation']
       const source = candidate.supportType === 'direct' ? candidate.text : candidate.parentText
-      if (!reasons.includes(String(reason)) || !source || !quote || quote.length > 300 || !contains(source, quote)) continue
+      const resolved = source ? resolveSocialQuote(source, quote) : undefined
+      if (!reasons.includes(String(reason)) || !resolved) continue
+      quote = resolved.quote; quoteAdjusted = resolved.adjusted
     } else if (verdict === 'unsupported') {
       if (problemExpressed !== 'no' || (reason !== 'topic_only' && reason !== 'contradiction')) continue
     } else if (verdict !== 'unclear' || (reason !== 'insufficient_evidence' && reason !== 'ambiguous_referent') ||
@@ -95,6 +99,7 @@ export function parseSocialVerification(checks: VerificationCandidate[], output:
       verdict, reason: reason as SocialVerificationDecision['reason'],
       problemExpressed: problemExpressed as SocialVerificationDecision['problemExpressed'], referentIdentified: referentIdentified as SocialVerificationDecision['referentIdentified'],
       ...(verdict === 'supported' ? { problemQuote: quote } : {}),
+      ...(quoteAdjusted ? { quoteAdjusted: true } : {}),
     })
   }
   return decisions

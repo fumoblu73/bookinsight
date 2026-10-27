@@ -176,6 +176,12 @@ La vista rende consultabili gli estratti incerti e dichiara i record irrisolti.
   tentativo, senza output grezzi del modello. `processing.records` registra
   l'esito strutturale finale e gli eventuali due tentativi per ciascun record;
   non costituisce da solo approvazione semantica.
+  Se l'unica differenza di una citazione consiste negli apostrofi o nelle
+  virgolette tipografiche, un allineamento univoco può ricopiare l'estratto
+  originale. L'evento `quote_typography_aligned` viene dichiarato; parole,
+  spazi, omissioni, puntini e altra punteggiatura restano invariati. Un
+  allineamento ambiguo è rifiutato. Questo vale anche per la citazione del
+  revisore; non modifica il testo del corpus o autorizza parafrasi.
   I fallimenti registrano nei log contesto interno, dimensione del gruppo,
   classe dell'errore e stato HTTP se disponibile, senza testo o messaggi grezzi
   del provider.

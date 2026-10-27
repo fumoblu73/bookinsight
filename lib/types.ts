@@ -267,6 +267,7 @@ export interface SocialVerificationDecision {
   problemQuote?: string
   problemExpressed?: 'yes' | 'no' | 'unclear'
   referentIdentified?: 'yes' | 'no' | 'unclear'
+  quoteAdjusted?: boolean
 }
 
 export interface SocialDiagnostic {
@@ -275,7 +276,7 @@ export interface SocialDiagnostic {
   attempt: 1 | 2
   recordIds: string[]
   painPointId?: string
-  reason: 'missing_decisions' | 'missing_record' | 'duplicate_record' | 'invalid_matches' | 'unknown_pain' | 'invalid_quote' | 'invalid_support' | 'invalid_context' | 'unexpected_record' | 'missing_verification' | 'invalid_verification' | 'request_error'
+  reason: 'missing_decisions' | 'missing_record' | 'duplicate_record' | 'invalid_matches' | 'unknown_pain' | 'invalid_quote' | 'invalid_support' | 'invalid_context' | 'unexpected_record' | 'missing_verification' | 'invalid_verification' | 'request_error' | 'quote_typography_aligned'
 }
 
 export interface SocialEvidenceReport {

@@ -272,7 +272,7 @@ export async function runSocialAttribution(
   const diagnose = (batch: AttributionBatch, stage: SocialDiagnostic['stage'], attempt: 1 | 2,
     reason: SocialDiagnostic['reason'], recordIds: string[], painPointId?: string) => {
     diagnostics.push({ contextId: batch.context.contextId, stage, attempt, reason, recordIds, ...(painPointId ? { painPointId } : {}) })
-    console.warn('[social-attribution] invalid response', { contextId: batch.context.contextId, stage, attempt, reason, records: recordIds.length })
+    console.warn(reason === 'quote_typography_aligned' ? '[social-attribution] quote aligned' : '[social-attribution] invalid response', { contextId: batch.context.contextId, stage, attempt, reason, records: recordIds.length })
   }
   const verify = options.verify ?? extract
   const bounded = async (request: () => Promise<unknown>) => {
@@ -308,6 +308,7 @@ export async function runSocialAttribution(
       parsed = parseSocialVerification(checks, output)
     } catch (err) { requestFailed = true; failure(batch, 'verification', err) }
     result.verification!.push(...parsed)
+    for (const v of parsed.filter(v => v.quoteAdjusted)) diagnose(batch, 'verification', attempt, 'quote_typography_aligned', [v.recordId], v.painPointId)
     const pending = checks.filter(c => !parsed.some(v => v.recordId === c.recordId && v.painPointId === c.painPointId))
     for (const c of pending) diagnose(batch, 'verification', attempt, requestFailed ? 'request_error' : 'invalid_verification', [c.recordId], c.painPointId)
     // unclear è una valutazione valida: non si riprova per ottenere un sì.
@@ -326,8 +327,9 @@ export async function runSocialAttribution(
         inspected = inspectSocialDecisions(batch, await bounded(() => extract(promptSocialAttribution(batch), controller.signal)))
       } catch (err) {
         failure(batch, 'extraction', err)
-        inspected = { decisions: [], issues: batch.records.map(r => ({ recordId: r.recordId, reason: 'request_error' })) }
+        inspected = { decisions: [], adjustments: [], issues: batch.records.map(r => ({ recordId: r.recordId, reason: 'request_error' })) }
       }
+      if (inspected.adjustments.length) diagnose(batch, 'extraction', attempt, 'quote_typography_aligned', inspected.adjustments)
       for (const reason of new Set(inspected.issues.map(i => i.reason))) {
         const ids = inspected.issues.filter(i => i.reason === reason).map(i => i.recordId)
         diagnose(batch, 'extraction', attempt, reason, ids)
