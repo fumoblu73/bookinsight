@@ -10,6 +10,10 @@ export interface AttributionBatch {
   context: SocialCorpusManifest['contexts'][number]
 }
 
+// Mantiene brevi le decisioni JSON entro il timeout della singola richiesta.
+// Non modifica il corpus: i gruppi successivi coprono tutti i record ammessi.
+const ATTRIBUTION_BATCH_SIZE = 15
+
 export function attributionBatches(manifest: SocialCorpusManifest, painPoints: PainPoint[]): AttributionBatch[] {
   const batches: AttributionBatch[] = []
   for (const context of manifest.contexts) {
@@ -17,8 +21,8 @@ export function attributionBatches(manifest: SocialCorpusManifest, painPoints: P
       .map(({ id, pain_point, fonte }) => ({ id, pain_point, fonte }))
     if (!pains.length) continue
     const records = manifest.records.filter(r => r.contextId === context.contextId && !r.duplicateOf)
-    for (let i = 0; i < records.length; i += 30) {
-      batches.push({ records: records.slice(i, i + 30), contextRecords: records, painPoints: pains, context })
+    for (let i = 0; i < records.length; i += ATTRIBUTION_BATCH_SIZE) {
+      batches.push({ records: records.slice(i, i + ATTRIBUTION_BATCH_SIZE), contextRecords: records, painPoints: pains, context })
     }
   }
   return batches
@@ -220,7 +224,15 @@ export async function runSocialAttribution(
           const output = await Promise.race([extract(promptSocialAttribution(batch), controller.signal), aborted])
           results.push({ batch, output })
         } finally { controller.signal.removeEventListener('abort', onAbort) }
-      } catch { results.push({ batch }) }
+      } catch (err) {
+        // Nessun prompt, testo, credenziale o messaggio grezzo del provider nei log.
+        console.warn('[social-attribution] batch failed', {
+          contextId: batch.context.contextId, records: batch.records.length,
+          reason: controller.signal.aborted ? 'budget_exhausted' : err instanceof Error ? err.name : 'unknown',
+          status: typeof (err as { status?: unknown } | null)?.status === 'number' ? (err as { status: number }).status : undefined,
+        })
+        results.push({ batch })
+      }
     }
   }
   try {

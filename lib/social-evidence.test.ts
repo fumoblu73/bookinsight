@@ -180,6 +180,24 @@ test('batching: nessuna omissione equivale a zero; timeout e guasti sono esplici
   assert.equal(timedOut.metrics.pain1.M, null)
 })
 
+test('un thread lungo è suddiviso senza perdere o riesaminare commenti e mantiene il contesto', async () => {
+  const manifest = buildSocialManifest(reddit([Array.from({ length: 30 }, (_, i) => comment(`c${i}`))]))
+  const batches = attributionBatches(manifest, [pain()])
+  assert.ok(batches.length > 1)
+  const reviewed: string[] = []
+  const result = await runSocialAttribution(manifest, [pain()], async prompt => {
+    const data = JSON.parse(prompt.split('DATI:\n')[1])
+    assert.equal(data.background.length, 30)
+    const records = data.recordsToReview as { recordId: string }[]
+    reviewed.push(...records.map(r => r.recordId))
+    return { decisions: records.map(r => ({ recordId: r.recordId, matches: [] })) }
+  })
+  assert.deepEqual([...reviewed].sort(), manifest.records.map(r => r.recordId).sort())
+  assert.equal(new Set(reviewed).size, 30)
+  assert.equal(result.metrics.pain1.status, 'complete')
+  assert.equal(result.metrics.pain1.reviewedComments, 30)
+})
+
 test('output malformati, ID inventati e decisioni duplicate non diventano conteggi completi', () => {
   const manifest = buildSocialManifest(reddit([[comment('c1')]]))
   const batch = attributionBatches(manifest, [pain()])[0]

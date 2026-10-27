@@ -116,11 +116,17 @@ erroneamente dichiarate autonome; non sostituisce l'analisi semantica.
 ## Completezza e limiti operativi
 
 - Budget complessivo di 45 secondi, massimo tre richieste concorrenti,
-  batch di 30 commenti dello stesso contenitore.
+  batch di 15 commenti dello stesso contenitore. Il secondo collaudo ha
+  completato solo 13/40 commenti con un gruppo lungo da 27: i gruppi più
+  piccoli limitano la lunghezza della risposta entro il timeout per richiesta.
+  Tutti i record ammessi restano candidati; il budget complessivo resta invariato.
 - Ogni richiesta ha timeout di 12 secondi, nessun retry SDK e massimo 8192
   token di output. Risposte interrotte/troncate sono trattate come fallimenti.
 - Batch completati, omessi e falliti sono distinguibili. I conteggi di una
   lavorazione parziale sono accompagnati da stato e numero di commenti esaminati.
+  I fallimenti registrano nei log contesto interno, dimensione del gruppo,
+  classe dell'errore e stato HTTP se disponibile, senza testo o messaggi grezzi
+  del provider.
 - Senza alcuna decisione valida U/T/M sono `null`, non zero. Zero indica assenza
   di supporti confermati nella parte elaborata; lo stato chiarisce se completa.
 - La completezza è distinta per indicatore. Autori sconosciuti limitano U;
@@ -189,6 +195,10 @@ sullo stesso corpus, senza simulare l'AI:
 ```bash
 node scripts/check-social-relevance.mjs /percorso/report-o-export.json
 ```
+
+Se una nuova estrazione parafrasa il nome del problema, verificare che sia
+equivalente e passare il suo ID come secondo argomento. La selezione resta
+esplicita: la verifica non cerca un problema per semplici parole comuni.
 
 La valutazione richiede tutti i commenti esaminati per quel pain point:
 l'assenza causata da un batch fallito non vale come esclusione corretta.
