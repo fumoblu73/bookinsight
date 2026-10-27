@@ -8,7 +8,7 @@ export interface VerificationCandidate {
   problem: string
   text: string
   quote: string
-  supportType: 'direct' | 'confirmation'
+  supportType: 'direct' | 'confirmation' | 'ambiguous'
   parentText?: string
 }
 
@@ -31,7 +31,7 @@ export function verificationCandidates(batch: AttributionBatch, output: unknown)
     for (const rawMatch of d.matches) {
       const m = object(rawMatch)
       const pain = batch.painPoints.find(p => p.id === m?.painPointId)
-      if (!m || !pain || (m.supportType !== 'direct' && m.supportType !== 'confirmation') ||
+      if (!m || !pain || (m.supportType !== 'direct' && m.supportType !== 'confirmation' && m.supportType !== 'ambiguous') ||
         typeof m.quote !== 'string' || !m.quote.trim() || m.quote.trim().length > 300 ||
         !contains(record.transmittedText, m.quote.trim())) continue
       const key = verificationKey(record.recordId, pain.id!)
@@ -57,6 +57,7 @@ Una lamentela esplicita con referente non identificabile non è topic_only: usa 
 Riferimenti deittici o pronomi privi di antecedente verificabile non identificano da soli l'oggetto. Non ricostruire l'antecedente da altre testimonianze o dall'argomento del video.
 supported richiede problemExpressed=yes e referentIdentified=yes. unsupported/topic_only richiede problemExpressed=no; non usarlo per nascondere contesto mancante.
 Per direct considera SOLO text del singolo commento, senza dedurre esperienze dal target, dall'argomento o da altre persone.
+Per ambiguous riesamina il singolo commento: l'incertezza del primo passaggio non è una conclusione. Se esprime solo l'argomento usa unsupported; se esprime un problema con oggetto non identificabile usa unclear. Una semplice conferma senza padre verificabile resta unclear.
 Un prezzo o un confronto economico non afferma che il costo sia eccessivo: non applicare soglie di prezzo o tue valutazioni di convenienza.
 Consigli, abitudini, ricette o correzioni fattuali senza un problema espresso sono topic_only, anche se pertinenti all'argomento.
 Una smentita del problema è contradiction. Non inferire emozioni o inesperienza da attività e identità.
@@ -86,8 +87,8 @@ export function parseSocialVerification(checks: VerificationCandidate[], output:
     let quoteAdjusted = false
     if (verdict === 'supported') {
       if (problemExpressed !== 'yes' || referentIdentified !== 'yes') continue
-      const reasons = candidate.supportType === 'direct' ? ['explicit_problem', 'explicit_need', 'resolved_problem'] : ['linked_confirmation']
-      const source = candidate.supportType === 'direct' ? candidate.text : candidate.parentText
+      const reasons = candidate.supportType !== 'confirmation' ? ['explicit_problem', 'explicit_need', 'resolved_problem'] : ['linked_confirmation']
+      const source = candidate.supportType !== 'confirmation' ? candidate.text : candidate.parentText
       const resolved = source ? resolveSocialQuote(source, quote) : undefined
       if (!reasons.includes(String(reason)) || !resolved) continue
       quote = resolved.quote; quoteAdjusted = resolved.adjusted

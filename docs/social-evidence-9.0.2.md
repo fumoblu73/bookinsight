@@ -146,6 +146,11 @@ positiva o negativa valida. Gli incerti non incrementano U/T/M e impediscono di
 dichiarare la copertura completa. Se tutti i record sono incerti, U/T/M restano
 null e lo stato è partial; una conferma ambigua non diventa uno zero completo.
 La vista rende consultabili gli estratti incerti e dichiara i record irrisolti.
+Anche i candidati ambiguous del primo passaggio vengono esaminati dal revisore:
+il primo modello non può sottrarli al controllo. Un rifiuto motivato diventa
+una decisione negativa valida; un'incertezza confermata rimane distinta. Per
+approvare un supporto autonomo restano necessari problema, referente e citazione
+verificati; le conferme senza parentela dimostrabile restano ambigue.
 
 ## Completezza e limiti operativi
 

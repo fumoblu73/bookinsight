@@ -192,3 +192,24 @@ test('problema esplicito con oggetto ignoto: incerto, distinto da argomento non 
   assert.equal(result.metrics['pain-youtube'].uncertainComments, 1)
   assert.equal(result.reviewedRecordIds?.['pain-youtube'].length, 0)
 })
+
+test('anche i candidati ambiguous sono riesaminati: il revisore separa prezzo neutrale e problema con referente ignoto', async () => {
+  const m = corpus('youtube', 1, 2)
+  m.records[1].text = m.records[1].transmittedText = 'Those products are too expensive.'
+  let verified = 0
+  const result = await runSocialAttribution(m, [pain()], async prompt => {
+    const d = data(prompt)
+    return { decisions: d.recordsToReview.map((r: { recordId: string; text: string }) => ({ recordId: r.recordId, matches: [{ painPointId: 'pain-youtube', supportType: 'ambiguous', quote: r.text, contextRecordIds: [] }] })) }
+  }, { verify: async prompt => {
+    const cs = data(prompt).checks; verified += cs.length
+    return { checks: cs.map((c: { recordId: string; painPointId: string }) => ({ recordId: c.recordId, painPointId: c.painPointId,
+      problemExpressed: c.recordId === m.records[0].recordId ? 'no' : 'yes', referentIdentified: c.recordId === m.records[0].recordId ? 'yes' : 'unclear',
+      verdict: c.recordId === m.records[0].recordId ? 'unsupported' : 'unclear', reason: c.recordId === m.records[0].recordId ? 'topic_only' : 'ambiguous_referent',
+    })) }
+  } })
+  assert.equal(verified, 2)
+  assert.deepEqual(result.reviewedRecordIds?.['pain-youtube'], [m.records[0].recordId])
+  assert.deepEqual(result.uncertainRecordIds?.['pain-youtube'], [m.records[1].recordId])
+  assert.equal(result.metrics['pain-youtube'].M, 0)
+  assert.equal(result.metrics['pain-youtube'].status, 'partial')
+})

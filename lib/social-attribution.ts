@@ -141,23 +141,29 @@ export function aggregateSocialEvidence(
         if (typeof id !== 'string' || !painById.has(id) || painById.get(id)!.fonte !== record.platform) {
           batch.painPoints.forEach(p => { reject(p.id!); invalidPains.add(p.id!) }); continue
         }
-        if (match!.supportType === 'ambiguous') {
-          if (shortConfirmation(record.transmittedText)) markAmbiguous(id, record.recordId)
-          else markUncertain(id, record.recordId)
-          continue
-        }
         const quote = typeof match!.quote === 'string' ? match!.quote.trim() : ''
-        const support = match!.supportType
+        let support = match!.supportType
         const refs = match!.contextRecordIds
-        if ((support !== 'direct' && support !== 'confirmation') || !quote || quote.length > 300 ||
+        if ((support !== 'direct' && support !== 'confirmation' && support !== 'ambiguous') || !quote || quote.length > 300 ||
           !normalize(record.transmittedText).includes(normalize(quote)) || !Array.isArray(refs) ||
           !refs.every(r => typeof r === 'string')) {
           reject(id); invalidPains.add(id); continue
         }
+        const review = verified.get(verificationKey(record.recordId, id))
+        if (support === 'ambiguous') {
+          if (shortConfirmation(record.transmittedText)) { markAmbiguous(id, record.recordId); continue }
+          if (!options.requireVerification) { markUncertain(id, record.recordId); continue }
+          if (!review) { invalidPains.add(id); continue }
+          if (review.verdict === 'unsupported') continue
+          if (review.verdict === 'unclear') { markUncertain(id, record.recordId); invalidPains.add(id); continue }
+          // Il revisore può dimostrare una testimonianza autonoma, ma non
+          // inventare la parentela di una conferma. Restano tutti i gate direct.
+          support = 'direct'
+        }
+        if (support !== 'direct' && support !== 'confirmation') { invalidPains.add(id); continue }
         if (support === 'direct' && (shortConfirmation(record.transmittedText) || refs.length > 0)) {
           markAmbiguous(id, record.recordId); continue
         }
-        const review = verified.get(verificationKey(record.recordId, id))
         if (options.requireVerification) {
           if (!review || review.verdict === 'unclear') {
             if (review?.verdict === 'unclear') markUncertain(id, record.recordId)
