@@ -146,6 +146,10 @@ coincidenza di argomento, target o situazione non basta. Consigli e abitudini
 devono indicare anche il problema affrontato; emozioni o inesperienza non
 vengono dedotte dal contesto. Le citazioni vanno copiate come estratti contigui,
 senza traduzioni, correzioni o ricostruzioni di testo troncato.
+Per le testimonianze dirette il sostegno deve essere nel singolo commento:
+titolo e testimonianze altrui non possono attribuirgli un problema implicito.
+Esempi contrastivi distinguono abitudini e consigli da problemi espliciti,
+includendo quelli già alleviati o risolti.
 Le `evidence_quotes` legacy dell'estrazione non vengono riscritte o certificate:
 le nuove associazioni validate sono conservate separatamente.
 

@@ -45,6 +45,11 @@ Consigli, ricette, preferenze, confronti e descrizioni di abitudini non bastano:
 Non dedurre emozioni, inesperienza o difficoltà da attività, identità o contesto; non attribuire un problema che il commento nega di avere.
 La citazione deve sostenere il legame con il problema, non limitarsi a parole condivise con il pain point.
 Se manca questo sostegno, restituisci matches vuoto per quel problema. Non riempire le categorie con esempi deboli.
+Per direct valuta il testo del SINGOLO commento: titolo, post, altri commenti o pain point non possono prestargli un problema che non dichiara.
+Esempi di distinzione (illustrativi, non sono record da classificare):
+- Problema: ansia da preparazione per un primo viaggio. "Viaggio spesso da solo e divido le confezioni in due porzioni": nessuna associazione; abitudine e viaggio da soli non dimostrano ansia né inesperienza.
+- Stesso problema. "È la mia prima uscita da solo e questo video ha alleviato la mia ansia per i pasti": direct; il problema vissuto è esplicito anche se è stato alleviato.
+- Problema: sapore deludente. "Aggiungo spezie ai pasti": nessuna associazione; "I pasti sono insipidi, devo aggiungere spezie": direct.
 supportType: direct per una testimonianza autonoma, confirmation per una conferma con padre esplicito,
 ambiguous per una conferma priva di contesto sufficiente. "Anch'io", "same here", "+1", "agree", "this!" non sono testimonianze autonome.
 Una confirmation deve indicare in contextRecordIds il parentRecordId effettivo, oppure il contextId se parentId indica quel post (t3_).
