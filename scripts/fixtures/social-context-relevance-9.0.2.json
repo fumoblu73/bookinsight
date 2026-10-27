@@ -1,0 +1,12 @@
+{
+  "platform": "youtube",
+  "painPoint": "Pasti freeze-dried troppo costosi per uso frequente in escursionismo",
+  "evaluationNote": "Contratto a tre esiti: la lamentela con referente non identificabile resta incerta. La precedente fixture binaria resta conservata come evidenza della revisione, ma richiedeva un’inclusione non dimostrabile dal singolo commento.",
+  "cases": [
+    { "commentId": "Ugz_oAM6JCAcVUsrDmJ4AaABAg", "expectedOutcome": "unsupported", "reason": "Prezzo unitario e consiglio economico senza problema dichiarato." },
+    { "commentId": "UgyK0piY234N2Ram-AJ4AaABAg", "expectedOutcome": "unsupported", "reason": "Correzione di porzioni e prezzo, senza lamentela." },
+    { "commentId": "UgyXzwjsqqeIRM1HSo14AaABAg", "expectedOutcome": "supported", "reason": "Problema di costo e Mountain House espliciti nel commento." },
+    { "commentId": "Ugz4TEtkgjeEPvSc8tp4AaABAg", "expectedOutcome": "supported", "reason": "Costo eccessivo e prodotti interessati espliciti." },
+    { "commentId": "Ugy5DfW1gm3tlTRTdYd4AaABAg", "expectedOutcome": "uncertain", "reason": "Lamentela esplicita, ma those dinners non identifica da solo i prodotti e manca un padre verificabile." }
+  ]
+}

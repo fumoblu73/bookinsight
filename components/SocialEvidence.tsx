@@ -6,8 +6,24 @@ export default function SocialEvidence({ painPointId, evidence }: {
   evidence?: SocialEvidenceReport
 }) {
   const metrics = painPointId ? evidence?.metrics[painPointId] : undefined
+  const uncertain = evidence?.manifest.records.filter(r => painPointId && evidence.uncertainRecordIds?.[painPointId]?.includes(r.recordId)) ?? []
+  const unresolved = painPointId ? evidence?.unresolvedRecordIds?.[painPointId]?.length ?? 0 : 0
+  const uncertainDetails = uncertain.length > 0 && (
+    <details className="pt-1 text-amber-800">
+      <summary className="cursor-pointer">Commenti con pertinenza o contesto incerti ({uncertain.length})</summary>
+      <ul className="mt-2 space-y-2">{uncertain.map(r => <li key={r.recordId}>
+        <p className="italic">“{r.transmittedText}”</p>
+        <p>{r.platform === 'reddit' ? 'Reddit' : 'YouTube'} · Commento: {r.sourceCommentId ?? 'ID originale assente'}</p>
+        <p>Escluso dai conteggi confermati; valutazione incerta.</p>
+      </li>)}</ul>
+    </details>
+  )
   if (!metrics || metrics.M === null) return (
-    <p className="mt-2 text-xs text-zinc-500">U/T/M non disponibili{evidence?.processing?.budgetExhausted ? ': tempo di analisi esaurito' : metrics?.status === 'failed' ? ': attribuzione non riuscita' : ''}.</p>
+    <div className="mt-2 text-xs text-zinc-500 space-y-1">
+      <p>U/T/M non disponibili{uncertain.length ? ': pertinenza o contesto incerti' : evidence?.processing?.budgetExhausted ? ': tempo di analisi esaurito' : metrics?.status === 'failed' ? ': attribuzione non riuscita' : ''}.</p>
+      {unresolved > 0 && <p>Commenti senza una decisione valida: {unresolved}.</p>}
+      {uncertainDetails}
+    </div>
   )
   const associations = evidence!.associations.filter(a => a.painPointId === painPointId)
   return (
@@ -17,8 +33,10 @@ export default function SocialEvidence({ painPointId, evidence }: {
       </p>
       <p>U: autori identificabili · T: thread/video distinti · M: commenti pertinenti distinti.</p>
       <p>Conteggi confermati nel campione analizzato; non misurano la prevalenza nel mercato.</p>
-      {!evidence?.verification && <p className="text-amber-700">Questi conteggi precedono la nuova verifica di pertinenza.</p>}
+      {evidence?.verification?.version !== 'problem-support-v2' && <p className="text-amber-700">Questi conteggi precedono la nuova verifica di pertinenza.</p>}
       {metrics.status === 'partial' && <p className="text-amber-700">Attribuzione parziale: {metrics.reviewedComments}/{metrics.totalComments} commenti esaminati; i conteggi possono essere incompleti.</p>}
+      {unresolved > 0 && <p>Commenti senza una decisione valida: {unresolved}.</p>}
+      {uncertainDetails}
       {metrics.unknownAuthorMentions > 0 && <p>{metrics.unknownAuthorMentions} menzioni con autore sconosciuto: U include solo gli autori identificabili.</p>}
       {metrics.uncertainIdentityMentions > 0 && <p>{metrics.uncertainIdentityMentions} evidenze con identità incerta, escluse dai conteggi confermati.</p>}
       {metrics.ambiguousConfirmations > 0 && <p>{metrics.ambiguousConfirmations} conferme ambigue escluse dai conteggi.</p>}

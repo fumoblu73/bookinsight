@@ -30,6 +30,7 @@ test('la verifica indipendente esclude topic e smentite; gli incerti non diventa
     recordId: c.recordId, painPointId: c.painPointId,
     verdict: ['unsupported', 'supported', 'unsupported', 'unclear'][i],
     reason: ['topic_only', 'explicit_problem', 'contradiction', 'insufficient_evidence'][i], problemQuote: c.text,
+    problemExpressed: ['no', 'yes', 'no', 'unclear'][i], referentIdentified: 'yes',
   })) }) })
   assert.deepEqual([result.metrics['pain-youtube'].U, result.metrics['pain-youtube'].T, result.metrics['pain-youtube'].M], [1, 1, 1])
   assert.equal(result.metrics['pain-youtube'].status, 'partial')
@@ -40,7 +41,7 @@ test('la verifica indipendente esclude topic e smentite; gli incerti non diventa
 })
 
 test('mancanza, errore o approvazione malformata del revisore non certificano i candidati', async () => {
-  for (const verify of [async () => ({}), async () => { throw new Error('Unavailable') }, async (prompt: string) => ({ checks: data(prompt).checks.map((c: { recordId: string; painPointId: string }) => ({ ...c, verdict: 'supported', reason: 'explicit_problem', problemQuote: 'Invented text' })) })]) {
+  for (const verify of [async () => ({}), async () => { throw new Error('Unavailable') }, async (prompt: string) => ({ checks: data(prompt).checks.map((c: { recordId: string; painPointId: string }) => ({ ...c, verdict: 'supported', reason: 'explicit_problem', problemExpressed: 'yes', referentIdentified: 'yes', problemQuote: 'Invented text' })) })]) {
     const result = await runSocialAttribution(corpus('youtube', 1, 1), [pain()], proposeAll, { verify })
     assert.equal(result.associations.length, 0)
     assert.equal(result.metrics['pain-youtube'].M, null)
@@ -74,7 +75,7 @@ test('una conferma richiede il problema del padre verificato, non soltanto la re
     { recordId: child.recordId, matches: [{ painPointId: 'pain-reddit', supportType: 'confirmation', quote: child.text, contextRecordIds: [parent.recordId] }] },
   ] }
   const checks = verificationCandidates(batch, output)
-  const verified = parseSocialVerification(checks, { checks: checks.map(c => ({ recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', reason: c.supportType === 'direct' ? 'explicit_problem' : 'linked_confirmation', problemQuote: parent.text })) })
+  const verified = parseSocialVerification(checks, { checks: checks.map(c => ({ recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', problemExpressed: 'yes', referentIdentified: 'yes', reason: c.supportType === 'direct' ? 'explicit_problem' : 'linked_confirmation', problemQuote: parent.text })) })
   const result = aggregateSocialEvidence(manifest, [pain('reddit')], [{ batch, output, verification: verified }], { requireVerification: true })
   assert.equal(result.metrics['pain-reddit'].M, 2)
   const rejectedParent = verified.map(v => v.recordId === parent.recordId ? { ...v, verdict: 'unsupported' as const, reason: 'topic_only' as const } : v)
@@ -104,4 +105,90 @@ test('un gruppo mai avviato per budget e distinto da un errore del provider', as
   assert.equal(result.metrics['pain-youtube'].status, 'not_run')
   assert.equal(result.metrics['pain-youtube'].M, null)
   assert.deepEqual(result.processing?.unstartedRecordIds, [y.records[0].recordId])
+})
+
+test('risposta senza decisions: diagnostica esplicita e un recupero dei soli record mancanti', async () => {
+  const m = corpus('reddit', 1, 3)
+  const calls: string[][] = []
+  const result = await runSocialAttribution(m, [pain('reddit')], async prompt => {
+    const d = data(prompt); calls.push(d.recordsToReview.map((r: { recordId: string }) => r.recordId))
+    if (calls.length === 1) return { results: [] }
+    return { decisions: d.recordsToReview.map((r: { recordId: string }) => ({ recordId: r.recordId, matches: [] })) }
+  })
+  assert.equal(calls.length, 2)
+  assert.equal(result.processing?.diagnostics?.[0].reason, 'missing_decisions')
+  assert.ok(result.processing?.records?.every(r => r.status === 'valid' && r.attempts === 2))
+  assert.equal(result.metrics['pain-reddit'].status, 'complete')
+  assert.equal(result.metrics['pain-reddit'].M, 0)
+})
+
+test('decisioni duplicate o malformate: il recupero preserva i record gia validi', async () => {
+  for (const mode of ['duplicate_record', 'invalid_matches', 'invalid_quote'] as const) {
+    const m = corpus('reddit', 1, 2), calls: string[][] = []
+    const result = await runSocialAttribution(m, [pain('reddit')], async prompt => {
+      const ids = data(prompt).recordsToReview.map((r: { recordId: string }) => r.recordId)
+      calls.push(ids)
+      if (calls.length > 1) return { decisions: ids.map((recordId: string) => ({ recordId, matches: [] })) }
+      const broken = { recordId: ids[1], matches: mode === 'invalid_matches' ? null : mode === 'invalid_quote' ? [{ painPointId: 'pain-reddit', supportType: 'direct', quote: 'invented', contextRecordIds: [] }] : [] }
+      return { decisions: [{ recordId: ids[0], matches: [] }, broken, ...(mode === 'duplicate_record' ? [broken] : [])] }
+    })
+    assert.deepEqual(calls, [m.records.map(r => r.recordId), [m.records[1].recordId]])
+    assert.equal(result.processing?.diagnostics?.[0].reason, mode)
+    assert.equal(result.processing?.records?.[0].attempts, 1)
+    assert.equal(result.metrics['pain-reddit'].reviewedComments, 2)
+  }
+})
+
+test('due risposte incomplete restano non disponibili con motivo, senza tentativi ulteriori', async () => {
+  let calls = 0
+  const result = await runSocialAttribution(corpus('reddit', 1, 1), [pain('reddit')], async prompt => {
+    calls++; return { decisions: [{ recordId: data(prompt).recordsToReview[0].recordId, matches: null }] }
+  })
+  assert.equal(calls, 2)
+  assert.equal(result.metrics['pain-reddit'].M, null)
+  assert.equal(result.processing?.records?.[0].reason, 'invalid_matches')
+  assert.equal(result.processing?.records?.[0].status, 'invalid')
+  assert.equal(result.unresolvedRecordIds?.['pain-reddit'].length, 1)
+})
+
+test('i recuperi non precedono il primo tentativo dell’altra piattaforma', async () => {
+  const r = corpus('reddit', 1, 1), y = corpus('youtube', 1, 1), calls: string[] = []
+  await runSocialAttribution({ ...r, contexts: [...r.contexts, ...y.contexts], records: [...r.records, ...y.records] }, [pain('reddit'), pain()], async prompt => {
+    const d = data(prompt); calls.push(d.context.platform)
+    return calls.length === 1 ? {} : { decisions: d.recordsToReview.map((r: { recordId: string }) => ({ recordId: r.recordId, matches: [] })) }
+  }, { concurrency: 1 })
+  assert.deepEqual(calls, ['reddit', 'youtube', 'reddit'])
+})
+
+test('la verifica recupera solo le coppie mancanti, conservando approvazioni e incertezze', async () => {
+  const m = corpus('youtube', 1, 3), checks: string[][] = []
+  const result = await runSocialAttribution(m, [pain()], proposeAll, { verify: async prompt => {
+    const cs = data(prompt).checks; checks.push(cs.map((c: { recordId: string }) => c.recordId))
+    return { checks: cs.filter((_c: unknown, i: number) => checks.length > 1 || i < 2).map((c: { recordId: string; painPointId: string; text: string }) => ({
+      recordId: c.recordId, painPointId: c.painPointId,
+      verdict: c.recordId === m.records[1].recordId ? 'unclear' : 'unsupported',
+      reason: c.recordId === m.records[1].recordId ? 'ambiguous_referent' : 'topic_only',
+      problemExpressed: c.recordId === m.records[1].recordId ? 'yes' : 'no',
+      referentIdentified: c.recordId === m.records[1].recordId ? 'unclear' : 'yes',
+    })) }
+  } })
+  assert.deepEqual(checks, [m.records.map(r => r.recordId), [m.records[2].recordId]])
+  assert.equal(result.verification?.decisions.length, 3)
+  assert.equal(result.metrics['pain-youtube'].reviewedComments, 2)
+  assert.equal(result.metrics['pain-youtube'].uncertainComments, 1)
+  assert.deepEqual(result.uncertainRecordIds?.['pain-youtube'], [m.records[1].recordId])
+})
+
+test('problema esplicito con oggetto ignoto: incerto, distinto da argomento non pertinente e da zero', () => {
+  const m = corpus('youtube', 1, 1), batch = attributionBatches(m, [pain()])[0]
+  const output = { decisions: [{ recordId: m.records[0].recordId, matches: [{ painPointId: 'pain-youtube', supportType: 'direct', quote: m.records[0].transmittedText, contextRecordIds: [] }] }] }
+  const checks = verificationCandidates(batch, output)
+  const base = { recordId: m.records[0].recordId, painPointId: 'pain-youtube', problemExpressed: 'yes', referentIdentified: 'unclear' }
+  assert.equal(parseSocialVerification(checks, { checks: [{ ...base, verdict: 'unsupported', reason: 'topic_only' }] }).length, 0)
+  const verification = parseSocialVerification(checks, { checks: [{ ...base, verdict: 'unclear', reason: 'ambiguous_referent' }] })
+  const result = aggregateSocialEvidence(m, [pain()], [{ batch, output, verification }], { requireVerification: true })
+  assert.equal(result.metrics['pain-youtube'].M, null)
+  assert.equal(result.metrics['pain-youtube'].status, 'partial')
+  assert.equal(result.metrics['pain-youtube'].uncertainComments, 1)
+  assert.equal(result.reviewedRecordIds?.['pain-youtube'].length, 0)
 })

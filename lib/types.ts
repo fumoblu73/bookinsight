@@ -256,14 +256,26 @@ export interface SocialMetrics {
   rejectedAssociations: number
   reviewedComments: number
   totalComments: number
+  uncertainComments?: number
 }
 
 export interface SocialVerificationDecision {
   recordId: string
   painPointId: string
   verdict: 'supported' | 'unsupported' | 'unclear'
-  reason: 'explicit_problem' | 'explicit_need' | 'resolved_problem' | 'linked_confirmation' | 'topic_only' | 'contradiction' | 'insufficient_evidence'
+  reason: 'explicit_problem' | 'explicit_need' | 'resolved_problem' | 'linked_confirmation' | 'topic_only' | 'contradiction' | 'insufficient_evidence' | 'ambiguous_referent'
   problemQuote?: string
+  problemExpressed?: 'yes' | 'no' | 'unclear'
+  referentIdentified?: 'yes' | 'no' | 'unclear'
+}
+
+export interface SocialDiagnostic {
+  contextId: string
+  stage: 'extraction' | 'verification'
+  attempt: 1 | 2
+  recordIds: string[]
+  painPointId?: string
+  reason: 'missing_decisions' | 'missing_record' | 'duplicate_record' | 'invalid_matches' | 'unknown_pain' | 'invalid_quote' | 'invalid_support' | 'invalid_context' | 'unexpected_record' | 'missing_verification' | 'invalid_verification' | 'request_error'
 }
 
 export interface SocialEvidenceReport {
@@ -272,12 +284,16 @@ export interface SocialEvidenceReport {
   associations: SocialAssociation[]
   metrics: Record<string, SocialMetrics>
   reviewedRecordIds?: Record<string, string[]>
-  verification?: { version: 'problem-support-v1'; decisions: SocialVerificationDecision[] }
+  uncertainRecordIds?: Record<string, string[]>
+  unresolvedRecordIds?: Record<string, string[]>
+  verification?: { version: 'problem-support-v1' | 'problem-support-v2'; decisions: SocialVerificationDecision[] }
   processing?: {
     budgetExhausted: boolean
     attemptedRecordIds: string[]
     unstartedRecordIds: string[]
     failures: { contextId: string; stage: 'extraction' | 'verification'; reason: string; status?: number }[]
+    diagnostics?: SocialDiagnostic[]
+    records?: { recordId: string; status: 'valid' | 'invalid' | 'not_run'; attempts: number; reason?: SocialDiagnostic['reason'] }[]
   }
 }
 

@@ -124,6 +124,13 @@ citazione letterale del problema, verificata nel testo del commento o nel padre.
 Prezzi neutrali, consigli senza problemi espressi e smentite non sostengono il
 problema. Il revisore non applica soglie di prezzo o di convenienza.
 
+Il protocollo `problem-support-v2` separa `problemExpressed` e
+`referentIdentified` (yes/no/unclear). Per approvare un'associazione entrambi
+devono essere yes. Una lamentela con oggetto non identificabile è
+`unclear/ambiguous_referent`, distinta da `unsupported/topic_only`; quest'ultimo
+richiede che il problema non sia espresso. Il parser rifiuta risposte incoerenti
+con questi requisiti. I campi delle versioni precedenti restano leggibili.
+
 Solo le proposte approvate possono diventare associazioni. Il rifiuto motivato
 è una decisione negativa valida; una verifica mancante, malformata, duplicata o
 incerta lascia il record non verificato per quel pain point. Non lo trasforma
@@ -131,6 +138,14 @@ in un'assenza confermata. Il report conserva `verification.decisions` e, per ogn
 pain point, `reviewedRecordIds`, così una regressione non può scambiare un caso
 mai esaminato per un'esclusione corretta. Le conferme approvate devono comunque
 superare il controllo deterministico della parentela e della catena di sostegno.
+
+`uncertainRecordIds` conserva i casi semanticamente incerti, anche quando
+l'estrattore li dichiara ambiguous. `unresolvedRecordIds` conserva invece i casi
+senza una valutazione valida. Entrambi sono separati dai record con decisione
+positiva o negativa valida. Gli incerti non incrementano U/T/M e impediscono di
+dichiarare la copertura completa. Se tutti i record sono incerti, U/T/M restano
+null e lo stato è partial; una conferma ambigua non diventa uno zero completo.
+La vista rende consultabili gli estratti incerti e dichiara i record irrisolti.
 
 ## Completezza e limiti operativi
 
@@ -143,12 +158,24 @@ superare il controllo deterministico della parentela e della catena di sostegno.
   evitando che il prefisso Reddit occupi tutto il tempo disponibile.
 - Ogni richiesta ha timeout di 12 secondi, nessun retry SDK e massimo 8192
   token di output. Risposte interrotte/troncate sono trattate come fallimenti.
+- Un solo recupero applicativo dei record mancanti o strutturalmente invalidi
+  è ammesso entro gli stessi 45 secondi. I recuperi entrano in fondo alla coda,
+  dopo il primo tentativo degli altri contenitori; le decisioni già valide
+  vengono conservate. Anche la verifica può recuperare una sola volta le coppie
+  mancanti, preservando i giudizi validi, inclusi unclear. Le incertezze
+  semantiche non vengono riprovate per ottenere un'approvazione.
 - Batch completati, omessi e falliti sono distinguibili. I conteggi di una
   lavorazione parziale sono accompagnati da stato e numero di commenti esaminati.
   `processing` conserva record avviati, record mai avviati, esaurimento del budget
   e fallimenti distinti fra attribuzione e verifica. Una fonte mai avviata resta
   `not_run`; una fonte avviata senza decisioni valide è `failed`. In entrambi i
   casi i conteggi non disponibili restano null.
+  `processing.diagnostics` distingue lista di decisioni assente, record omessi,
+  duplicati, matches non validi, riferimenti/citazioni invalidi e verifiche
+  mancanti o malformate. Conserva ID interni richiesti, fase e numero del
+  tentativo, senza output grezzi del modello. `processing.records` registra
+  l'esito strutturale finale e gli eventuali due tentativi per ciascun record;
+  non costituisce da solo approvazione semantica.
   I fallimenti registrano nei log contesto interno, dimensione del gruppo,
   classe dell'errore e stato HTTP se disponibile, senza testo o messaggi grezzi
   del provider.
@@ -245,6 +272,24 @@ La valutazione richiede una decisione valida per ogni commento di controllo;
 nei report legacy, senza registro per record, richiede la copertura completa.
 L'assenza causata da un batch fallito non vale come esclusione corretta.
 Non riscrive report, associazioni o conteggi archiviati.
+
+La successiva revisione distingue tre esiti: supporto, assenza di supporto e
+incertezza. Il caso “those dinners” della vecchia fixture binaria è stato
+riconosciuto come lamentela con referente non dimostrabile dal singolo commento;
+la nuova specifica lo attende incerto. La vecchia fixture e il suo fallimento
+4/5 restano conservati come evidenza storica, non sono reinterpretati come un
+successo. La nuova fixture è `scripts/fixtures/social-context-relevance-9.0.2.json`.
+
+```bash
+node scripts/check-social-outcomes.mjs report.json fixture-preregistrata.json ID_PROBLEMA
+```
+
+La definizione del problema nella fixture deve coincidere esattamente con
+quella del report. Per un nuovo collaudo live, si fissano descrizione, ID e casi
+attesi dopo l'estrazione e prima della finalizzazione; non si modificano dopo
+aver visto l'attribuzione. Il controllo verifica anche che un caso incerto non
+sia semplicemente un record mai elaborato. I test locali con risposte simulate
+verificano il contratto, non la qualità del modello reale.
 
 Le viste report e storico usano un formato numerico con raggruppamento
 esplicito, anche per quattro cifre, e date nel fuso Europe/Rome. Il prefisso

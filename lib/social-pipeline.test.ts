@@ -60,7 +60,7 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   t.mock.method(ai, 'callSocialVerification', async (prompt: string) => {
     const data = JSON.parse(prompt.split('DATI:\n')[1])
     return { checks: data.checks.map((c: { recordId: string; painPointId: string; text: string }) => ({
-      recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', reason: 'explicit_problem', problemQuote: c.text,
+      recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', reason: 'explicit_problem', problemExpressed: 'yes', referentIdentified: 'yes', problemQuote: c.text,
     })) }
   })
   const attribution = t.mock.method(ai, 'callSocialAttribution', async (prompt: string) => {

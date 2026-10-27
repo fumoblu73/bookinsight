@@ -64,3 +64,17 @@ test('budget esaurito e distinto da un guasto quando nessun risultato e disponib
   assert.match(html, /tempo di analisi esaurito/)
   assert.ok(!html.includes('attribuzione non riuscita'))
 })
+
+test('gli incerti sono consultabili e distinti dai record senza decisione valida', () => {
+  const report = evidence()
+  Object.assign(report.metrics.pp1, { U: null, T: null, M: null, status: 'partial', uncertainComments: 1 })
+  report.uncertainRecordIds = { pp1: ['r1'] }
+  let html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /pertinenza o contesto incerti/)
+  assert.match(html, /A real problem with meals/)
+  assert.ok(!html.includes('M: 0'))
+  report.uncertainRecordIds = { pp1: [] }
+  report.unresolvedRecordIds = { pp1: ['r1'] }
+  html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /Commenti senza una decisione valida: 1/)
+})

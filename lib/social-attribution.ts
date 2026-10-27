@@ -1,8 +1,9 @@
 import type {
-  PainPoint, SocialAssociation, SocialCorpusManifest, SocialEvidenceReport,
+  PainPoint, SocialAssociation, SocialCorpusManifest, SocialEvidenceReport, SocialDiagnostic,
   SocialMetrics, SocialRecord, SocialVerificationDecision,
 } from './types'
 import { parseSocialVerification, promptSocialVerification, verificationCandidates, verificationKey } from './social-verification'
+import { inspectSocialDecisions } from './social-decisions'
 
 export interface AttributionBatch {
   records: SocialRecord[]
@@ -47,6 +48,7 @@ export function promptSocialAttribution(batch: AttributionBatch): string {
 Non creare nuovi problemi, non valutare F/I/S, non calcolare conteggi o score.
 Esamina OGNI recordId di recordsToReview rispetto a TUTTI i painPoints della stessa piattaforma.
 Restituisci esattamente una decisione per ciascun record richiesto, anche se matches è vuoto.
+Per un record senza menzioni restituisci comunque {"recordId":"ID fornito","matches":[]}; una lista di decisioni vuota non copre i record richiesti.
 Una menzione può riguardare più problemi; più citazioni dello stesso problema sono una sola associazione.
 PERTINENZA: il commento deve documentare il problema specifico descritto dal pain point,
 non soltanto parlare dello stesso argomento, target o situazione. Leggi il nucleo del problema e le sue qualificazioni.
@@ -55,6 +57,7 @@ Consigli, ricette, preferenze, confronti e descrizioni di abitudini non bastano:
 Non dedurre emozioni, inesperienza o difficoltà da attività, identità o contesto; non attribuire un problema che il commento nega di avere.
 La citazione deve sostenere il legame con il problema, non limitarsi a parole condivise con il pain point.
 Se manca questo sostegno, restituisci matches vuoto per quel problema. Non riempire le categorie con esempi deboli.
+Se il problema è espresso ma il suo oggetto non è identificabile nel singolo testo, usa ambiguous per quel problema: è un caso incerto, non un'assenza confermata.
 Per direct valuta il testo del SINGOLO commento: titolo, post, altri commenti o pain point non possono prestargli un problema che non dichiara.
 Esempi di distinzione (illustrativi, non sono record da classificare):
 - Problema: ansia da preparazione per un primo viaggio. "Viaggio spesso da solo e divido le confezioni in due porzioni": nessuna associazione; abitudine e viaggio da soli non dimostrano ansia né inesperienza.
@@ -102,6 +105,7 @@ export function aggregateSocialEvidence(
   const reviewed = new Set<string>()
   const rejected = new Map<string, number>()
   const ambiguous = new Map<string, Set<string>>()
+  const uncertain = new Map<string, Set<string>>()
   const candidates = new Map<string, SocialAssociation>()
   const verification = results.flatMap(r => r.verification ?? [])
   const verified = new Map(verification.map(v => [verificationKey(v.recordId, v.painPointId), v]))
@@ -109,6 +113,11 @@ export function aggregateSocialEvidence(
   const markAmbiguous = (painPointId: string, recordId: string) => {
     if (!ambiguous.has(painPointId)) ambiguous.set(painPointId, new Set())
     ambiguous.get(painPointId)!.add(recordId)
+    markUncertain(painPointId, recordId)
+  }
+  const markUncertain = (painPointId: string, recordId: string) => {
+    if (!uncertain.has(painPointId)) uncertain.set(painPointId, new Set())
+    uncertain.get(painPointId)!.add(recordId)
   }
   for (const { batch, output } of results) {
     const decisions = object(output)?.decisions
@@ -132,7 +141,11 @@ export function aggregateSocialEvidence(
         if (typeof id !== 'string' || !painById.has(id) || painById.get(id)!.fonte !== record.platform) {
           batch.painPoints.forEach(p => { reject(p.id!); invalidPains.add(p.id!) }); continue
         }
-        if (match!.supportType === 'ambiguous') { markAmbiguous(id, record.recordId); continue }
+        if (match!.supportType === 'ambiguous') {
+          if (shortConfirmation(record.transmittedText)) markAmbiguous(id, record.recordId)
+          else markUncertain(id, record.recordId)
+          continue
+        }
         const quote = typeof match!.quote === 'string' ? match!.quote.trim() : ''
         const support = match!.supportType
         const refs = match!.contextRecordIds
@@ -146,7 +159,10 @@ export function aggregateSocialEvidence(
         }
         const review = verified.get(verificationKey(record.recordId, id))
         if (options.requireVerification) {
-          if (!review || review.verdict === 'unclear') { invalidPains.add(id); continue }
+          if (!review || review.verdict === 'unclear') {
+            if (review?.verdict === 'unclear') markUncertain(id, record.recordId)
+            invalidPains.add(id); continue
+          }
           if (review.verdict === 'unsupported') continue
           if (support === 'direct' && (!review.problemQuote || review.problemQuote.length > 300 ||
             !normalize(record.transmittedText).includes(normalize(review.problemQuote)))) { invalidPains.add(id); continue }
@@ -168,6 +184,7 @@ export function aggregateSocialEvidence(
   }
   // Una decisione ambigua prevale su assegnazioni contraddittorie dello stesso record.
   for (const [id, ids] of ambiguous) for (const recordId of ids) candidates.delete(`${id}:${recordId}`)
+  for (const [id, ids] of uncertain) for (const recordId of ids) candidates.delete(`${id}:${recordId}`)
   const associations = [...candidates.values()].filter(a => a.supportType === 'direct')
   const accepted = new Set(associations.map(a => `${a.painPointId}:${a.recordId}`))
   let pending = [...candidates.values()].filter(a => a.supportType === 'confirmation')
@@ -193,6 +210,7 @@ export function aggregateSocialEvidence(
     if (!added) break
   }
   pending.forEach(a => markAmbiguous(a.painPointId, a.recordId))
+  for (const [id, ids] of uncertain) for (const recordId of ids) reviewed.delete(`${id}:${recordId}`)
 
   const metrics: Record<string, SocialMetrics> = {}
   for (const pain of socialPains) {
@@ -200,7 +218,8 @@ export function aggregateSocialEvidence(
     const corpus = manifest.records.filter(r => r.platform === pain.fonte && !r.duplicateOf)
     const evidence = associations.filter(a => a.painPointId === id).map(a => records.get(a.recordId)!)
     const countable = evidence.filter(r => r.identityStatus === 'original' && !!r.containerId)
-    const uncertain = evidence.length - countable.length
+    const uncertainIdentity = evidence.length - countable.length
+    const uncertainComments = uncertain.get(id)?.size ?? 0
     const unknown = countable.filter(r => !r.authorKey).length
     const reviewedComments = corpus.filter(r => reviewed.has(`${id}:${r.recordId}`)).length
     const rejectedAssociations = rejected.get(id) ?? 0
@@ -210,10 +229,10 @@ export function aggregateSocialEvidence(
       U: available ? new Set(countable.flatMap(r => r.authorKey ? [r.authorKey] : [])).size : null,
       T: available ? new Set(countable.map(r => `${r.platform}:${r.containerId}`)).size : null,
       M: available ? new Set(countable.map(r => `${r.platform}:${r.sourceCommentId}`)).size : null,
-      status: complete ? 'complete' : available ? 'partial' : corpus.length &&
+      status: complete ? 'complete' : available || uncertainComments > 0 ? 'partial' : corpus.length &&
         (!options.processing || corpus.some(r => options.processing!.attemptedRecordIds.includes(r.recordId))) ? 'failed' : 'not_run',
-      completeness: { U: complete && !unknown && !uncertain, T: complete && !uncertain, M: complete && !uncertain },
-      unknownAuthorMentions: unknown, uncertainIdentityMentions: uncertain,
+      completeness: { U: complete && !unknown && !uncertainIdentity, T: complete && !uncertainIdentity, M: complete && !uncertainIdentity },
+      unknownAuthorMentions: unknown, uncertainIdentityMentions: uncertainIdentity, uncertainComments,
       ambiguousConfirmations: ambiguous.get(id)?.size ?? 0, rejectedAssociations,
       reviewedComments, totalComments: corpus.length,
     }
@@ -221,7 +240,9 @@ export function aggregateSocialEvidence(
   return {
     version: '9.0.2', manifest, associations, metrics,
     reviewedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => reviewed.has(`${p.id}:${r.recordId}`)).map(r => r.recordId)])),
-    ...(options.requireVerification ? { verification: { version: 'problem-support-v1' as const, decisions: verification } } : {}),
+    uncertainRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, [...(uncertain.get(p.id!) ?? [])]])),
+    unresolvedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => r.platform === p.fonte && !r.duplicateOf && !reviewed.has(`${p.id}:${r.recordId}`) && !uncertain.get(p.id!)?.has(r.recordId)).map(r => r.recordId)])),
+    ...(options.requireVerification ? { verification: { version: 'problem-support-v2' as const, decisions: verification } } : {}),
     ...(options.processing ? { processing: options.processing } : {}),
   }
 }
@@ -244,6 +265,15 @@ export async function runSocialAttribution(
   const results: BatchResult[] = []
   const attempted = new Set<string>()
   const failures: NonNullable<SocialEvidenceReport['processing']>['failures'] = []
+  const diagnostics: SocialDiagnostic[] = []
+  const attempts = new Map<string, number>()
+  const validRecords = new Set<string>()
+  const lastReason = new Map<string, SocialDiagnostic['reason']>()
+  const diagnose = (batch: AttributionBatch, stage: SocialDiagnostic['stage'], attempt: 1 | 2,
+    reason: SocialDiagnostic['reason'], recordIds: string[], painPointId?: string) => {
+    diagnostics.push({ contextId: batch.context.contextId, stage, attempt, reason, recordIds, ...(painPointId ? { painPointId } : {}) })
+    console.warn('[social-attribution] invalid response', { contextId: batch.context.contextId, stage, attempt, reason, records: recordIds.length })
+  }
   const verify = options.verify ?? extract
   const bounded = async (request: () => Promise<unknown>) => {
     if (controller.signal.aborted) throw new Error('Budget attribuzione esaurito')
@@ -265,24 +295,50 @@ export async function runSocialAttribution(
     failures.push(entry)
     console.warn('[social-attribution] batch failed', { ...entry, records: batch.records.length })
   }
+  type Checks = ReturnType<typeof verificationCandidates>
+  type Job = { kind: 'extraction'; batch: AttributionBatch; attempt: 1 | 2 } |
+    { kind: 'verification'; batch: AttributionBatch; attempt: 1 | 2; checks: Checks; result: BatchResult }
+  // I recuperi sono in fondo alla coda: nessun secondo tentativo precede l'avvio
+  // degli altri contenitori. Non estendono il budget né il numero di worker.
+  const jobs: Job[] = batches.map(batch => ({ kind: 'extraction', batch, attempt: 1 }))
+  const verifyChunk = async (batch: AttributionBatch, checks: Checks, result: BatchResult, attempt: 1 | 2) => {
+    let parsed: SocialVerificationDecision[] = [], requestFailed = false
+    try {
+      const output = await bounded(() => verify(promptSocialVerification(checks), controller.signal))
+      parsed = parseSocialVerification(checks, output)
+    } catch (err) { requestFailed = true; failure(batch, 'verification', err) }
+    result.verification!.push(...parsed)
+    const pending = checks.filter(c => !parsed.some(v => v.recordId === c.recordId && v.painPointId === c.painPointId))
+    for (const c of pending) diagnose(batch, 'verification', attempt, requestFailed ? 'request_error' : 'invalid_verification', [c.recordId], c.painPointId)
+    // unclear è una valutazione valida: non si riprova per ottenere un sì.
+    if (pending.length && attempt === 1 && !controller.signal.aborted) jobs.push({ kind: 'verification', batch, checks: pending, result, attempt: 2 })
+  }
   let cursor = 0
   const worker = async () => {
-    while (cursor < batches.length && !controller.signal.aborted) {
-      const batch = batches[cursor++]
-      batch.records.forEach(r => attempted.add(r.recordId))
+    while (cursor < jobs.length && !controller.signal.aborted) {
+      const job = jobs[cursor++], { batch, attempt } = job
+      if (job.kind === 'verification') { await verifyChunk(batch, job.checks, job.result, attempt); continue }
+      batch.records.forEach(r => { attempted.add(r.recordId); attempts.set(r.recordId, attempt) })
       const result: BatchResult = { batch, verification: [] }
       results.push(result)
+      let inspected: ReturnType<typeof inspectSocialDecisions>
       try {
-        result.output = await bounded(() => extract(promptSocialAttribution(batch), controller.signal))
-      } catch (err) { failure(batch, 'extraction', err); continue }
-      const checks = verificationCandidates(batch, result.output)
-      for (let i = 0; i < checks.length && !controller.signal.aborted; i += 8) {
-        const chunk = checks.slice(i, i + 8)
-        try {
-          const output = await bounded(() => verify(promptSocialVerification(chunk), controller.signal))
-          result.verification!.push(...parseSocialVerification(chunk, output))
-        } catch (err) { failure(batch, 'verification', err) }
+        inspected = inspectSocialDecisions(batch, await bounded(() => extract(promptSocialAttribution(batch), controller.signal)))
+      } catch (err) {
+        failure(batch, 'extraction', err)
+        inspected = { decisions: [], issues: batch.records.map(r => ({ recordId: r.recordId, reason: 'request_error' })) }
       }
+      for (const reason of new Set(inspected.issues.map(i => i.reason))) {
+        const ids = inspected.issues.filter(i => i.reason === reason).map(i => i.recordId)
+        diagnose(batch, 'extraction', attempt, reason, ids)
+        ids.forEach(id => lastReason.set(id, reason))
+      }
+      result.output = { decisions: inspected.decisions }
+      inspected.decisions.forEach(d => { validRecords.add(d.recordId); lastReason.delete(d.recordId) })
+      const missing = batch.records.filter(r => !validRecords.has(r.recordId))
+      if (missing.length && attempt === 1 && !controller.signal.aborted) jobs.push({ kind: 'extraction', batch: { ...batch, records: missing }, attempt: 2 })
+      const checks = verificationCandidates(batch, result.output)
+      for (let i = 0; i < checks.length && !controller.signal.aborted; i += 8) await verifyChunk(batch, checks.slice(i, i + 8), result, 1)
     }
   }
   try {
@@ -291,7 +347,11 @@ export async function runSocialAttribution(
       requireVerification: true,
       processing: {
         budgetExhausted: controller.signal.aborted, attemptedRecordIds: [...attempted],
-        unstartedRecordIds: batches.flatMap(b => b.records).filter(r => !attempted.has(r.recordId)).map(r => r.recordId), failures,
+        unstartedRecordIds: batches.flatMap(b => b.records).filter(r => !attempted.has(r.recordId)).map(r => r.recordId), failures, diagnostics,
+        records: batches.flatMap(b => b.records).map(r => ({ recordId: r.recordId,
+          status: validRecords.has(r.recordId) ? 'valid' as const : attempted.has(r.recordId) ? 'invalid' as const : 'not_run' as const,
+          attempts: attempts.get(r.recordId) ?? 0, ...(lastReason.has(r.recordId) ? { reason: lastReason.get(r.recordId)! } : {}),
+        })),
       },
     })
   } finally {

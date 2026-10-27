@@ -160,7 +160,9 @@ test('conferma al post padre e cicli di conferme senza testimonianza diretta', (
   result = aggregateSocialEvidence(manifest, [pain()], [{ batch, output: { decisions: batch.records.map(r => ({ recordId: r.recordId,
     matches: [{ painPointId: 'pain1', supportType: 'confirmation', quote: r.transmittedText, contextRecordIds: [r.parentRecordId] }],
   })) } }])
-  assert.equal(result.metrics.pain1.M, 0)
+  assert.equal(result.metrics.pain1.M, null)
+  assert.equal(result.metrics.pain1.uncertainComments, 2)
+  assert.equal(result.metrics.pain1.status, 'partial')
   assert.equal(result.metrics.pain1.ambiguousConfirmations, 2)
 })
 
