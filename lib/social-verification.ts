@@ -54,12 +54,14 @@ Questa è una verifica indipendente: una proposta di associazione può essere sb
 Prima di decidere separa scopeMatched (yes|no|unclear) ed evidenceKind (stated_problem|stated_need|resolved_problem|neutral_description|hypothesis|unclear).
 scopeMatched riguarda l'OGGETTO e le qualificazioni che cambiano il significato del problema: prodotto, metodo, situazione, frequenza o esperienza richiesti dal pain point. Non basta appartenere allo stesso tema. Una difficoltà su un oggetto o metodo diverso non dimostra quel pain point; usa unsupported/scope_mismatch se la differenza è esplicita.
 Non richiedere coincidenze lessicali, ma non trasferire difficoltà fra prodotti, metodi o situazioni solo perché vicini. Se non puoi dimostrare il perimetro, scopeMatched=unclear e nessuna approvazione.
+Non confondere il perimetro con la realtà del problema: una semplice ipotesi sullo stesso fenomeno e oggetto ha scopeMatched=yes ed evidenceKind=hypothesis. La sola assenza di esperienza non rende diverso l'oggetto del problema.
 evidenceKind distingue un problema dichiarato (stated_problem), un bisogno attuale esplicito (stated_need), un problema vissuto e risolto (resolved_problem), una descrizione senza problema (neutral_description) e una semplice previsione o supposizione (hypothesis).
 Una previsione negativa senza esperienza o bisogno attuale esplicito resta unclear/insufficient_evidence, evidenceKind=hypothesis. Non trasformare il modo in cui qualcosa appare in un risultato sperimentato.
 Un bisogno o un'emozione dichiarati adesso possono essere reali anche se riguardano un'attività futura: non scartare automaticamente tutti i testi al futuro.
 Se topic è presente, è l'argomento ORIGINALE richiesto dall'utente: valuta separatamente topicRelevance (yes|no|unclear), cioè se la testimonianza riguarda quell'argomento.
 Usa il significato, sinonimi, traduzioni e relazioni esplicite: non richiedere le stesse parole della keyword. Un problema genericamente simile in un altro ambito non è pertinente.
 Non ricevi il titolo della fonte: l'argomento richiesto e il problema proposto non costituiscono un antecedente per i pronomi nel testo. Non usarli per completare oggetti, esperienze o problemi mancanti.
+Non ricevi la citazione selezionata dall'estrattore: esamina l'intero text e scegli autonomamente l'eventuale problemQuote, senza presumere che esista una prova positiva.
 Il problema proposto non prova da solo la coerenza con topic. Non assumere che una fonte recuperata dalla ricerca sia automaticamente pertinente.
 Con topicRelevance=no usa unsupported/out_of_topic, anche se un problema è espresso. Con topicRelevance=unclear e problema espresso usa unclear/unclear_topic, oppure ambiguous_referent se manca anche il referente. Non inventare il collegamento all'argomento.
 Se il testo non esprime il problema, unsupported/topic_only o contradiction resta possibile anche con topicRelevance=unclear. Un caso incerto non deve diventare un'approvazione.
@@ -81,7 +83,7 @@ Per supported copia in problemQuote un unico estratto letterale contiguo, massim
 da text per direct, da parentText per confirmation. Non basta citare un vocabolo comune al problema.
 Restituisci una decisione per ogni coppia recordId/painPointId richiesta.
 Rispondi SOLO JSON: {"checks":[{"recordId":"...","painPointId":"...","topicRelevance":"yes|no|unclear","scopeMatched":"yes|no|unclear","evidenceKind":"stated_problem|stated_need|resolved_problem|neutral_description|hypothesis|unclear","problemExpressed":"yes|no|unclear","referentIdentified":"yes|no|unclear","verdict":"supported|unsupported|unclear","reason":"explicit_problem|explicit_need|resolved_problem|linked_confirmation|topic_only|contradiction|insufficient_evidence|ambiguous_referent|out_of_topic|unclear_topic|scope_mismatch","problemQuote":"..."}]}.
-DATI:\n${JSON.stringify({ ...(topic?.trim() ? { topic: topic.trim() } : {}), checks })}`
+DATI:\n${JSON.stringify({ ...(topic?.trim() ? { topic: topic.trim() } : {}), checks: checks.map(({ recordId, painPointId, problem, text, supportType, parentText }) => ({ recordId, painPointId, problem, text, supportType, ...(parentText ? { parentText } : {}) })) })}`
 }
 
 /** Una risposta mancante, duplicata o non coerente resta non verificata. */

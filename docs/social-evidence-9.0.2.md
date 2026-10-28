@@ -463,3 +463,17 @@ Esito locale:
 - L'importazione del commit remoto e della sua storia è stata verificata per
   SHA, albero dei file e connettività Git. Questa ricostruzione della base ha
   importato commit già esistenti senza modificare i rami remoti.
+### Collaudo su più argomenti
+
+Il revisore riceve l'intero estratto ammesso, ma non la citazione proposta
+dall'estrattore: sceglie autonomamente l'eventuale prova letterale. Il perimetro
+del problema e il carattere ipotetico della testimonianza restano due giudizi
+distinti. Le ipotesi sullo stesso oggetto vanno proposte come ambigue, senza
+essere trasformate in esperienze o in assenze confermate.
+
+I casi sintetici non misurano la domanda di mercato. Un collaudo attraverso
+le API dell'applicazione verifica anche l'estrazione e la selezione dei pain
+point, che precedono U/T/M e mantengono le soglie F/I/S esistenti. Se un pain
+point non arriva a questa fase, i suoi casi non possono essere dichiarati
+superati dal revisore. Una redistribuzione su più thread/video costituisce
+una variante separata, da registrare senza cancellare la prova originale.

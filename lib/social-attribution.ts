@@ -58,6 +58,7 @@ Valuta il significato, anche con sinonimi o altre lingue: non richiedere le stes
 Se il problema è espresso ma il collegamento a topic non è dimostrabile, usa ambiguous; se riguarda chiaramente un altro argomento, non associarlo.
 Verifica anche oggetto e qualificazioni del pain point: non trasferire un problema fra prodotti, metodi o situazioni diversi, pur nello stesso tema.
 Una descrizione neutra di importi, porzioni o rapporti costo/quantità non esprime da sola un problema. Una previsione negativa senza esperienza o bisogno attuale esplicito resta ambiguous, non direct.
+Se una supposizione nomina esplicitamente il fenomeno del pain point sullo stesso oggetto, proponila comunque con supportType=ambiguous: sarà il revisore a mantenerla incerta. Non usare matches vuoto solo perché manca un'esperienza vissuta; matches vuoto riguarda invece fatti neutrali, smentite o problemi diversi.
 Per direct il testo deve indicare un ostacolo, bisogno insoddisfatto, conseguenza negativa oppure un problema vissuto e poi risolto.
 Consigli, ricette, preferenze, confronti e descrizioni di abitudini non bastano: associa solo se il testo indica anche quale problema specifico affrontano.
 Non dedurre emozioni, inesperienza o difficoltà da attività, identità o contesto; non attribuire un problema che il commento nega di avere.
@@ -70,7 +71,7 @@ Esempi di distinzione (illustrativi, non sono record da classificare):
 - Stesso problema. "È la mia prima uscita da solo e questo video ha alleviato la mia ansia per i pasti": direct; il problema vissuto è esplicito anche se è stato alleviato.
 - Problema: sapore deludente. "Aggiungo spezie ai pasti": nessuna associazione; "I pasti sono insipidi, devo aggiungere spezie": direct.
 supportType: direct per una testimonianza autonoma, confirmation per una conferma con padre esplicito,
-ambiguous per una conferma priva di contesto sufficiente. "Anch'io", "same here", "+1", "agree", "this!" non sono testimonianze autonome.
+ambiguous per ipotesi sul problema, pertinenza o referente non dimostrabili, oppure conferme prive di contesto sufficiente. "Anch'io", "same here", "+1", "agree", "this!" non sono testimonianze autonome.
 Una confirmation deve indicare in contextRecordIds il parentRecordId effettivo, oppure il contextId se parentId indica quel post (t3_).
 Non dedurre la parentela dall'ordine dei testi. Il contesto di sfondo non aggiunge record da esaminare.
 quote: un unico estratto contiguo copiato esattamente da text del commento (massimo 300 caratteri).

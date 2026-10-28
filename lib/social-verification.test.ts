@@ -60,6 +60,8 @@ test('il revisore vede il singolo commento diretto, senza autori, score o contes
   assert.ok(!prompt.includes('PRIVATE_PARENT_TEXT'))
   assert.ok(!prompt.includes('reddit:account:'))
   assert.ok(!prompt.includes('"F":'))
+  assert.ok(!Object.hasOwn(data(prompt).checks[0], 'quote'), 'la citazione proposta non orienta il revisore')
+  assert.equal(data(prompt).checks[0].text, batch.records[0].transmittedText, 'il revisore conserva l’intero estratto')
   for (const raw of [{ checks: [{ recordId: 'invented', painPointId: 'pain-reddit', verdict: 'supported' }] }, { checks: [...checks, ...checks] }]) assert.equal(parseSocialVerification(checks, raw).length, 0)
 })
 
