@@ -35,7 +35,7 @@ test('quattro temi e due piattaforme: fuori tema e incerti non alimentano U/T/M,
       assert.equal(d.topic, topic.keyword)
       return { checks: d.checks.map((c: { recordId: string; painPointId: string; text: string; sourceTitle: string }) => {
         const expected = topic.cases.find(item => item.id === c.recordId)!
-        assert.equal(c.sourceTitle, topic.sourceTitle)
+        assert.equal(c.sourceTitle, undefined)
         return { recordId: c.recordId, painPointId: c.painPointId, topicRelevance: expected.topicRelevance,
           scopeMatched: 'yes', evidenceKind: expected.reason === 'topic_only' || expected.reason === 'contradiction' ? 'neutral_description' : 'stated_problem',
           verdict: expected.outcome, reason: expected.reason, problemExpressed: expected.reason === 'topic_only' || expected.reason === 'contradiction' ? 'no' : 'yes',
@@ -87,14 +87,15 @@ test('un problema chiaramente fuori tema è un’esclusione valida anche se espr
   }
 })
 
-test('tema e titolo fonte sono dati; non espongono identità o F/I/S e non prestano un problema al commento', () => {
+test('il revisore riceve il tema ma non titolo, identità o F/I/S che possano prestare un problema al commento', () => {
   const topic = fixture.topics[0], { checks } = inputs(topic)
   const prompt = promptSocialVerification(checks, topic.keyword)
   assert.equal(payload(prompt).topic, topic.keyword)
-  assert.equal(payload(prompt).checks[0].sourceTitle, topic.sourceTitle)
+  assert.equal(payload(prompt).checks[0].sourceTitle, undefined)
+  assert.ok(!prompt.includes(topic.sourceTitle))
   assert.ok(!prompt.includes('reddit:account:'))
   assert.ok(!prompt.includes('"F":'))
-  assert.match(prompt, /non prevale su un oggetto esplicitamente diverso/)
+  assert.match(prompt, /non costituiscono un antecedente per i pronomi/)
   assert.match(prompt, /non richiedere le stesse parole della keyword/)
 })
 

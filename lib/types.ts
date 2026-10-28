@@ -352,7 +352,7 @@ export interface SocialEvidenceReport {
   reviewedRecordIds?: Record<string, string[]>
   uncertainRecordIds?: Record<string, string[]>
   unresolvedRecordIds?: Record<string, string[]>
-  verification?: { version: 'problem-support-v1' | 'problem-support-v2' | 'topic-problem-support-v3' | 'topic-problem-support-v4'; topic?: string; decisions: SocialVerificationDecision[] }
+  verification?: { version: 'problem-support-v1' | 'problem-support-v2' | 'topic-problem-support-v3' | 'topic-problem-support-v4'; topic?: string; reviewerModel?: string; decisions: SocialVerificationDecision[] }
   processing?: {
     budgetExhausted: boolean
     attemptedRecordIds: string[]

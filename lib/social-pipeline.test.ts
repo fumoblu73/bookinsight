@@ -93,6 +93,7 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   const oldReport = legacyResult.report as Record<string, unknown>
   const social = report.socialEvidence as SocialEvidenceReport
   assert.equal(social.verification?.version, 'topic-problem-support-v4')
+  assert.equal(social.verification?.reviewerModel, ai.SOCIAL_VERIFICATION_MODEL)
   assert.equal(social.verification?.topic, 'meals')
   assert.deepEqual(Object.keys(social.metrics), ['pp1'])
   assert.deepEqual([social.metrics.pp1.U, social.metrics.pp1.T, social.metrics.pp1.M], [1, 1, 1])

@@ -104,7 +104,7 @@ function shortConfirmation(text: string): boolean {
  */
 export function aggregateSocialEvidence(
   manifest: SocialCorpusManifest, painPoints: PainPoint[], results: BatchResult[],
-  options: { requireVerification?: boolean; topic?: string; processing?: SocialEvidenceReport['processing'] } = {},
+  options: { requireVerification?: boolean; topic?: string; reviewerModel?: string; processing?: SocialEvidenceReport['processing'] } = {},
 ): SocialEvidenceReport {
   const records = new Map(manifest.records.map(r => [r.recordId, r]))
   const socialPains = painPoints.filter(p => p.id && (p.fonte === 'reddit' || p.fonte === 'youtube'))
@@ -260,7 +260,7 @@ export function aggregateSocialEvidence(
     uncertainRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, [...(uncertain.get(p.id!) ?? [])]])),
     unresolvedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => r.platform === p.fonte && !r.duplicateOf && !reviewed.has(`${p.id}:${r.recordId}`) && !uncertain.get(p.id!)?.has(r.recordId)).map(r => r.recordId)])),
     ...(options.requireVerification ? { verification: { version: options.topic?.trim() ? 'topic-problem-support-v4' as const : 'problem-support-v2' as const,
-      ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}), decisions: verification } } : {}),
+      ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}), ...(options.reviewerModel ? { reviewerModel: options.reviewerModel } : {}), decisions: verification } } : {}),
     ...(options.processing ? { processing: options.processing } : {}),
   }
 }
@@ -272,7 +272,7 @@ export type AttributionExtractor = (prompt: string, signal: AbortSignal) => Prom
  */
 export async function runSocialAttribution(
   manifest: SocialCorpusManifest, painPoints: PainPoint[], extract: AttributionExtractor,
-  options: { timeoutMs?: number; concurrency?: number; signal?: AbortSignal; verify?: AttributionExtractor; topic?: string } = {},
+  options: { timeoutMs?: number; concurrency?: number; signal?: AbortSignal; verify?: AttributionExtractor; topic?: string; reviewerModel?: string } = {},
 ): Promise<SocialEvidenceReport> {
   const controller = new AbortController()
   const cancel = () => controller.abort()
@@ -366,6 +366,7 @@ export async function runSocialAttribution(
     return aggregateSocialEvidence(manifest, painPoints, results, {
       requireVerification: true,
       topic: options.topic,
+      reviewerModel: options.reviewerModel,
       processing: {
         budgetExhausted: controller.signal.aborted, attemptedRecordIds: [...attempted],
         unstartedRecordIds: batches.flatMap(b => b.records).filter(r => !attempted.has(r.recordId)).map(r => r.recordId), failures, diagnostics,

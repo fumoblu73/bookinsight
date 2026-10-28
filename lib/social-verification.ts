@@ -6,7 +6,6 @@ export interface VerificationCandidate {
   recordId: string
   painPointId: string
   problem: string
-  sourceTitle: string
   text: string
   quote: string
   supportType: 'direct' | 'confirmation' | 'ambiguous'
@@ -40,7 +39,7 @@ export function verificationCandidates(batch: AttributionBatch, output: unknown)
       const parentText = parent?.transmittedText ?? (record.parentId === `t3_${record.containerId}`
         ? `${batch.context.title}\n${batch.context.transmittedText}` : undefined)
       if (!found.has(key)) found.set(key, {
-        recordId: record.recordId, painPointId: pain.id!, problem: pain.pain_point, sourceTitle: batch.context.title,
+        recordId: record.recordId, painPointId: pain.id!, problem: pain.pain_point,
         text: record.transmittedText, quote: m.quote.trim(), supportType: m.supportType,
         ...(m.supportType === 'confirmation' && parentText ? { parentText } : {}),
       })
@@ -60,7 +59,7 @@ Una previsione negativa senza esperienza o bisogno attuale esplicito resta uncle
 Un bisogno o un'emozione dichiarati adesso possono essere reali anche se riguardano un'attività futura: non scartare automaticamente tutti i testi al futuro.
 Se topic è presente, è l'argomento ORIGINALE richiesto dall'utente: valuta separatamente topicRelevance (yes|no|unclear), cioè se la testimonianza riguarda quell'argomento.
 Usa il significato, sinonimi, traduzioni e relazioni esplicite: non richiedere le stesse parole della keyword. Un problema genericamente simile in un altro ambito non è pertinente.
-sourceTitle è solo un indizio sull'ambito: può aiutare topicRelevance se compatibile con text, ma non prevale su un oggetto esplicitamente diverso. Non dimostra il problema, l'esperienza personale o referentIdentified.
+Non ricevi il titolo della fonte: l'argomento richiesto e il problema proposto non costituiscono un antecedente per i pronomi nel testo. Non usarli per completare oggetti, esperienze o problemi mancanti.
 Il problema proposto non prova da solo la coerenza con topic. Non assumere che una fonte recuperata dalla ricerca sia automaticamente pertinente.
 Con topicRelevance=no usa unsupported/out_of_topic, anche se un problema è espresso. Con topicRelevance=unclear e problema espresso usa unclear/unclear_topic, oppure ambiguous_referent se manca anche il referente. Non inventare il collegamento all'argomento.
 Se il testo non esprime il problema, unsupported/topic_only o contradiction resta possibile anche con topicRelevance=unclear. Un caso incerto non deve diventare un'approvazione.
@@ -76,6 +75,7 @@ Importi, porzioni, rapporti fra costo e quantità, enfasi o maiuscole non sostit
 Consigli, abitudini, ricette o correzioni fattuali senza un problema espresso sono topic_only, anche se pertinenti all'argomento.
 Una smentita del problema è contradiction. Non inferire emozioni o inesperienza da attività e identità.
 Per confirmation è necessario un assenso al problema esplicito in parentText; il solo rispondere al padre non basta.
+Per confirmation valuta scopeMatched ed evidenceKind sul problema espresso dal padre verificabile, richiedendo in text l'assenso. Una conferma non eredita un problema che il padre non esprime.
 Se il testo non permette di decidere, usa unclear/insufficient_evidence; non trasformare l'incertezza in approvazione.
 Per supported copia in problemQuote un unico estratto letterale contiguo, massimo 300 caratteri, che dimostri il problema:
 da text per direct, da parentText per confirmation. Non basta citare un vocabolo comune al problema.

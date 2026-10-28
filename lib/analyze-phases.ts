@@ -21,6 +21,7 @@ import {
   runBonusSuggestions, runConceptDirections, runThingsToAvoid, runPivotSignals,
   callSocialAttribution,
   callSocialVerification,
+  SOCIAL_VERIFICATION_MODEL,
 } from './ai'
 import { cacheGet } from './upstash'
 import { prepareRedditCorpus } from './reddit-corpus'
@@ -391,7 +392,7 @@ export async function runFinalizePhase(
   const attributionController = new AbortController()
   const socialEvidenceTask = intermediate.socialManifest
     ? runSocialAttribution(intermediate.socialManifest, activePainPoints, callSocialAttribution, {
-      signal: attributionController.signal, verify: callSocialVerification, topic: intermediate.keyword,
+      signal: attributionController.signal, verify: callSocialVerification, topic: intermediate.keyword, reviewerModel: SOCIAL_VERIFICATION_MODEL,
     })
       .catch(() => aggregateSocialEvidence(intermediate.socialManifest!, activePainPoints, []))
     : Promise.resolve(undefined)

@@ -14,7 +14,7 @@ assert.ok(process.env.ANTHROPIC_API_KEY, 'ANTHROPIC_API_KEY non configurata nel 
 const require = createRequire(import.meta.url)
 const { attributionBatches, aggregateSocialEvidence } = require(join(resolve(compiledDir), 'lib/social-attribution.js'))
 const { verificationCandidates, promptSocialVerification, parseSocialVerification } = require(join(resolve(compiledDir), 'lib/social-verification.js'))
-const { callSocialVerification } = require(join(resolve(compiledDir), 'lib/ai.js'))
+const { callSocialVerification, SOCIAL_VERIFICATION_MODEL } = require(join(resolve(compiledDir), 'lib/ai.js'))
 const fixture = JSON.parse(readFileSync(fixturePath ? resolve(fixturePath) : fileURLToPath(new URL('./fixtures/social-claims-9.0.2.json', import.meta.url)), 'utf8'))
 const out = resolve(outputDir)
 mkdirSync(out, { recursive: true })
@@ -48,7 +48,7 @@ for (const topic of fixture.topics) {
   writeFileSync(join(out, topic.id + '.json'), JSON.stringify({ results: results.at(-1), evidence }, null, 2))
   console.log(JSON.stringify({ topic: topic.id, passed: cases.filter(c => c.passed).length, total: cases.length, error }))
 }
-const summary = { version: 'topic-problem-support-v4', fixtureVersion: fixture.version, evaluatedAt: new Date().toISOString(), fixtureType: 'synthetic',
+const summary = { version: 'topic-problem-support-v4', reviewerModel: SOCIAL_VERIFICATION_MODEL, fixtureVersion: fixture.version, evaluatedAt: new Date().toISOString(), fixtureType: 'synthetic',
   passed: results.reduce((n, r) => n + r.passed, 0), total: results.reduce((n, r) => n + r.total, 0), results }
 writeFileSync(join(out, 'summary.json'), JSON.stringify(summary, null, 2))
 if (summary.passed !== summary.total) process.exitCode = 1

@@ -236,6 +236,15 @@ controllo del tema: `scopeMatched` (oggetto e qualificazioni del problema) ed
 `evidenceKind` (problema dichiarato, bisogno attuale, problema risolto,
 descrizione neutra, ipotesi o indeterminato).
 
+Il revisore usa Sonnet; l'estrattore dei candidati resta Haiku. Il modello del
+revisore è registrato nel report e nell'export. Il revisore non riceve il
+titolo della fonte, per ridurre il completamento di referenti mancanti;
+le conferme ricevono soltanto il padre esplicito già previsto. La singola
+chiamata del revisore ha un tetto di 18 secondi, sempre entro il budget
+complessivo invariato di 45 secondi. Non si aggiungono passaggi o tentativi.
+La verifica costa più di Haiku; modelli e prompt delle analisi strategiche
+restano invariati.
+
 Un'approvazione richiede anche `scopeMatched=yes` e un tipo di evidenza fra
 `stated_problem`, `stated_need` e `resolved_problem`. Il programma rifiuta
 approvazioni incoerenti con questi campi anche quando il modello restituisce

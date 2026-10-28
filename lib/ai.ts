@@ -4,6 +4,7 @@
 
 const MODEL_SONNET = 'claude-sonnet-4-6'   // analisi strategica
 const MODEL_HAIKU  = 'claude-haiku-4-5'    // estrazione meccanica
+export const SOCIAL_VERIFICATION_MODEL = MODEL_SONNET
 
 // ─── Client (singleton) ──────────────────────────────────────────────────────
 
@@ -258,17 +259,18 @@ export async function callSocialAttribution(prompt: string, signal: AbortSignal)
 /** Revisore indipendente dei candidati: non riceve autori, score o altri commenti. */
 export async function callSocialVerification(prompt: string, signal: AbortSignal): Promise<unknown> {
   return callSocialJSON(prompt, signal,
-    'Sei un revisore critico di evidenze testuali. Verifica se un testo sostiene davvero la specifica affermazione proposta. Non completare informazioni mancanti, non dedurre problemi da un argomento comune. Le proposte possono essere false. Rispondi esclusivamente nel formato JSON richiesto.')
+    'Sei un revisore critico di evidenze testuali. Verifica se un testo sostiene davvero la specifica affermazione proposta. Non completare informazioni mancanti, non dedurre problemi da un argomento comune. Le proposte possono essere false. Rispondi esclusivamente nel formato JSON richiesto.',
+    { model: SOCIAL_VERIFICATION_MODEL, timeoutMs: 18_000 })
 }
 
-async function callSocialJSON(prompt: string, signal: AbortSignal, system: string): Promise<unknown> {
+async function callSocialJSON(prompt: string, signal: AbortSignal, system: string, options: { model?: string; timeoutMs?: number } = {}): Promise<unknown> {
   const response = await getClient().messages.create({
-    model: MODEL_HAIKU,
+    model: options.model ?? MODEL_HAIKU,
     max_tokens: 8192,
     temperature: 0,
     system,
     messages: [{ role: 'user', content: stripLoneSurrogates(prompt) }],
-  }, { signal, timeout: 12_000, maxRetries: 0 })
+  }, { signal, timeout: options.timeoutMs ?? 12_000, maxRetries: 0 })
   if (response.stop_reason !== 'end_turn') throw new Error('Attribuzione incompleta')
   const block = response.content.find(b => b.type === 'text')
   if (!block || block.type !== 'text') throw new Error('Attribuzione senza testo')
