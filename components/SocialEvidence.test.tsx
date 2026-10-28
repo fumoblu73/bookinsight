@@ -78,3 +78,25 @@ test('gli incerti sono consultabili e distinti dai record senza decisione valida
   html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
   assert.match(html, /Commenti senza una decisione valida: 1/)
 })
+
+test('verifica del tema: revisione automatica, esclusioni e incertezza visibili senza richiesta di conferma', () => {
+  const report = evidence()
+  report.verification = { version: 'topic-problem-support-v3', topic: 'balcony gardening', decisions: [
+    { recordId: 'r2', painPointId: 'pp1', verdict: 'unsupported', reason: 'out_of_topic', topicRelevance: 'no', problemExpressed: 'yes', referentIdentified: 'yes' },
+    { recordId: 'r1', painPointId: 'pp1', verdict: 'unclear', reason: 'unclear_topic', topicRelevance: 'unclear', problemExpressed: 'yes', referentIdentified: 'yes' },
+  ] }
+  report.uncertainRecordIds = { pp1: ['r1'] }
+  let html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /Verifica automatica/)
+  assert.match(html, /altro argomento: 1/)
+  assert.match(html, /Collegamento con l’argomento iniziale non dimostrato/)
+  assert.ok(!html.includes('precedono'))
+  Object.assign(report.metrics.pp1, { M: null, U: null, T: null })
+  html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /Collegamento con l’argomento iniziale non dimostrato/)
+  assert.ok(!html.includes('M: 0'))
+  report.verification = { version: 'problem-support-v2', decisions: [] }
+  Object.assign(report.metrics.pp1, { M: 2, U: 1, T: 1 })
+  html = renderToStaticMarkup(<SocialEvidence painPointId="pp1" evidence={report} />)
+  assert.match(html, /precedono il controllo rispetto all’argomento iniziale/)
+})

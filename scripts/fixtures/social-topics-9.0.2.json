@@ -1,0 +1,58 @@
+{
+  "version": "topic-problem-support-v3",
+  "description": "Casi sintetici di regressione, fissati prima del collaudo del modello. Non sono testimonianze reali né una validazione umana indipendente.",
+  "topics": [
+    {
+      "id": "gardening",
+      "keyword": "balcony herb gardening",
+      "platform": "reddit",
+      "sourceTitle": "Discussing hobbies and expenses",
+      "painPoint": "I materiali necessari sono troppo costosi",
+      "cases": [
+        { "id": "gp1", "text": "The planters for growing basil on my apartment balcony cost more than I can afford.", "outcome": "supported", "topicRelevance": "yes", "reason": "explicit_problem" },
+        { "id": "gn1", "text": "Replacement brake parts for my car are too expensive for me.", "outcome": "unsupported", "topicRelevance": "no", "reason": "out_of_topic" },
+        { "id": "gu1", "text": "The materials for my new project cost more than I can afford.", "outcome": "unclear", "topicRelevance": "unclear", "reason": "unclear_topic" },
+        { "id": "gt1", "text": "I paid twenty dollars for the pots where I grow herbs on my balcony.", "outcome": "unsupported", "topicRelevance": "yes", "reason": "topic_only" }
+      ]
+    },
+    {
+      "id": "painting",
+      "keyword": "watercolor painting for beginners",
+      "platform": "youtube",
+      "sourceTitle": "Discussing hobbies and expenses",
+      "painPoint": "I materiali necessari sono troppo costosi",
+      "cases": [
+        { "id": "wp1", "text": "Sto iniziando a dipingere ad acquerello, ma la carta adatta costa troppo per il mio budget.", "outcome": "supported", "topicRelevance": "yes", "reason": "explicit_problem" },
+        { "id": "wn1", "text": "The filament for my 3D printer is too expensive for me.", "outcome": "unsupported", "topicRelevance": "no", "reason": "out_of_topic" },
+        { "id": "wu1", "text": "The supplies for the activity I just started are too expensive for me.", "outcome": "unclear", "topicRelevance": "unclear", "reason": "unclear_topic" },
+        { "id": "wt1", "text": "My beginner watercolor paper costs twenty dollars per pad.", "outcome": "unsupported", "topicRelevance": "yes", "reason": "topic_only" }
+      ]
+    },
+    {
+      "id": "programming",
+      "keyword": "Python for data analysis",
+      "platform": "reddit",
+      "sourceTitle": "Discussing learning difficulties",
+      "painPoint": "Le istruzioni sono difficili da comprendere",
+      "cases": [
+        { "id": "pp1", "text": "I cannot understand the pandas tutorial explaining how to group rows in my CSV dataset using Python.", "outcome": "supported", "topicRelevance": "yes", "reason": "explicit_problem" },
+        { "id": "pn1", "text": "I cannot understand the assembly instructions for my garden shed.", "outcome": "unsupported", "topicRelevance": "no", "reason": "out_of_topic" },
+        { "id": "pu1", "text": "The instructions for the task I am learning are impossible for me to understand.", "outcome": "unclear", "topicRelevance": "unclear", "reason": "unclear_topic" },
+        { "id": "pt1", "text": "The pandas documentation describes grouping rows in a CSV file using Python.", "outcome": "unsupported", "topicRelevance": "yes", "reason": "topic_only" }
+      ]
+    },
+    {
+      "id": "baking",
+      "keyword": "home sourdough bread baking",
+      "platform": "youtube",
+      "sourceTitle": "Discussing activities and results",
+      "painPoint": "Il risultato ottenuto è troppo duro",
+      "cases": [
+        { "id": "bp1", "text": "The sourdough bread I bake in my home oven comes out so hard that I cannot slice it.", "outcome": "supported", "topicRelevance": "yes", "reason": "explicit_problem" },
+        { "id": "bn1", "text": "The clay I use for sculpting is too hard for me to shape.", "outcome": "unsupported", "topicRelevance": "no", "reason": "out_of_topic" },
+        { "id": "bu1", "text": "What I made in my latest project turned out much too hard to use.", "outcome": "unclear", "topicRelevance": "unclear", "reason": "unclear_topic" },
+        { "id": "bt1", "text": "My homemade sourdough bread is not too hard; its crust is crisp and I like it.", "outcome": "unsupported", "topicRelevance": "yes", "reason": "contradiction" }
+      ]
+    }
+  ]
+}

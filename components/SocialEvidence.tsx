@@ -8,6 +8,8 @@ export default function SocialEvidence({ painPointId, evidence }: {
   const metrics = painPointId ? evidence?.metrics[painPointId] : undefined
   const uncertain = evidence?.manifest.records.filter(r => painPointId && evidence.uncertainRecordIds?.[painPointId]?.includes(r.recordId)) ?? []
   const unresolved = painPointId ? evidence?.unresolvedRecordIds?.[painPointId]?.length ?? 0 : 0
+  const verification = evidence?.verification
+  const offTopic = new Set(verification?.decisions.filter(v => v.painPointId === painPointId && v.reason === 'out_of_topic').map(v => v.recordId)).size
   const uncertainDetails = uncertain.length > 0 && (
     <details className="pt-1 text-amber-800">
       <summary className="cursor-pointer">Commenti con pertinenza o contesto incerti ({uncertain.length})</summary>
@@ -15,6 +17,7 @@ export default function SocialEvidence({ painPointId, evidence }: {
         <p className="italic">“{r.transmittedText}”</p>
         <p>{r.platform === 'reddit' ? 'Reddit' : 'YouTube'} · Commento: {r.sourceCommentId ?? 'ID originale assente'}</p>
         <p>Escluso dai conteggi confermati; valutazione incerta.</p>
+        {verification?.decisions.some(v => v.recordId === r.recordId && v.painPointId === painPointId && v.reason === 'unclear_topic') && <p>Collegamento con l’argomento iniziale non dimostrato.</p>}
       </li>)}</ul>
     </details>
   )
@@ -32,8 +35,13 @@ export default function SocialEvidence({ painPointId, evidence }: {
         U: {metrics.U} · T: {metrics.T} · M: {metrics.M}
       </p>
       <p>U: autori identificabili · T: thread/video distinti · M: commenti pertinenti distinti.</p>
-      <p>Conteggi confermati nel campione analizzato; non misurano la prevalenza nel mercato.</p>
-      {evidence?.verification?.version !== 'problem-support-v2' && <p className="text-amber-700">Questi conteggi precedono la nuova verifica di pertinenza.</p>}
+      <p>Conteggi riferiti al campione analizzato; non misurano la prevalenza nel mercato.</p>
+      {verification?.version === 'topic-problem-support-v3'
+        ? <p>Verifica automatica: coerenza con l’argomento iniziale e sostegno al problema.</p>
+        : <p className="text-amber-700">{verification?.version === 'problem-support-v2'
+          ? 'Questi conteggi precedono il controllo rispetto all’argomento iniziale.'
+          : 'Questi conteggi precedono la nuova verifica di pertinenza.'}</p>}
+      {offTopic > 0 && <p>Proposte escluse perché riguardano un altro argomento: {offTopic}.</p>}
       {metrics.status === 'partial' && <p className="text-amber-700">Attribuzione parziale: {metrics.reviewedComments}/{metrics.totalComments} commenti esaminati; i conteggi possono essere incompleti.</p>}
       {unresolved > 0 && <p>Commenti senza una decisione valida: {unresolved}.</p>}
       {uncertainDetails}

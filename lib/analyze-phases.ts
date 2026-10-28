@@ -391,7 +391,7 @@ export async function runFinalizePhase(
   const attributionController = new AbortController()
   const socialEvidenceTask = intermediate.socialManifest
     ? runSocialAttribution(intermediate.socialManifest, activePainPoints, callSocialAttribution, {
-      signal: attributionController.signal, verify: callSocialVerification,
+      signal: attributionController.signal, verify: callSocialVerification, topic: intermediate.keyword,
     })
       .catch(() => aggregateSocialEvidence(intermediate.socialManifest!, activePainPoints, []))
     : Promise.resolve(undefined)

@@ -10,13 +10,14 @@ export interface AttributionBatch {
   contextRecords: SocialRecord[]
   painPoints: Pick<PainPoint, 'id' | 'pain_point' | 'fonte'>[]
   context: SocialCorpusManifest['contexts'][number]
+  topic?: string
 }
 
 // Mantiene brevi le decisioni JSON entro il timeout della singola richiesta.
 // Non modifica il corpus: i gruppi successivi coprono tutti i record ammessi.
 const ATTRIBUTION_BATCH_SIZE = 15
 
-export function attributionBatches(manifest: SocialCorpusManifest, painPoints: PainPoint[]): AttributionBatch[] {
+export function attributionBatches(manifest: SocialCorpusManifest, painPoints: PainPoint[], topic?: string): AttributionBatch[] {
   const platforms = new Map<string, AttributionBatch[][]>()
   for (const context of manifest.contexts) {
     const pains = painPoints.filter(p => p.id && p.fonte === context.platform)
@@ -24,7 +25,7 @@ export function attributionBatches(manifest: SocialCorpusManifest, painPoints: P
     if (!pains.length) continue
     const records = manifest.records.filter(r => r.contextId === context.contextId && !r.duplicateOf)
     const chunks: AttributionBatch[] = []
-    for (let i = 0; i < records.length; i += ATTRIBUTION_BATCH_SIZE) chunks.push({ records: records.slice(i, i + ATTRIBUTION_BATCH_SIZE), contextRecords: records, painPoints: pains, context })
+    for (let i = 0; i < records.length; i += ATTRIBUTION_BATCH_SIZE) chunks.push({ records: records.slice(i, i + ATTRIBUTION_BATCH_SIZE), contextRecords: records, painPoints: pains, context, ...(topic?.trim() ? { topic: topic.trim() } : {}) })
     if (chunks.length) {
       if (!platforms.has(context.platform)) platforms.set(context.platform, [])
       platforms.get(context.platform)!.push(chunks)
@@ -52,6 +53,9 @@ Per un record senza menzioni restituisci comunque {"recordId":"ID fornito","matc
 Una menzione può riguardare più problemi; più citazioni dello stesso problema sono una sola associazione.
 PERTINENZA: il commento deve documentare il problema specifico descritto dal pain point,
 non soltanto parlare dello stesso argomento, target o situazione. Leggi il nucleo del problema e le sue qualificazioni.
+Se topic è presente, verifica anche la coerenza con l'argomento ORIGINALE richiesto, senza affidarti soltanto al pain point o alla fonte recuperata.
+Valuta il significato, anche con sinonimi o altre lingue: non richiedere le stesse parole della keyword. Un problema simile in un ambito esplicitamente diverso non va associato.
+Se il problema è espresso ma il collegamento a topic non è dimostrabile, usa ambiguous; se riguarda chiaramente un altro argomento, non associarlo.
 Per direct il testo deve indicare un ostacolo, bisogno insoddisfatto, conseguenza negativa oppure un problema vissuto e poi risolto.
 Consigli, ricette, preferenze, confronti e descrizioni di abitudini non bastano: associa solo se il testo indica anche quale problema specifico affrontano.
 Non dedurre emozioni, inesperienza o difficoltà da attività, identità o contesto; non attribuire un problema che il commento nega di avere.
@@ -73,6 +77,7 @@ Usa solo gli ID forniti. Nessuna attribuzione a una piattaforma diversa.
 Rispondi SOLO JSON: {"decisions":[{"recordId":"...","matches":[{"painPointId":"...","supportType":"direct|confirmation|ambiguous","quote":"...","contextRecordIds":[]}]}]}.
 DATI:
 ${JSON.stringify({
+    ...(batch.topic ? { topic: batch.topic } : {}),
     painPoints: batch.painPoints,
     context: batch.context,
     background: batch.contextRecords.map(record),
@@ -97,7 +102,7 @@ function shortConfirmation(text: string): boolean {
  */
 export function aggregateSocialEvidence(
   manifest: SocialCorpusManifest, painPoints: PainPoint[], results: BatchResult[],
-  options: { requireVerification?: boolean; processing?: SocialEvidenceReport['processing'] } = {},
+  options: { requireVerification?: boolean; topic?: string; processing?: SocialEvidenceReport['processing'] } = {},
 ): SocialEvidenceReport {
   const records = new Map(manifest.records.map(r => [r.recordId, r]))
   const socialPains = painPoints.filter(p => p.id && (p.fonte === 'reddit' || p.fonte === 'youtube'))
@@ -150,6 +155,9 @@ export function aggregateSocialEvidence(
           reject(id); invalidPains.add(id); continue
         }
         const review = verified.get(verificationKey(record.recordId, id))
+        if (options.requireVerification && options.topic?.trim() && review?.verdict === 'supported' && review.topicRelevance !== 'yes') {
+          invalidPains.add(id); continue
+        }
         if (support === 'ambiguous') {
           if (shortConfirmation(record.transmittedText)) { markAmbiguous(id, record.recordId); continue }
           if (!options.requireVerification) { markUncertain(id, record.recordId); continue }
@@ -248,7 +256,8 @@ export function aggregateSocialEvidence(
     reviewedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => reviewed.has(`${p.id}:${r.recordId}`)).map(r => r.recordId)])),
     uncertainRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, [...(uncertain.get(p.id!) ?? [])]])),
     unresolvedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => r.platform === p.fonte && !r.duplicateOf && !reviewed.has(`${p.id}:${r.recordId}`) && !uncertain.get(p.id!)?.has(r.recordId)).map(r => r.recordId)])),
-    ...(options.requireVerification ? { verification: { version: 'problem-support-v2' as const, decisions: verification } } : {}),
+    ...(options.requireVerification ? { verification: { version: options.topic?.trim() ? 'topic-problem-support-v3' as const : 'problem-support-v2' as const,
+      ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}), decisions: verification } } : {}),
     ...(options.processing ? { processing: options.processing } : {}),
   }
 }
@@ -260,14 +269,14 @@ export type AttributionExtractor = (prompt: string, signal: AbortSignal) => Prom
  */
 export async function runSocialAttribution(
   manifest: SocialCorpusManifest, painPoints: PainPoint[], extract: AttributionExtractor,
-  options: { timeoutMs?: number; concurrency?: number; signal?: AbortSignal; verify?: AttributionExtractor } = {},
+  options: { timeoutMs?: number; concurrency?: number; signal?: AbortSignal; verify?: AttributionExtractor; topic?: string } = {},
 ): Promise<SocialEvidenceReport> {
   const controller = new AbortController()
   const cancel = () => controller.abort()
   options.signal?.addEventListener('abort', cancel, { once: true })
   if (options.signal?.aborted) cancel()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 45_000)
-  const batches = attributionBatches(manifest, painPoints)
+  const batches = attributionBatches(manifest, painPoints, options.topic)
   const results: BatchResult[] = []
   const attempted = new Set<string>()
   const failures: NonNullable<SocialEvidenceReport['processing']>['failures'] = []
@@ -310,8 +319,8 @@ export async function runSocialAttribution(
   const verifyChunk = async (batch: AttributionBatch, checks: Checks, result: BatchResult, attempt: 1 | 2) => {
     let parsed: SocialVerificationDecision[] = [], requestFailed = false
     try {
-      const output = await bounded(() => verify(promptSocialVerification(checks), controller.signal))
-      parsed = parseSocialVerification(checks, output)
+      const output = await bounded(() => verify(promptSocialVerification(checks, batch.topic), controller.signal))
+      parsed = parseSocialVerification(checks, output, batch.topic)
     } catch (err) { requestFailed = true; failure(batch, 'verification', err) }
     result.verification!.push(...parsed)
     for (const v of parsed.filter(v => v.quoteAdjusted)) diagnose(batch, 'verification', attempt, 'quote_typography_aligned', [v.recordId], v.painPointId)
@@ -353,6 +362,7 @@ export async function runSocialAttribution(
     await Promise.all(Array.from({ length: Math.max(1, Math.min(3, options.concurrency ?? 3)) }, worker))
     return aggregateSocialEvidence(manifest, painPoints, results, {
       requireVerification: true,
+      topic: options.topic,
       processing: {
         budgetExhausted: controller.signal.aborted, attemptedRecordIds: [...attempted],
         unstartedRecordIds: batches.flatMap(b => b.records).filter(r => !attempted.has(r.recordId)).map(r => r.recordId), failures, diagnostics,

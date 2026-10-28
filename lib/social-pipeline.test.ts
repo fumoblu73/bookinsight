@@ -65,13 +65,15 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   let fail = false
   t.mock.method(ai, 'callSocialVerification', async (prompt: string) => {
     const data = JSON.parse(prompt.split('DATI:\n')[1])
+    assert.equal(data.topic, 'meals')
     return { checks: data.checks.map((c: { recordId: string; painPointId: string; text: string }) => ({
-      recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', reason: 'explicit_problem', problemExpressed: 'yes', referentIdentified: 'yes', problemQuote: c.text,
+      recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', reason: 'explicit_problem', topicRelevance: 'yes', problemExpressed: 'yes', referentIdentified: 'yes', problemQuote: c.text,
     })) }
   })
   const attribution = t.mock.method(ai, 'callSocialAttribution', async (prompt: string) => {
     if (fail) throw new Error('Simulated API failure')
     const data = JSON.parse(prompt.split('DATI:\n')[1])
+    assert.equal(data.topic, 'meals')
     assert.deepEqual(data.painPoints.map((p: { id: string }) => p.id), ['pp1'])
     return { decisions: data.recordsToReview.map((r: { recordId: string; text: string }) => ({ recordId: r.recordId,
       matches: [{ painPointId: 'pp1', supportType: 'direct', quote: r.text, contextRecordIds: [] }],
@@ -90,6 +92,8 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   const report = result.report as Record<string, unknown>
   const oldReport = legacyResult.report as Record<string, unknown>
   const social = report.socialEvidence as SocialEvidenceReport
+  assert.equal(social.verification?.version, 'topic-problem-support-v3')
+  assert.equal(social.verification?.topic, 'meals')
   assert.deepEqual(Object.keys(social.metrics), ['pp1'])
   assert.deepEqual([social.metrics.pp1.U, social.metrics.pp1.T, social.metrics.pp1.M], [1, 1, 1])
   assert.equal(JSON.stringify(restored), before)

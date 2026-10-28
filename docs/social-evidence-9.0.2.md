@@ -229,6 +229,55 @@ presenti e verificati nella fase di attribuzione. La loro effettiva presenza
 dipende dal payload dell'actor: i test usano risposte simulate, non una nuova
 raccolta live. In assenza di parentela le conferme non sono contate automaticamente.
 
+## Controllo automatico del tema originale
+
+La finalizzazione passa `intermediate.keyword` all'attribuzione e al revisore
+indipendente. Il protocollo `topic-problem-support-v3` conserva il tema e un
+giudizio separato `topicRelevance` (`yes`, `no`, `unclear`) per ogni proposta
+verificata. L'approvazione richiede tema coerente, problema espresso, referente
+identificato e citazione letterale valida. Un giudizio sul problema senza il
+giudizio sul tema non è sufficiente.
+
+Una proposta chiaramente fuori tema produce `unsupported/out_of_topic`, anche
+quando esprime un problema simile. Un collegamento non dimostrabile resta
+`unclear/unclear_topic` o `ambiguous_referent`: non alimenta U/T/M e non blocca
+il report. Un testo senza problema può essere escluso validamente anche se il
+tema è incerto. Sinonimi e lingue diverse sono ammessi: non si usa una ricerca
+di parole comuni come criterio di pertinenza.
+
+Il titolo della fonte aiuta solo a riconoscere l'ambito quando compatibile con
+il commento. Non prevale su un oggetto esplicitamente diverso e non dimostra
+esperienze, problemi o referenti mancanti. Per le conferme resta necessario il
+padre esplicito e il suo problema verificato. Il problema proposto non dimostra
+da solo la pertinenza al tema.
+
+Il controllo usa le chiamate esistenti e lo stesso budget di 45 secondi, con
+tre worker al massimo. Le incertezze valide non vengono riprovate; risposte
+malformate o prive del nuovo campo ricevono al massimo il recupero mirato già
+previsto. Nessuna richiesta di revisione manuale viene aggiunta all'uso normale.
+I report storici non vengono ricalcolati e la UI distingue quelli precedenti
+al nuovo controllo. F/I/S, scoring, ROI e prompt strategici restano invariati.
+
+La manutenzione dispone di 16 casi sintetici preregistrati su giardinaggio,
+acquerello, programmazione e panificazione, distribuiti fra Reddit e YouTube.
+Le risposte simulate nei test verificano il contratto e l'aggregazione; non
+misurano la qualità del modello. Un benchmark separato usa le stesse funzioni
+di produzione e propone volutamente tutti i casi al revisore reale, inclusi
+falsi positivi plausibili. Si esegue dopo modifiche a modello o prompt, in un
+contesto con la normale credenziale Anthropic configurata, senza stampa di
+credenziali e senza nuove raccolte:
+
+```bash
+NODE_PATH="$PWD/node_modules" node scripts/evaluate-social-topics.mjs /workspace/work/tests-9.0.2 /workspace/work/topic-benchmark
+```
+
+La directory compilata è quella prodotta dal comando TypeScript dei test sotto.
+Il benchmark compie quattro richieste reali, registra le attese prima delle
+risposte e fallisce se un esito manca o differisce. Non modifica report salvati.
+Non è richiesto all'utente per ogni argomento; è uno strumento di manutenzione.
+Un benchmark riuscito resta una regressione su casi noti, non una garanzia
+universale di correttezza semantica.
+
 ## Diagnostica della raccolta Reddit e validità su altri argomenti
 
 La ricerca mantiene la keyword originale come prima query e usa fino a quattro
