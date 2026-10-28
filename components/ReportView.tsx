@@ -7,6 +7,7 @@ import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 import { redditCoverageNote } from '@/lib/reddit-corpus'
 import type { SocialEvidenceReport } from '../lib/types'
 import SocialEvidence from './SocialEvidence'
+import RedditCollectionNotice from './RedditCollectionNotice'
 import { formatItalianDate, formatItalianNumber, formatReportFileDate } from '../lib/format'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ export interface FullReport {
       totalComments: number
       subredditsUsed: string[]
       corpusQuality?: RedditCorpusQuality
+      collectionDiagnostics?: RedditMeta['collectionDiagnostics']
     }
     youtube: {
       videos: Array<{ title: string; viewCount: number; comments: Array<{ text: string; likeCount: number }> }>
@@ -1341,6 +1343,7 @@ export default function ReportView({ report }: { report: FullReport }) {
         <div className="space-y-4">
 
           <SubCard title="Pain Points" accent="rose">
+            <RedditCollectionNotice diagnostics={report.redditMeta?.collectionDiagnostics} />
             {report.redditMeta?.available && (report.redditMeta.corpusQuality?.coverage === 'limited' ||
               (!report.redditMeta.corpusQuality && report.redditMeta.insufficientCorpus)) && (
               <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">

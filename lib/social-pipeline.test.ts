@@ -4,6 +4,7 @@ import * as ai from './ai'
 import * as storage from './upstash'
 import { runPainPointsPhase, runFinalizePhase } from './analyze-phases'
 import { buildSocialManifest } from './social-corpus'
+import { newRedditDiagnostics } from './reddit-collection'
 import * as prompts from './prompts'
 import { GET as exportReport } from '../app/api/export/[id]/route'
 import type { AmazonData, PainPoint, RedditData, TrendsData, SocialEvidenceReport } from './types'
@@ -11,6 +12,11 @@ import type { AmazonData, PainPoint, RedditData, TrendsData, SocialEvidenceRepor
 test('pipeline e export: provenienza persistita, modalità curated, guasti opzionali e numeri/prompt esistenti invariati', async t => {
   const reddit: RedditData = {
     keyword: 'meals', available: true, insufficientCorpus: true, totalComments: 1, threadCount: 1, subredditsUsed: ['camping'],
+    collectionDiagnostics: { ...newRedditDiagnostics(), status: 'partial',
+      selectedUrls: ['https://www.reddit.com/r/camping/comments/p1/meals/', 'https://www.reddit.com/r/camping/comments/p2/meals/'],
+      unavailableUrls: ['https://www.reddit.com/r/camping/comments/p2/meals/'],
+      attempts: [{ url: 'https://www.reddit.com/r/camping/comments/p2/meals/', attempt: 1, durationMs: 10, outcome: 'empty_dataset', httpStatus: 200 }],
+    },
     posts: [{ id: 'p1', title: 'Meals', selftext: 'How can I rehydrate meals?', score: 1, subreddit: 'camping', createdUtc: 1, month: '1970-01',
       link: 'https://www.reddit.com/r/camping/comments/p1/meals/', comments: [{
         id: 'c1', author: 'alice', body: 'I cannot rehydrate meals evenly.', score: 1, createdUtc: 1, month: '1970-01',
@@ -77,6 +83,7 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   const before = JSON.stringify(restored)
   const legacy = structuredClone(restored)
   delete legacy.socialManifest
+  delete legacy.reddit.collectionDiagnostics
   const legacyResult = await runFinalizePhase(legacy, ['pp1'])
   assert.equal(attribution.mock.callCount(), 0)
   const result = await runFinalizePhase(restored, ['pp1'])
@@ -86,11 +93,13 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   assert.deepEqual(Object.keys(social.metrics), ['pp1'])
   assert.deepEqual([social.metrics.pp1.U, social.metrics.pp1.T, social.metrics.pp1.M], [1, 1, 1])
   assert.equal(JSON.stringify(restored), before)
-  for (const field of ['profitabilityScore', 'scoringBreakdown', 'painPoints', 'roi', 'seriesStrategy', 'ads_intelligence', 'voice_data']) {
+  for (const field of ['profitabilityScore', 'scoringBreakdown', 'painPoints', 'roi', 'seriesStrategy', 'ads_intelligence']) {
     assert.deepEqual(report[field], oldReport[field], field)
   }
-  const voice = report.voice_data as { reddit: { posts: typeof reddit.posts } }
+  const voice = report.voice_data as { reddit: { posts: typeof reddit.posts; collectionDiagnostics: typeof reddit.collectionDiagnostics } }
   assert.deepEqual(voice.reddit.posts, reddit.posts)
+  assert.deepEqual(voice.reddit.collectionDiagnostics, reddit.collectionDiagnostics)
+  assert.deepEqual((report.redditMeta as { collectionDiagnostics: typeof reddit.collectionDiagnostics }).collectionDiagnostics, reddit.collectionDiagnostics)
 
   // Confronta le due chiamate realmente eseguite dalla finalizzazione.
   assert.equal(gapPrompts.length, 2)
@@ -102,6 +111,8 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   const exported = await exportReport({} as Parameters<typeof exportReport>[0], { params: Promise.resolve({ id: 'test' }) })
   const payload = await exported.json()
   assert.deepEqual(payload.social_evidence, social)
+  assert.deepEqual(payload.meta.sources.reddit.collectionDiagnostics, reddit.collectionDiagnostics)
+  assert.deepEqual(payload.voice_data.reddit.collectionDiagnostics, reddit.collectionDiagnostics)
   assert.deepEqual(payload.voice_data.reddit.posts[0].comments[0].provenance, reddit.posts[0].comments[0].provenance)
 
   fail = true

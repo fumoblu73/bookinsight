@@ -158,6 +158,68 @@ export interface RedditData {
   available: boolean
   insufficientCorpus: boolean   // avviso legacy di copertura limitata; NON è un gate AI
   corpusQuality?: RedditCorpusQuality // opzionale per dati/report precedenti alla 9.0.1
+  collectionDiagnostics?: RedditCollectionDiagnostics
+}
+
+export interface RedditSearchDiagnostic {
+  query: string
+  kind: 'original' | 'expanded'
+  status: 'ok' | 'provider_error' | 'transport_error' | 'invalid_response'
+  organicResults: number
+  redditLinks: number
+  recognizedThreads: number
+  httpStatus?: number
+}
+
+export type RedditFetchOutcome = 'success' | 'empty_dataset' | 'http_error' | 'timeout' | 'network_error' | 'invalid_payload'
+
+export interface RedditRawSchema {
+  itemCount: number
+  posts: number
+  comments: number
+  unrecognizedItems: number
+  postFields: string[]
+  commentFields: string[]
+  commentFieldPresence: Record<string, number>
+  authorObjectFields: string[]
+}
+
+export interface RedditFetchAttempt {
+  url: string
+  attempt: 1 | 2
+  outcome: RedditFetchOutcome
+  durationMs: number
+  httpStatus?: number
+  runId?: string
+  datasetId?: string
+  retryAfterMs?: number
+  schema?: RedditRawSchema
+}
+
+export interface RedditCollectionDiagnostics {
+  version: '9.0.2'
+  status: 'complete' | 'partial' | 'failed' | 'not_run'
+  queries: RedditSearchDiagnostic[]
+  candidateUrls: number
+  selectedUrls: string[]
+  attempts: RedditFetchAttempt[]
+  recoveredUrls: string[]
+  unavailableUrls: string[]
+  unattemptedUrls: string[]
+  skippedRetries: string[]
+  budgetExhausted: boolean
+  stopReason?: 'credentials_missing' | 'no_candidates' | 'search_failed' | 'provider_rejected'
+  mapping?: {
+    rawPosts: number
+    rawComments: number
+    missingPostId: number
+    removed: number
+    boilerplate: number
+    orphanComments: number
+    unselectedPostComments: number
+    overThreadLimit: number
+    keptComments: number
+  }
 }
 
 export interface RedditCorpusQuality {
@@ -173,7 +235,7 @@ export interface RedditCorpusQuality {
 }
 
 export type RedditMeta = Pick<RedditData,
-  'available' | 'insufficientCorpus' | 'threadCount' | 'subredditsUsed' | 'corpusQuality'>
+  'available' | 'insufficientCorpus' | 'threadCount' | 'subredditsUsed' | 'corpusQuality' | 'collectionDiagnostics'>
 
 // ─── YouTube ──────────────────────────────────────────────────────────────────
 

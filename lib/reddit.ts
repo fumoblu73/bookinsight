@@ -1,5 +1,7 @@
-import { RedditData, RedditPost, RedditComment } from './types'
+import { RedditData, RedditPost, RedditComment, RedditSearchDiagnostic } from './types'
 import { prepareRedditCorpus, REDDIT_CORPUS_LIMITS } from './reddit-corpus'
+import { collectRedditPosts, newRedditDiagnostics, originalRedditAccount, planRedditQueries, profileRedditItems, redditThreadId } from './reddit-collection'
+import type { ApifyItem, RedditFetchResult } from './reddit-collection'
 
 const MAX_POSTS = REDDIT_CORPUS_LIMITS.maxPosts
 /** Quanti commenti chiediamo ad Apify. Più alto del taglio finale perché
@@ -14,11 +16,8 @@ const APIFY_MAX_COMMENTS = 40
 const MAX_COMMENTS_PER_POST = REDDIT_CORPUS_LIMITS.maxCommentsPerPost
 
 function extractPostId(link: string): string | null {
-  const m = link.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)\//)
-  return m ? m[1] : null
+  return redditThreadId(link)
 }
-
-type ApifyItem = Record<string, unknown>
 
 // ─── Componente 1: Traduzione AI della keyword ────────────────────────────────
 
@@ -111,25 +110,44 @@ async function serpApiFetch(params: Record<string, string>): Promise<unknown> {
   const res = await fetch(`https://serpapi.com/search?${qs}`, {
     signal: AbortSignal.timeout(20000),
   })
-  if (!res.ok) throw new Error(`SerpApi status ${res.status}`)
+  if (!res.ok) throw Object.assign(new Error('SerpApi request failed'), { status: res.status })
   return res.json()
 }
 
-async function searchRedditViaGoogle(query: string): Promise<GoogleResult[]> {
+async function searchRedditViaGoogle(query: string, kind: RedditSearchDiagnostic['kind']): Promise<{ results: GoogleResult[]; diagnostic: RedditSearchDiagnostic }> {
+  const diagnostic: RedditSearchDiagnostic = { query, kind, status: 'ok', organicResults: 0, redditLinks: 0, recognizedThreads: 0 }
   try {
     const data = await serpApiFetch({
       engine: 'google',
       q: `site:reddit.com ${query}`,
       num: '15',
     })
-    const results = (data as { organic_results?: GoogleResult[] }).organic_results ?? []
-    return results.filter(r =>
-      r.link?.includes('reddit.com/r/') && r.link.includes('/comments/')
-    )
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      diagnostic.status = 'invalid_response'; return { results: [], diagnostic }
+    }
+    const payload = data as { organic_results?: GoogleResult[]; error?: unknown }
+    if (typeof payload.error === 'string' && payload.error) {
+      diagnostic.status = 'provider_error'; return { results: [], diagnostic }
+    }
+    const results = payload.organic_results ?? []
+    if (!Array.isArray(results)) { diagnostic.status = 'invalid_response'; return { results: [], diagnostic } }
+    diagnostic.organicResults = results.length
+    diagnostic.redditLinks = results.filter(r => typeof r?.link === 'string' && /(?:^|\.)reddit\.com$/i.test(safeHostname(r.link))).length
+    const recognized = results.filter(r => typeof r?.link === 'string' && extractPostId(r.link))
+    diagnostic.recognizedThreads = recognized.length
+    return { results: recognized, diagnostic }
   } catch (err) {
-    console.log(`[reddit-serpapi] failed query:"${query}" error:${err}`)
-    return []
+    const status = (err as { status?: unknown })?.status
+    if (typeof status === 'number') { diagnostic.status = 'provider_error'; diagnostic.httpStatus = status }
+    else diagnostic.status = err instanceof SyntaxError ? 'invalid_response' : 'transport_error'
+    return { results: [], diagnostic }
+  } finally {
+    console.log('[reddit-search]', JSON.stringify(diagnostic))
   }
+}
+
+function safeHostname(link: string): string {
+  try { return new URL(link).hostname } catch { return '' }
 }
 
 interface RankedCandidate {
@@ -142,14 +160,14 @@ interface RankedCandidate {
   totalScore: number
 }
 
-async function searchRedditMulti(queries: string[]): Promise<RankedCandidate[]> {
+async function searchRedditMulti(queries: string[]): Promise<{ candidates: RankedCandidate[]; diagnostics: RedditSearchDiagnostic[] }> {
   const resultsByQuery = await Promise.all(
-    queries.map(q => searchRedditViaGoogle(q))
+    queries.map((q, i) => searchRedditViaGoogle(q, i === 0 ? 'original' : 'expanded'))
   )
 
   const candidateMap = new Map<string, RankedCandidate>()
 
-  resultsByQuery.forEach((results) => {
+  resultsByQuery.forEach(({ results }) => {
     results.forEach((r, posIdx) => {
       if (!r.link) return
       const postId = extractPostId(r.link)
@@ -187,128 +205,36 @@ async function searchRedditMulti(queries: string[]): Promise<RankedCandidate[]> 
     `topScore:${candidates[0]?.totalScore.toFixed(1) ?? 'N/A'}`
   )
 
-  return candidates
+  return { candidates, diagnostics: resultsByQuery.map(r => r.diagnostic) }
 }
 
 // ─── Componente 3: Scrape Apify — URL singola batched ────────────────────────
 
-function relevantApifyHeaders(headers: Headers): string {
-  const filtered = Object.fromEntries(
-    [...headers.entries()].filter(([name]) => {
-      const lower = name.toLowerCase()
-      return lower.includes('apify') || lower.includes('run')
-    })
+async function fetchSinglePostViaApify(url: string, token: string, signal: AbortSignal): Promise<RedditFetchResult> {
+  const res = await fetch(
+    `https://api.apify.com/v2/acts/fatihtahta~reddit-scraper-search-fast/run-sync-get-dataset-items?token=${token}&timeout=45`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls: [url], scrapeComments: true, maxComments: APIFY_MAX_COMMENTS, includeNsfw: false }), signal },
   )
-  return JSON.stringify(filtered).substring(0, 400)
-}
-
-async function fetchSinglePostViaApify(
-  url: string,
-  token: string,
-): Promise<{ items: ApifyItem[]; success: boolean }> {
-  try {
-    const res = await fetch(
-      `https://api.apify.com/v2/acts/fatihtahta~reddit-scraper-search-fast/run-sync-get-dataset-items?token=${token}&timeout=45`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          urls: [url],
-          scrapeComments: true,
-          maxComments: APIFY_MAX_COMMENTS,
-          includeNsfw: false,
-        }),
-        signal: AbortSignal.timeout(50000),
-      }
-    )
-
-    if (!res.ok) {
-      const bodyText = await res.text().catch(() => '')
-      console.log(`[reddit-apify] singleUrl status:${res.status} url:${url.substring(0, 80)} body:${bodyText.substring(0, 200)}`)
-      console.log(`[reddit-apify] headers:${relevantApifyHeaders(res.headers)}`)
-      return { items: [], success: false }
-    }
-
-    const items = await res.json() as ApifyItem[]
-    if (items.length === 0) {
-      console.log(`[reddit-apify] singleUrl datasetVuoto url:${url.substring(0, 80)}`)
-      console.log(`[reddit-apify] headers:${relevantApifyHeaders(res.headers)}`)
-      return { items: [], success: false }
-    }
-    return { items, success: true }
-  } catch (err) {
-    console.log(`[reddit-apify] singleUrl FAILED url:${url.substring(0, 80)} error:${err}`)
-    return { items: [], success: false }
+  const idHeader = (name: string) => {
+    const value = res.headers.get(name)
+    return value && /^[a-zA-Z0-9_-]{6,80}$/.test(value) ? value : undefined
   }
-}
-
-const BATCH_SIZE = 5
-// Soglia dall'ingresso in fetchRedditData (non dall'inizio della fase Apify):
-// include quindi traduzione + SerpApi. Con tetto per batch di 50s (client abort),
-// l'ultimo batch avviato appena sotto soglia chiude al più tardi a 90+50=140s,
-// dentro i 150s di maxDuration con 10s di margine.
-const REDDIT_FETCH_BUDGET_MS = 90_000
-
-async function fetchPostsViaApifyBatched(
-  urls: string[],
-  token: string,
-  fetchStart: number,
-): Promise<{ allItems: ApifyItem[]; successCount: number; failureCount: number }> {
-  const allItems: ApifyItem[] = []
-  let successCount = 0
-  let failureCount = 0
-
-  for (let i = 0; i < urls.length; i += BATCH_SIZE) {
-    const batchIndex = Math.floor(i / BATCH_SIZE)
-    const totalBatches = Math.ceil(urls.length / BATCH_SIZE)
-
-    if (batchIndex > 0) {
-      const elapsed = Date.now() - fetchStart
-      if (elapsed > REDDIT_FETCH_BUDGET_MS) {
-        console.log(
-          `[reddit-apify] deadline raggiunta dopo ${Math.round(elapsed / 1000)}s, batch rimanenti saltati. ` +
-          `Raccolti: ${successCount}/${urls.length}`
-        )
-        break
-      }
-    }
-
-    const batch = urls.slice(i, i + BATCH_SIZE)
-    let batchResults = await Promise.all(
-      batch.map(url => fetchSinglePostViaApify(url, token))
-    )
-    let batchSuccessCount = batchResults.filter(r => r.success).length
-
-    if (batchIndex === 0 && batchSuccessCount === 0) {
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      batchResults = await Promise.all(
-        batch.map(url => fetchSinglePostViaApify(url, token))
-      )
-      batchSuccessCount = batchResults.filter(r => r.success).length
-
-      if (batchSuccessCount === 0) {
-        console.log(`[reddit-apify] primo batch fallito due volte, fonte considerata non disponibile`)
-        failureCount += batchResults.length
-        break
-      }
-    }
-
-    for (const result of batchResults) {
-      if (result.success) {
-        allItems.push(...result.items)
-        successCount++
-      } else {
-        failureCount++
-      }
-    }
-
-    console.log(
-      `[reddit-apify] batch ${batchIndex + 1}/${totalBatches} ` +
-      `done, totalSuccess:${successCount} totalFailure:${failureCount}`
-    )
-  }
-
-  return { allItems, successCount, failureCount }
+  const retryAfter = res.headers.get('retry-after')
+  const retrySeconds = retryAfter ? Number(retryAfter) : NaN
+  const retryDate = retryAfter && !Number.isFinite(retrySeconds) ? Date.parse(retryAfter) : NaN
+  const retryAfterMs = Number.isFinite(retrySeconds) ? Math.max(0, retrySeconds * 1000)
+    : Number.isFinite(retryDate) ? Math.max(0, retryDate - Date.now()) : undefined
+  const metadata = { httpStatus: res.status, runId: idHeader('x-apify-actor-run-id'), datasetId: idHeader('x-apify-default-dataset-id'), retryAfterMs }
+  if (!res.ok) { await res.body?.cancel(); return { items: [], outcome: 'http_error', ...metadata } }
+  let payload: unknown
+  try { payload = await res.json() } catch { return { items: [], outcome: 'invalid_payload', ...metadata } }
+  if (!Array.isArray(payload)) return { items: [], outcome: 'invalid_payload', ...metadata }
+  const schema = profileRedditItems(payload)
+  if (!payload.length) return { items: [], outcome: 'empty_dataset', schema, ...metadata }
+  if (!schema.posts) return { items: [], outcome: 'invalid_payload', schema, ...metadata }
+  const items = payload.filter((v): v is ApifyItem => v !== null && typeof v === 'object' && (v.kind === 'post' || v.kind === 'comment'))
+  return { items, outcome: 'success', schema, ...metadata }
 }
 
 // ─── Componente 4: fetchRedditData (flusso ibrido) ───────────────────────────
@@ -316,38 +242,57 @@ async function fetchPostsViaApifyBatched(
 export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const fetchStart = Date.now()
   const apifyToken = process.env.APIFY_TOKEN
+  let collectionDiagnostics = newRedditDiagnostics()
 
   if (!apifyToken) {
+    collectionDiagnostics.stopReason = 'credentials_missing'
     console.log(`[reddit] APIFY_TOKEN mancante`)
     return {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
       corpusQuality: prepareRedditCorpus().quality,
+      collectionDiagnostics,
     }
   }
 
   // STEP 1: Traduzione AI
-  const queries = await translateKeywordForReddit(keyword)
+  const queries = planRedditQueries(keyword, await translateKeywordForReddit(keyword))
 
   // STEP 2: SerpApi multi-query
-  const candidates = await searchRedditMulti(queries)
+  const search = await searchRedditMulti(queries)
+  const { candidates } = search
+  collectionDiagnostics.queries = search.diagnostics
+  collectionDiagnostics.candidateUrls = candidates.length
 
   if (candidates.length === 0) {
+    const failedSearch = search.diagnostics.some(d => d.status !== 'ok')
+    collectionDiagnostics.stopReason = failedSearch ? 'search_failed' : 'no_candidates'
+    if (failedSearch) collectionDiagnostics.status = 'failed'
     console.log(`[reddit-summary] keyword:"${keyword}" status:NO_GOOGLE_RESULTS`)
     return {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
       corpusQuality: prepareRedditCorpus().quality,
+      collectionDiagnostics,
     }
   }
 
-  // STEP 3: Top 15 candidati per Apify (15 URL ÷ 5 paralleli = 3 batch)
+  // STEP 3: Top 15 candidati per Apify, con al massimo 5 richieste simultanee.
   const APIFY_FETCH_COUNT = 15
   const topCandidates = candidates.slice(0, APIFY_FETCH_COUNT)
   const urlsToFetch = topCandidates.map(c => c.url)
 
-  // STEP 4: Apify scrape batched (5 URL paralleli alla volta, entro budget 90s dall'ingresso in fetchRedditData)
-  const { allItems, successCount, failureCount } = await fetchPostsViaApifyBatched(urlsToFetch, apifyToken, fetchStart)
+  // STEP 4: al massimo 5 richieste; recuperi mirati in coda, stesso budget 90+50s.
+  const collected = await collectRedditPosts(urlsToFetch, (url, signal) => fetchSinglePostViaApify(url, apifyToken, signal), fetchStart)
+  const { allItems, successCount, failureCount } = collected
+  collectionDiagnostics = { ...collected.diagnostics, queries: search.diagnostics, candidateUrls: candidates.length }
+  if (collectionDiagnostics.status === 'complete' && search.diagnostics.some(d => d.status !== 'ok')) collectionDiagnostics.status = 'partial'
+  console.log('[reddit-collection]', JSON.stringify({
+    status: collectionDiagnostics.status, selected: urlsToFetch.length, recovered: collectionDiagnostics.recoveredUrls.length,
+    unavailable: collectionDiagnostics.unavailableUrls.length, unattempted: collectionDiagnostics.unattemptedUrls.length,
+    budgetExhausted: collectionDiagnostics.budgetExhausted,
+  }))
+  for (const attempt of collectionDiagnostics.attempts) console.log('[reddit-apify-attempt]', JSON.stringify(attempt))
 
   if (allItems.length === 0) {
     console.log(`[reddit-summary] keyword:"${keyword}" status:APIFY_ALL_FAILED successCount:0 failureCount:${failureCount}`)
@@ -355,6 +300,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       keyword, posts: [], totalComments: 0, subredditsUsed: [],
       threadCount: 0, available: false, insufficientCorpus: true,
       corpusQuality: prepareRedditCorpus().quality,
+      collectionDiagnostics,
     }
   }
 
@@ -362,13 +308,14 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const postsRaw = allItems.filter(it => (it.kind as string) === 'post')
   const commentsRaw = allItems.filter(it => (it.kind as string) === 'comment')
 
-  // Raggruppa commenti per postId estratto dall'URL del commento
+  // Raggruppa commenti per postId ricevuto dall'actor.
   const commentsByPostId = new Map<string, RedditComment[]>()
   let skippedRemoved = 0
   let skippedBoilerplate = 0
+  let missingPostId = 0
   for (const c of commentsRaw) {
-    const postId = (c.postId as string) ?? ''
-    if (!postId) continue
+    const postId = typeof c.postId === 'string' ? c.postId : ''
+    if (!postId) { missingPostId++; continue }
 
     const rawBody = typeof c.body === 'string' ? c.body.trim() : ''
     const author = typeof c.author === 'string' ? c.author : ''
@@ -400,6 +347,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
         originalId: typeof c.id === 'string' ? c.id : undefined,
         idStatus: typeof c.id === 'string' && c.id ? 'original' : 'synthetic',
         containerId: postId,
+        authorId: originalRedditAccount(c),
         // Questi campi sono opzionali: nessuna parentela viene dedotta dal ranking.
         parentId: typeof c.parent_id === 'string' ? c.parent_id
           : typeof c.parentId === 'string' ? c.parentId : undefined,
@@ -408,7 +356,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       },
       body: (c.body as string) ?? '',
       score: (c.score as number) ?? 0,
-      author: (c.author as string) ?? '',
+      author: typeof c.author === 'string' ? c.author : '',
       createdUtc: createdAt,
       month: createdAt > 0
         ? new Date(createdAt * 1000).toISOString().slice(0, 7)
@@ -467,6 +415,18 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const totalComments = posts.reduce((acc, p) => acc + p.comments.length, 0)
   const postsWithComments = posts.filter(p => p.comments.length > 0).length
   const corpusQuality = prepareRedditCorpus({ available: true, posts }).quality
+  const allPostIds = new Set(enrichedPosts.map(p => p.postId))
+  const selectedPostIds = new Set(selected.map(p => p.postId))
+  let orphanComments = 0, unselectedPostComments = 0, overThreadLimit = 0
+  for (const [id, comments] of commentsByPostId) {
+    if (!allPostIds.has(id)) orphanComments += comments.length
+    else if (!selectedPostIds.has(id)) unselectedPostComments += comments.length
+    else overThreadLimit += Math.max(0, comments.length - MAX_COMMENTS_PER_POST)
+  }
+  collectionDiagnostics.mapping = { rawPosts: postsRaw.length, rawComments: commentsRaw.length, missingPostId,
+    removed: skippedRemoved, boilerplate: skippedBoilerplate, orphanComments, unselectedPostComments,
+    overThreadLimit, keptComments: totalComments }
+  console.log('[reddit-mapping]', JSON.stringify(collectionDiagnostics.mapping))
 
   console.log(
     `[reddit-summary] keyword:"${keyword}" ` +
@@ -497,5 +457,6 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     available: true,
     insufficientCorpus: corpusQuality.coverage !== 'diversified',
     corpusQuality,
+    collectionDiagnostics,
   }
 }

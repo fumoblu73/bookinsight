@@ -229,6 +229,49 @@ presenti e verificati nella fase di attribuzione. La loro effettiva presenza
 dipende dal payload dell'actor: i test usano risposte simulate, non una nuova
 raccolta live. In assenza di parentela le conferme non sono contate automaticamente.
 
+## Diagnostica della raccolta Reddit e validità su altri argomenti
+
+La ricerca mantiene la keyword originale come prima query e usa fino a quattro
+espansioni distinte dell'AI, entro il limite esistente di cinque ricerche.
+Rimangono invariati l'actor `fatihtahta/reddit-scraper-search-fast`, il massimo
+di 15 URL candidati, 40 commenti richiesti all'actor e 30 conservati per thread.
+Il ranking mantiene le formule esistenti; cambiando le query, può cambiare il
+campione raccolto e quindi il risultato dell'analisi.
+
+La coda avvia al massimo cinque richieste contemporaneamente e dà precedenza
+ai primi tentativi. Per dataset vuoti, errori di rete, timeout, HTTP 429 o 5xx
+accoda un solo recupero per URL. HTTP 401/402/403/404 ferma le nuove richieste
+all'endpoint dell'actor. `Retry-After` viene rispettato; i recuperi non estendono
+il limite: nessuna richiesta parte dopo 90 secondi dall'ingresso nel collector,
+ciascuna dura al massimo 50 secondi, entro i 150 secondi della route.
+Un dataset vuoto non dimostra l'assenza di testimonianze sull'argomento.
+
+`collectionDiagnostics` distingue risultati organici, link Reddit, URL thread
+riconosciuti, errori di ricerca, tentativi, esiti, recuperi e URL senza dati o
+mai avviati. Registra lo schema restituito dall'actor con nomi dei campi e
+contatori di presenza, senza valori degli autori o testi nei diagnostici.
+Run ID e dataset ID sono opzionali e vengono conservati solo se restituiti
+negli header previsti. Un account Reddit viene preservato come `authorId`
+solo quando un campo esplicito contiene un fullname valido `t2_...`.
+
+I contatori del mapping distinguono commenti senza postId, rimossi/vuoti,
+boilerplate, contenitori mancanti o non selezionati, taglio per thread e
+commenti mantenuti. La deduplica e il filtro successivo del corpus restano
+separati. I diagnostici sopravvivono alla finalizzazione, al salvataggio e
+all'export JSON sia nei metadati Reddit sia in `voice_data.reddit`.
+Il report mostra i recuperi o l'incompletezza della raccolta, separandoli
+dalla copertura e dalla pertinenza delle testimonianze.
+
+Le regole tecniche sono indipendenti dall'argomento. Le fixture aggiuntive
+coprono query di giardinaggio, pittura, programmazione e un input in cinese,
+oltre a concorrenza, ordine, recuperi, limiti e conservazione dei metadati.
+Questi test simulati non misurano la qualità semantica del modello su quei
+temi. Anche un controllo live riuscito su un tema non certifica tutti gli
+argomenti futuri: per nuovi ambiti servono campioni pertinenti, casi positivi,
+negativi e ambigui con esiti attesi fissati prima della finalizzazione.
+La lettura dei casi da parte dell'assistente è una revisione AI, non una
+validazione umana indipendente.
+
 ## Verifiche locali
 
 Le fixture coprono: dimensioni U/T/M indipendenti, autori cancellati e sconosciuti,

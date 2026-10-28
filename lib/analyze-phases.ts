@@ -622,6 +622,7 @@ export async function runFinalizePhase(
       corpusQuality: redditQuality,
       threadCount: reddit.threadCount,
       subredditsUsed: reddit.subredditsUsed,
+      ...(reddit.collectionDiagnostics ? { collectionDiagnostics: reddit.collectionDiagnostics } : {}),
     },
     youtubeMeta: {
       available: youtube?.available ?? false,
@@ -663,6 +664,7 @@ export async function runFinalizePhase(
         corpusQuality: redditQuality,
         totalComments: reddit.totalComments,
         subredditsUsed: reddit.subredditsUsed,
+        ...(reddit.collectionDiagnostics ? { collectionDiagnostics: reddit.collectionDiagnostics } : {}),
       },
       youtube: youtube?.available ? {
         videos: (youtube.videos ?? []).map(v => ({
