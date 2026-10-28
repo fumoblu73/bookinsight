@@ -1,5 +1,39 @@
 # BookInsight 9.0.2 — provenienza delle testimonianze e U/T/M
 
+## Flusso corrente: selezione di pain point e testimonianze
+
+Il flusso interattivo raccoglie Reddit, YouTube e recensioni Amazon, estrae
+i pain point e propone i raggruppamenti prima della scelta dell'utente.
+Ogni gruppo mostra i testi raccolti e la provenienza, con checkbox sia per
+il pain point sia per le singole testimonianze. I testi non raggruppati
+restano consultabili. Il raggruppamento è una proposta dell'AI, non una
+certificazione automatica di pertinenza.
+
+La finalizzazione riceve solo ID selezionati, validati contro lo snapshot
+server. Usa esclusivamente le testimonianze mantenute per i pain point
+attivi, comprese le recensioni passate a bonus, concept e suggerimenti.
+Le citazioni e il lessico del report vengono ricavati dai testi mantenuti.
+Una testimonianza condivisa può restare in un altro gruppo: l'esclusione
+vale per l'associazione al pain point corrente. Gli originali e tutte le
+proposte restano archiviati separatamente dalla selezione.
+
+U/T/M Reddit e YouTube sono ricalcolati nel codice sulla selezione, senza
+un ulteriore revisore AI che possa riammettere materiale scartato. Amazon
+mostra il numero di recensioni mantenute: il collector non fornisce gli
+identificativi necessari per inventare utenti unici o thread sociali.
+Il link Amazon apre il libro, non una recensione specifica inesistente.
+F/I/S, score e numeri economici restano quelli precedenti alla selezione;
+le formule non cambiano. Il report e l'export salvano proposte e scelte.
+
+Il raggruppamento aggiuntivo usa Haiku con tre worker e un budget unico
+di 30 secondi, limitato dal tempo residuo della route. Guasti e record
+non elaborati producono un avviso di raggruppamento parziale. Nel flusso
+interattivo sostituisce la precedente attribuzione/verifica dopo la
+selezione; le analisi legacy conservano il loro comportamento.
+
+Le sezioni sottostanti descrivono anche i protocolli automatici precedenti,
+conservati per leggere e collaudare i report storici.
+
 Base: `ec1563730ba8ff4b40a00665270140feff144fa5`, merge della PR #1 su
 `bookinsight-9`. Il rilascio di prova usa il branch dedicato
 `codex/bookinsight-9.0.2` e un deployment Vercel Preview. Non prevede merge

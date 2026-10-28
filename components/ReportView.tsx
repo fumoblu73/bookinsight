@@ -7,6 +7,8 @@ import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 import { redditCoverageNote } from '@/lib/reddit-corpus'
 import type { SocialEvidenceReport } from '../lib/types'
 import SocialEvidence from './SocialEvidence'
+import EvidenceList from './EvidenceList'
+import type { EvidenceReview } from '../lib/evidence-review'
 import RedditCollectionNotice from './RedditCollectionNotice'
 import { formatItalianDate, formatItalianNumber, formatReportFileDate } from '../lib/format'
 
@@ -41,6 +43,7 @@ export interface FullReport {
   trendForecast: { classificazione: string; narrativa: string; stagionalita: string | null; query_emergenti: string[] } | null
   painPoints: { id?: string; pain_point: string; score: number; F: number; I: number; solvibilita?: 'affrontabile' | 'vincolo_formato' | 'mai_fatto' | 'fuori_portata'; requisito_forma?: string; evidence: string; fonte?: PainPoint['fonte']; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
   socialEvidence?: SocialEvidenceReport
+  evidenceReview?: EvidenceReview
   gapAnalysis: {
     passo1_problemi_non_risolti: { items: string[] }
     passo2_angoli_mancanti: { items: string[] }
@@ -705,7 +708,7 @@ function ExcludedBooks({ rawTop15, topBooks }: { rawTop15: RawBook[]; topBooks: 
   )
 }
 
-function PainPointsList({ painPoints, socialEvidence }: { painPoints: FullReport['painPoints']; socialEvidence?: SocialEvidenceReport }) {
+function PainPointsList({ painPoints, socialEvidence, evidenceReview }: { painPoints: FullReport['painPoints']; socialEvidence?: SocialEvidenceReport; evidenceReview?: EvidenceReview }) {
   const [showAll, setShowAll] = useState(false)
   const hiddenCount = Math.max(0, painPoints.length - 5)
 
@@ -746,9 +749,13 @@ function PainPointsList({ painPoints, socialEvidence }: { painPoints: FullReport
             {(pp.fonte === 'reddit' || pp.fonte === 'youtube') && (
               <>
                 <p className="text-xs text-zinc-500 mt-1">Fonte: {pp.fonte === 'reddit' ? 'Reddit' : 'YouTube'}</p>
-                <SocialEvidence painPointId={pp.id} evidence={socialEvidence} />
+                <SocialEvidence painPointId={pp.id} evidence={socialEvidence} hideAssociations={!!evidenceReview?.selection} />
               </>
             )}
+            {evidenceReview?.selection && pp.id && <>
+              <EvidenceList records={evidenceReview.records.filter(r => evidenceReview.selection!.records[pp.id!]?.includes(r.id))} title="Testimonianze mantenute" />
+              <p className="mt-1 text-xs text-zinc-500">Testimonianze escluse da questo gruppo: {(evidenceReview.groups[pp.id]?.length ?? 0) - (evidenceReview.selection.records[pp.id]?.length ?? 0)}.</p>
+            </>}
           </li>
         ))}
       </ul>
@@ -1371,7 +1378,7 @@ export default function ReportView({ report }: { report: FullReport }) {
               </div>
             )}
             {report.painPoints.length > 0 ? (
-              <PainPointsList painPoints={report.painPoints} socialEvidence={report.socialEvidence} />
+              <PainPointsList painPoints={report.painPoints} socialEvidence={report.socialEvidence} evidenceReview={report.evidenceReview} />
             ) : (
               <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-1">
                 <p className="text-xs font-semibold text-amber-700">

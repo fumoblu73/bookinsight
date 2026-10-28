@@ -5,6 +5,7 @@ import * as storage from './upstash'
 import { runPainPointsPhase, runFinalizePhase } from './analyze-phases'
 import { buildSocialManifest } from './social-corpus'
 import { newRedditDiagnostics } from './reddit-collection'
+import { evidenceCatalog, groupEvidence } from './evidence-review'
 import * as prompts from './prompts'
 import { GET as exportReport } from '../app/api/export/[id]/route'
 import type { AmazonData, PainPoint, RedditData, TrendsData, SocialEvidenceReport } from './types'
@@ -125,4 +126,40 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   assert.equal((failed.socialEvidence as SocialEvidenceReport).metrics.pp1.status, 'failed')
   assert.deepEqual(failed.roi, report.roi)
   assert.deepEqual(failed.painPoints, report.painPoints)
+
+  // Nel nuovo flusso la selezione precede la finalizzazione e non viene riclassificata dall'AI.
+  const manual = structuredClone(restored)
+  manual.reddit.posts[0].comments.push({ ...manual.reddit.posts[0].comments[0], id: 'c2', author: 'bob', body: 'DROP_REDDIT',
+    provenance: { originalId: 'c2', idStatus: 'original', containerId: 'p1' } })
+  manual.amazon.topBookReviews = [{ asin: book.asin, bookTitle: book.title, reviews: [
+    { rating: 2, title: 'Kept', body: 'KEEP_AMAZON' }, { rating: 2, title: 'Removed', body: 'DROP_AMAZON' },
+  ] }]
+  manual.painPoints.push({ ...painPoints[0], id: 'ppA', fonte: 'recensione_negativa', evidence: 'DROP_AMAZON', evidence_quotes: ['DROP_AMAZON'] })
+  manual.socialManifest = buildSocialManifest(manual.reddit)
+  manual.evidenceReview = await groupEvidence(evidenceCatalog(manual.socialManifest, manual.amazon.topBookReviews, 'US'), manual.painPoints, 'meals', async prompt => {
+    const d = JSON.parse(prompt.split('DATI:\n')[1])
+    return { decisions: d.recordsToReview.map((r: { recordId: string; allowedPainPointIds: string[] }) => ({ recordId: r.recordId, painPointIds: r.allowedPainPointIds })) }
+  })
+  const evidenceSelection = { pp1: ['reddit:post:0:comment:0'], ppA: ['amazon:book:0:review:0'] }
+  const callsBefore = attribution.mock.callCount()
+  const curated = (await runFinalizePhase(manual, ['pp1', 'ppA'], { evidenceSelection })).report as Record<string, unknown>
+  assert.equal(attribution.mock.callCount(), callsBefore, 'nessuna riclassificazione dopo la scelta manuale')
+  const input = gapPrompts.at(-1)!
+  assert.ok(!input.includes('DROP_REDDIT') && !input.includes('DROP_AMAZON'), 'le esclusioni arrivano al prompt strategico reale')
+  assert.ok(input.includes('KEEP_AMAZON'))
+  assert.deepEqual(curated.roi, report.roi)
+  assert.deepEqual(curated.profitabilityScore, report.profitabilityScore)
+  const curatedSocial = curated.socialEvidence as SocialEvidenceReport
+  assert.equal(curatedSocial.reviewMode, 'manual')
+  assert.deepEqual([curatedSocial.metrics.pp1.U, curatedSocial.metrics.pp1.T, curatedSocial.metrics.pp1.M], [1, 1, 1])
+  const keptPain = (curated.painPoints as PainPoint[])[0]
+  assert.deepEqual([keptPain.F, keptPain.I, keptPain.score], [painPoints[0].F, painPoints[0].I, painPoints[0].score])
+  const originalVoice = curated.voice_data as { reddit: { posts: typeof reddit.posts }; reviews: typeof manual.amazon.topBookReviews }
+  assert.equal(originalVoice.reddit.posts[0].comments[1].body, 'DROP_REDDIT')
+  assert.equal(originalVoice.reviews![0].reviews[1].body, 'DROP_AMAZON')
+  t.mock.method(storage, 'getReport', async () => ({ id: 'test', keyword: 'meals', market: 'US', status: 'complete', createdAt: '2026-10-01', data: { id: 'test', ...curated } }))
+  const manualExport = await (await exportReport({} as Parameters<typeof exportReport>[0], { params: Promise.resolve({ id: 'test' }) })).json()
+  assert.deepEqual(manualExport.evidence_review.selection.records, evidenceSelection)
+  assert.deepEqual(manualExport.social_evidence, JSON.parse(JSON.stringify(curatedSocial)))
+  assert.equal(manualExport.voice_data.reviews[0].reviews[1].body, 'DROP_AMAZON')
 })

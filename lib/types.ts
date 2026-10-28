@@ -301,7 +301,7 @@ export interface SocialCorpusManifest {
 export interface SocialAssociation {
   painPointId: string
   recordId: string
-  supportType: 'direct' | 'confirmation'
+  supportType: 'direct' | 'confirmation' | 'manual'
   quote: string
   contextRecordIds: string[]
 }
@@ -346,6 +346,7 @@ export interface SocialDiagnostic {
 
 export interface SocialEvidenceReport {
   version: '9.0.2'
+  reviewMode?: 'manual'
   manifest: SocialCorpusManifest
   associations: SocialAssociation[]
   metrics: Record<string, SocialMetrics>

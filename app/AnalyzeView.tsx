@@ -7,6 +7,8 @@ import type { AmazonData, FilteredBook, Market, YouTubeData, CreditsData, PainPo
 import TargetSelector from '@/components/TargetSelector'
 import { calcRoyalty } from '@/lib/amazon'
 import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
+import EvidenceList from '@/components/EvidenceList'
+import type { EvidenceRecord, EvidenceReview, EvidenceSelection } from '@/lib/evidence-review'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
 type Stage =
@@ -120,6 +122,8 @@ export default function AnalyzeView() {
   const [analysisId, setAnalysisId] = useState<string | null>(null)
   const [painPointsToReview, setPainPointsToReview] = useState<PainPoint[]>([])
   const [selectedPainPointIds, setSelectedPainPointIds] = useState<Set<string>>(new Set())
+  const [evidenceReview, setEvidenceReview] = useState<EvidenceReview | undefined>()
+  const [evidenceSelection, setEvidenceSelection] = useState<EvidenceSelection>({})
   const [previewData, setPreviewData] = useState<PainPointsPreviewData | null>(null)
 
   // Leggi URL params da Target Finder (?keyword=&market=&target=&skipTarget=)
@@ -251,6 +255,8 @@ export default function AnalyzeView() {
     setAnalysisId(null)
     setPainPointsToReview([])
     setSelectedPainPointIds(new Set())
+    setEvidenceReview(undefined)
+    setEvidenceSelection({})
     setPreviewData(null)
     setTargetMode('undecided')
     setTargetFinderResult(null)
@@ -409,6 +415,7 @@ export default function AnalyzeView() {
       const data = await res.json() as {
         analysisId: string
         painPoints: PainPoint[]
+        evidenceReview?: EvidenceReview
         scoring: { score: number; trendSignal: string; entryDifficulty: string }
         passo0: { angolo: string; target_reader: string }
         amazonSummary: { topBooks: FilteredBook[]; keyword: string }
@@ -418,6 +425,8 @@ export default function AnalyzeView() {
 
       setAnalysisId(data.analysisId)
       setPainPointsToReview(data.painPoints)
+      setEvidenceReview(data.evidenceReview)
+      setEvidenceSelection(data.evidenceReview ? structuredClone(data.evidenceReview.groups) : {})
       setSelectedPainPointIds(new Set(data.painPoints.filter(p => p.id).map(p => p.id!)))
       setPreviewData({
         scoring: data.scoring,
@@ -458,6 +467,7 @@ export default function AnalyzeView() {
         body: JSON.stringify({
           analysisId,
           selectedPainPointIds: Array.from(selectedPainPointIds),
+          ...(evidenceReview ? { evidenceSelection: Object.fromEntries([...selectedPainPointIds].map(id => [id, evidenceSelection[id] ?? []])) } : {}),
           cpc: cpcRef.current,
           userNotes: userNotes.trim() || undefined,
           plannedPrice: plannedPriceRef.current,
@@ -487,7 +497,7 @@ export default function AnalyzeView() {
       setError(err instanceof Error ? err.message : String(err))
       setStage('error')
     }
-  }, [analysisId, selectedPainPointIds, userNotes])
+  }, [analysisId, selectedPainPointIds, userNotes, evidenceReview, evidenceSelection])
 
   const isLoading = !['idle', 'awaiting_validation', 'awaiting_painpoint_selection', 'done', 'error'].includes(stage)
   const isFormLocked = isLoading || stage === 'awaiting_painpoint_selection'
@@ -932,19 +942,34 @@ export default function AnalyzeView() {
 
           {/* ── Pain point selection panel ──────────────────────────────────────── */}
           <div ref={painpointPanelRef}>
-            {stage === 'awaiting_painpoint_selection' && painPointsToReview.length > 0 && previewData && (
+            {stage === 'awaiting_painpoint_selection' && painPointsToReview.length === 0 && <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p>Non sono emersi pain point selezionabili. Puoi consultare i testi raccolti qui sotto.</p>
+              <button type="button" onClick={() => setStage('idle')} className="mt-2 text-indigo-700 underline">Nuova ricerca</button>
+            </div>}
+            {stage === 'awaiting_painpoint_selection' && previewData && (
               <PainPointSelectionPanel
                 painPoints={painPointsToReview}
                 selectedIds={selectedPainPointIds}
-                onToggle={(id) => setSelectedPainPointIds(prev => {
-                  const next = new Set(prev)
-                  if (next.has(id)) next.delete(id)
-                  else next.add(id)
-                  return next
-                })}
-                onSelectAll={() => setSelectedPainPointIds(
-                  new Set(painPointsToReview.filter(p => p.id).map(p => p.id!))
-                )}
+                evidenceReview={evidenceReview}
+                evidenceSelection={evidenceSelection}
+                onToggleEvidence={(painId, recordId) => {
+                  const current = evidenceSelection[painId] ?? []
+                  const next = current.includes(recordId) ? current.filter(id => id !== recordId) : [...current, recordId]
+                  setEvidenceSelection(prev => ({ ...prev, [painId]: next }))
+                  if (next.length === 0) setSelectedPainPointIds(prev => { const ids = new Set(prev); ids.delete(painId); return ids })
+                }}
+                onToggle={(id) => {
+                  const adding = !selectedPainPointIds.has(id)
+                  setSelectedPainPointIds(prev => {
+                    const next = new Set(prev)
+                    if (adding) next.add(id)
+                    else next.delete(id)
+                    return next
+                  })
+                }}
+                onSelectAll={() => {
+                  setSelectedPainPointIds(new Set(painPointsToReview.filter(p => p.id).map(p => p.id!)))
+                }}
                 onDeselectAll={() => setSelectedPainPointIds(new Set())}
                 onContinue={handlePhase3}
                 previewData={previewData}
@@ -991,10 +1016,13 @@ function registerBadgeClass(reg: string): string {
 
 // ─── Pain Point Card ──────────────────────────────────────────────────────────
 
-function PainPointCard({ pp, isSelected, onToggle }: {
+function PainPointCard({ pp, isSelected, onToggle, records, selectedRecords, onToggleRecord }: {
   pp: PainPoint
   isSelected: boolean
   onToggle: () => void
+  records?: EvidenceRecord[]
+  selectedRecords?: string[]
+  onToggleRecord?: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const hasId = !!pp.id
@@ -1008,6 +1036,7 @@ function PainPointCard({ pp, isSelected, onToggle }: {
       <div className="flex gap-3">
         <input
           type="checkbox"
+          aria-label={`Mantieni pain point: ${pp.pain_point}`}
           checked={isSelected}
           onChange={onToggle}
           disabled={!hasId}
@@ -1045,7 +1074,7 @@ function PainPointCard({ pp, isSelected, onToggle }: {
               <span className="font-semibold">Requisito di forma:</span> {pp.requisito_forma}
             </p>
           )}
-          {hasEvidence ? (
+          {records ? <EvidenceList records={records} selectedIds={selectedRecords} onToggle={onToggleRecord} disabled={!isSelected} problem={pp.pain_point} /> : hasEvidence ? (
             <>
               <button
                 type="button"
@@ -1090,6 +1119,7 @@ function PainPointCard({ pp, isSelected, onToggle }: {
 
 function PainPointSelectionPanel({
   painPoints, selectedIds, onToggle, onSelectAll, onDeselectAll, onContinue, previewData,
+  evidenceReview, evidenceSelection, onToggleEvidence,
 }: {
   painPoints: PainPoint[]
   selectedIds: Set<string>
@@ -1098,9 +1128,16 @@ function PainPointSelectionPanel({
   onDeselectAll: () => void
   onContinue: () => void
   previewData: PainPointsPreviewData
+  evidenceReview?: EvidenceReview
+  evidenceSelection: EvidenceSelection
+  onToggleEvidence: (painId: string, recordId: string) => void
 }) {
   const selectableTotal = painPoints.filter(p => p.id).length
   const selectedCount   = selectedIds.size
+  const records = new Map(evidenceReview?.records.map(r => [r.id, r]) ?? [])
+  const grouped = new Set(Object.values(evidenceReview?.groups ?? {}).flat())
+  const ungrouped = evidenceReview?.records.filter(r => !grouped.has(r.id)) ?? []
+  const emptySelection = !!evidenceReview && [...selectedIds].some(id => (evidenceReview.groups[id]?.length ?? 0) > 0 && !(evidenceSelection[id]?.length))
 
   return (
     <div className="mb-8 space-y-4">
@@ -1133,6 +1170,7 @@ function PainPointSelectionPanel({
             {previewData.passo0.angolo}
           </div>
         )}
+        {evidenceReview && <p className="mt-3 text-xs text-zinc-500">Testimonianze disponibili per la selezione: Reddit {evidenceReview.records.filter(r => r.source === 'reddit').length} · YouTube {evidenceReview.records.filter(r => r.source === 'youtube').length} · Recensioni Amazon {evidenceReview.records.filter(r => r.source === 'amazon').length}.</p>}
       </div>
 
       {/* Selezione pain points */}
@@ -1143,6 +1181,7 @@ function PainPointSelectionPanel({
             <p className="text-xs text-zinc-500 mt-0.5">
               Scarta quelli irrilevanti per il tuo mercato. Quelli rimanenti guideranno Insights, Gap Analysis e Strategia.
             </p>
+            {evidenceReview && <p className="mt-2 text-xs text-zinc-600">Apri le testimonianze per deselezionare anche singoli commenti e recensioni. F/I/S e gli score restano quelli calcolati prima della selezione.</p>}
           </div>
           <span className="shrink-0 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full whitespace-nowrap">
             {selectedCount}/{selectableTotal}
@@ -1150,15 +1189,23 @@ function PainPointSelectionPanel({
         </div>
 
         <div className="mt-4">
+          {evidenceReview?.processing.status === 'partial' && <p className="mb-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Raggruppamento parziale: {evidenceReview.processing.processedRecordIds.length}/{evidenceReview.processing.requested} testimonianze esaminate. I testi raccolti restano consultabili.</p>}
           {painPoints.map(pp => (
             <PainPointCard
               key={pp.id ?? pp.pain_point}
               pp={pp}
               isSelected={pp.id ? selectedIds.has(pp.id) : true}
               onToggle={() => pp.id && onToggle(pp.id)}
+              records={evidenceReview && pp.id ? (evidenceReview.groups[pp.id] ?? []).map(id => records.get(id)!).filter(Boolean) : undefined}
+              selectedRecords={pp.id ? evidenceSelection[pp.id] : undefined}
+              onToggleRecord={pp.id ? id => onToggleEvidence(pp.id!, id) : undefined}
             />
           ))}
         </div>
+        {evidenceReview && <>
+          <p className="text-xs text-zinc-500">Una testimonianza può comparire in più pain point. La deselezione vale per il gruppo corrente; gli originali restano nell’archivio.</p>
+          {ungrouped.length > 0 && <EvidenceList records={ungrouped} title="Testimonianze non raggruppate" />}
+        </>}
 
         <div className="flex items-center gap-3 mt-4 pt-4 border-t border-zinc-100">
           <button
@@ -1178,12 +1225,13 @@ function PainPointSelectionPanel({
           <button
             type="button"
             onClick={onContinue}
-            disabled={selectedCount === 0}
+            disabled={selectedCount === 0 || emptySelection}
             className="ml-auto rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Continua con {selectedCount} pain point →
           </button>
         </div>
+        {emptySelection && <p className="mt-2 text-xs text-amber-800">Mantieni almeno una testimonianza per ciascun gruppo selezionato oppure deseleziona il pain point.</p>}
       </div>
     </div>
   )

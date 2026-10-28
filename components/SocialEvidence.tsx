@@ -1,9 +1,10 @@
 import type { SocialEvidenceReport } from '../lib/types'
 
 /** Solo dati descrittivi: nessuna interazione con F/I/S o ordinamento. */
-export default function SocialEvidence({ painPointId, evidence }: {
+export default function SocialEvidence({ painPointId, evidence, hideAssociations = false }: {
   painPointId?: string
   evidence?: SocialEvidenceReport
+  hideAssociations?: boolean
 }) {
   const metrics = painPointId ? evidence?.metrics[painPointId] : undefined
   const uncertain = evidence?.manifest.records.filter(r => painPointId && evidence.uncertainRecordIds?.[painPointId]?.includes(r.recordId)) ?? []
@@ -37,7 +38,9 @@ export default function SocialEvidence({ painPointId, evidence }: {
       </p>
       <p>U: autori identificabili · T: thread/video distinti · M: commenti pertinenti distinti.</p>
       <p>Conteggi riferiti al campione analizzato; non misurano la prevalenza nel mercato.</p>
-      {verification?.version === 'topic-problem-support-v4'
+      {evidence?.reviewMode === 'manual'
+        ? <p>Conteggi basati sulle testimonianze mantenute nella selezione manuale.</p>
+        : verification?.version === 'topic-problem-support-v4'
         ? <p>Verifica automatica: coerenza con l’argomento iniziale e sostegno al problema.</p>
         : <p className="text-amber-700">{verification?.version === 'topic-problem-support-v3'
           ? 'Questi conteggi precedono il controllo su oggetto del problema e tipo di testimonianza.'
@@ -45,7 +48,7 @@ export default function SocialEvidence({ painPointId, evidence }: {
           ? 'Questi conteggi precedono il controllo rispetto all’argomento iniziale.'
           : 'Questi conteggi precedono la nuova verifica di pertinenza.'}</p>}
       {offTopic > 0 && <p>Proposte escluse perché riguardano un altro argomento: {offTopic}.</p>}
-      {metrics.status === 'partial' && <p className="text-amber-700">Attribuzione parziale: {metrics.reviewedComments}/{metrics.totalComments} commenti esaminati; i conteggi possono essere incompleti.</p>}
+      {metrics.status === 'partial' && <p className="text-amber-700">{evidence?.reviewMode === 'manual' ? 'Raggruppamento iniziale parziale; i conteggi riguardano le testimonianze mantenute.' : `Attribuzione parziale: ${metrics.reviewedComments}/${metrics.totalComments} commenti esaminati; i conteggi possono essere incompleti.`}</p>}
       {unresolved > 0 && <p>Commenti senza una decisione valida: {unresolved}.</p>}
       {uncertainDetails}
       {metrics.unknownAuthorMentions > 0 && <p>{metrics.unknownAuthorMentions} menzioni con autore sconosciuto: U include solo gli autori identificabili.</p>}
@@ -53,7 +56,7 @@ export default function SocialEvidence({ painPointId, evidence }: {
       {metrics.ambiguousConfirmations > 0 && <p>{metrics.ambiguousConfirmations} conferme ambigue escluse dai conteggi.</p>}
       {metrics.rejectedAssociations > 0 && <p>{metrics.rejectedAssociations} associazioni rifiutate dalla verifica dei riferimenti.</p>}
       {metrics.M === 0 && <p>Nessun supporto validato per questo pain point nell’attribuzione effettuata.</p>}
-      {associations.length > 0 && (
+      {!hideAssociations && associations.length > 0 && (
         <details className="pt-1">
           <summary className="cursor-pointer text-indigo-700">Testimonianze e provenienza ({associations.length})</summary>
           <ul className="mt-2 space-y-3">

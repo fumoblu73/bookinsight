@@ -55,6 +55,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
     },
     pain_points: report.painPoints,
     social_evidence: report.socialEvidence ?? null,
+    evidence_review: report.evidenceReview ?? null,
     voice_data: report.voice_data ?? null,
     ads_intelligence: report.ads_intelligence ?? null,
     analysis_log: record.log ?? null,

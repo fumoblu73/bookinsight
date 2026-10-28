@@ -27,6 +27,8 @@ import { cacheGet } from './upstash'
 import { prepareRedditCorpus } from './reddit-corpus'
 import { buildSocialManifest } from './social-corpus'
 import { aggregateSocialEvidence, runSocialAttribution } from './social-attribution'
+import { manualSocialEvidence, selectedPainEvidence, selectedSources, validateEvidenceSelection } from './evidence-review'
+import type { EvidenceReview, EvidenceSelection } from './evidence-review'
 
 // ─── Tipi intermedi ───────────────────────────────────────────────────────────
 
@@ -47,9 +49,11 @@ export interface PainPointsIntermediate {
   logEntries: LogEntry[]
   timestamp: string
   socialManifest?: SocialCorpusManifest // assente negli snapshot legacy: nessun ricalcolo implicito
+  evidenceReview?: EvidenceReview
 }
 
 export interface FinalizeOptions {
+  evidenceSelection?: EvidenceSelection
   cpc?: number
   userNotes?: string
   plannedPrice?: number
@@ -378,19 +382,31 @@ export async function runFinalizePhase(
     costoScrittura, costoCopertina, costoPerRecensione,
   } = options
 
-  const { amazon, trends, reddit, youtube, scoring, passo0, subNiches, complianceCategory, complianceRisk, competitiveDynamism } = intermediate
+  const { trends, scoring, passo0, subNiches, complianceCategory, complianceRisk, competitiveDynamism } = intermediate
+  const originalAmazon = intermediate.amazon, originalReddit = intermediate.reddit, originalYoutube = intermediate.youtube
   // Gli snapshot intermedi precedenti alla 9.0.1 possono non avere corpusQuality.
-  const redditQuality = prepareRedditCorpus(reddit).quality
+  const redditQuality = prepareRedditCorpus(originalReddit).quality
 
   // Filtra pain points: se selectedPainPointIds è vuoto usa tutti
-  const activePainPoints = selectedPainPointIds.length > 0
+  const selectedPainPoints = selectedPainPointIds.length > 0
     ? intermediate.painPoints.filter(p => p.id && selectedPainPointIds.includes(p.id))
     : intermediate.painPoints
+  const selection = intermediate.evidenceReview
+    ? validateEvidenceSelection(intermediate.evidenceReview, selectedPainPointIds, options.evidenceSelection) : undefined
+  const { amazon, reddit, youtube } = selection
+    ? selectedSources(selection, originalAmazon, originalReddit, originalYoutube)
+    : { amazon: originalAmazon, reddit: originalReddit, youtube: originalYoutube }
+  const activePainPoints = selection
+    ? selectedPainEvidence(selectedPainPoints, intermediate.evidenceReview!, selection) : selectedPainPoints
+  const evidenceReview = selection ? { ...intermediate.evidenceReview!,
+    selection: { selectedPainPointIds: [...selectedPainPointIds], records: selection, savedAt: new Date().toISOString() } } : undefined
 
   // In parallelo alla finalizzazione: non entra nei prompt o nei calcoli esistenti.
   const attributionStarted = Date.now()
   const attributionController = new AbortController()
-  const socialEvidenceTask = intermediate.socialManifest
+  const socialEvidenceTask = selection && intermediate.socialManifest
+    ? Promise.resolve(manualSocialEvidence(intermediate.socialManifest, activePainPoints, evidenceReview!, selection))
+    : intermediate.socialManifest
     ? runSocialAttribution(intermediate.socialManifest, activePainPoints, callSocialAttribution, {
       signal: attributionController.signal, verify: callSocialVerification, topic: intermediate.keyword, reviewerModel: SOCIAL_VERIFICATION_MODEL,
     })
@@ -468,7 +484,7 @@ export async function runFinalizePhase(
   onProgress?.('strategy')
 
   // Pain point per i bonus: curated se selezionati, altrimenti top 5 su tutti
-  const bonusPainPoints = selectedPainPointIds.length > 0
+  const bonusPainPoints = selection ? activePainPoints : selectedPainPointIds.length > 0
     ? intermediate.painPoints.filter(p => selectedPainPointIds.includes(p.id ?? ''))
     : intermediate.painPoints.slice(0, 5)
 
@@ -487,7 +503,7 @@ export async function runFinalizePhase(
         intermediate.keyword,
         intermediate.market,
         bonusPainPoints,
-        intermediate.amazon.topBookReviews ?? [],
+        amazon.topBookReviews ?? [],
         gapAnalysis,
       ).catch(err => {
         console.error('[finalize] runBonusSuggestions failed:', err)
@@ -497,7 +513,7 @@ export async function runFinalizePhase(
         intermediate.keyword,
         intermediate.market,
         bonusPainPoints,
-        intermediate.amazon.topBookReviews ?? [],
+        amazon.topBookReviews ?? [],
         gapAnalysis,
       ).catch(err => {
         console.error('[finalize] runConceptDirections failed:', err)
@@ -508,7 +524,7 @@ export async function runFinalizePhase(
         intermediate.market,
         bonusPainPoints,
         amazon.topBooks,
-        intermediate.amazon.topBookReviews ?? [],
+        amazon.topBookReviews ?? [],
         gapAnalysis,
       ).catch(err => {
         console.error('[finalize] runThingsToAvoid failed:', err)
@@ -618,30 +634,31 @@ export async function runFinalizePhase(
     competitorTarget: amazon.competitorTarget,
     topBooks: amazon.topBooks,
     redditMeta: {
-      available: reddit.available,
+      available: originalReddit.available,
       insufficientCorpus: redditQuality.coverage !== 'diversified',
       corpusQuality: redditQuality,
-      threadCount: reddit.threadCount,
-      subredditsUsed: reddit.subredditsUsed,
-      ...(reddit.collectionDiagnostics ? { collectionDiagnostics: reddit.collectionDiagnostics } : {}),
+      threadCount: originalReddit.threadCount,
+      subredditsUsed: originalReddit.subredditsUsed,
+      ...(originalReddit.collectionDiagnostics ? { collectionDiagnostics: originalReddit.collectionDiagnostics } : {}),
     },
     youtubeMeta: {
-      available: youtube?.available ?? false,
-      insufficientCorpus: youtube?.insufficientCorpus ?? false,
-      videoCount: youtube?.videos?.length ?? 0,
-      totalComments: youtube?.totalComments ?? 0,
+      available: originalYoutube?.available ?? false,
+      insufficientCorpus: originalYoutube?.insufficientCorpus ?? false,
+      videoCount: originalYoutube?.videos?.length ?? 0,
+      totalComments: originalYoutube?.totalComments ?? 0,
     },
     passo0,
     trends,
     trendForecast,
     painPoints: activePainPoints,
     ...(socialEvidence ? { socialEvidence } : {}),
+    ...(evidenceReview ? { evidenceReview } : {}),
     gapAnalysis,
     seriesStrategy,
     roi,
     roiNarrative,
     budget: roi.params.budgetProduzione,
-    amazon,
+    amazon: originalAmazon,
     ads_intelligence: adsIntelligence,
     bonus_suggestions: bonusSuggestions,
     concept_directions: conceptDirections,
@@ -653,7 +670,7 @@ export async function runFinalizePhase(
     subNiches,
     voice_data: {
       reddit: {
-        posts: reddit.posts.map(p => ({
+        posts: originalReddit.posts.map(p => ({
           ...p,
           title: p.title,
           selftext: p.selftext ?? '',
@@ -661,23 +678,23 @@ export async function runFinalizePhase(
           score: p.score,
           comments: p.comments.map(c => ({ ...c })),
         })),
-        available: reddit.available,
+        available: originalReddit.available,
         corpusQuality: redditQuality,
-        totalComments: reddit.totalComments,
-        subredditsUsed: reddit.subredditsUsed,
-        ...(reddit.collectionDiagnostics ? { collectionDiagnostics: reddit.collectionDiagnostics } : {}),
+        totalComments: originalReddit.totalComments,
+        subredditsUsed: originalReddit.subredditsUsed,
+        ...(originalReddit.collectionDiagnostics ? { collectionDiagnostics: originalReddit.collectionDiagnostics } : {}),
       },
-      youtube: youtube?.available ? {
-        videos: (youtube.videos ?? []).map(v => ({
+      youtube: originalYoutube?.available ? {
+        videos: (originalYoutube.videos ?? []).map(v => ({
           ...v,
           title: v.title,
           viewCount: v.viewCount,
           comments: v.comments.map(c => ({ ...c })),
         })),
-        available: youtube.available,
-        totalComments: youtube.totalComments,
+        available: originalYoutube.available,
+        totalComments: originalYoutube.totalComments,
       } : null,
-      reviews: amazon.topBookReviews ?? [],
+      reviews: originalAmazon.topBookReviews ?? [],
     },
   }
 

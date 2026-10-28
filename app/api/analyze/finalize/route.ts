@@ -3,6 +3,8 @@ import { AnalysisLog } from '@/lib/types'
 import { PainPointsIntermediate, runFinalizePhase } from '@/lib/analyze-phases'
 import { cacheGetStrict, cacheDel, saveReport, updateReport } from '@/lib/upstash'
 import { isAnthropicBillingError } from '@/lib/ai'
+import { validateEvidenceSelection } from '@/lib/evidence-review'
+import type { EvidenceSelection } from '@/lib/evidence-review'
 
 export const maxDuration = 300
 
@@ -14,6 +16,7 @@ export async function POST(req: NextRequest) {
     userNotes?: string
     plannedPrice?: number
     plannedPages?: number
+    evidenceSelection?: EvidenceSelection
   }
   try {
     body = await req.json()
@@ -47,6 +50,14 @@ export async function POST(req: NextRequest) {
       { status: 410 },
     )
   }
+  let evidenceSelection: EvidenceSelection | undefined
+  if (intermediate.evidenceReview) {
+    try {
+      evidenceSelection = validateEvidenceSelection(intermediate.evidenceReview, selectedPainPointIds, body.evidenceSelection)
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'Selezione non valida.' }, { status: 400 })
+    }
+  }
 
   const startedAt = new Date().toISOString()
 
@@ -62,7 +73,7 @@ export async function POST(req: NextRequest) {
     const { report: reportData, finalizeLogs } = await runFinalizePhase(
       intermediate,
       selectedPainPointIds,
-      { cpc, userNotes, plannedPrice, plannedPages },
+      { cpc, userNotes, plannedPrice, plannedPages, evidenceSelection },
     )
 
     const analysisLog: AnalysisLog = {

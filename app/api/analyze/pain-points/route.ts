@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Market, AmazonData, TrendsData, RedditData, YouTubeData } from '@/lib/types'
 import { runPainPointsPhase, PainPointsIntermediate } from '@/lib/analyze-phases'
 import { cacheSet, redisHealthy } from '@/lib/upstash'
-import { isAnthropicBillingError } from '@/lib/ai'
+import { callSocialAttribution, isAnthropicBillingError } from '@/lib/ai'
+import { evidenceCatalog, groupEvidence } from '@/lib/evidence-review'
 
-// Solo AI (3 chiamate Sonnet): nessun fetching esterno
+// Estrazione e raggruppamento AI: nessun fetching delle fonti esterne.
 export const maxDuration = 180
 
 const INTERMEDIATE_TTL_SECONDS = 30 * 60  // 30 minuti
@@ -14,6 +15,7 @@ function generateAnalysisId(): string {
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
   let body: {
     keyword?: string
     market?: string
@@ -67,6 +69,12 @@ export async function POST(req: NextRequest) {
       effectiveReddit,
       youtubeData,
     )
+    if (intermediate.socialManifest) {
+      intermediate.evidenceReview = await groupEvidence(
+        evidenceCatalog(intermediate.socialManifest, intermediate.amazon.topBookReviews ?? [], market!),
+        intermediate.painPoints, kw, callSocialAttribution, Math.max(0, Math.min(30_000, 150_000 - (Date.now() - startedAt))),
+      )
+    }
 
     // ── Salva snapshot intermedio su Redis ─────────────────────────────────
     const analysisId = generateAnalysisId()
@@ -83,6 +91,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       analysisId,
       painPoints: intermediate.painPoints,
+      evidenceReview: intermediate.evidenceReview,
       scoring: intermediate.scoring,
       passo0: intermediate.passo0,
       amazonSummary: {
