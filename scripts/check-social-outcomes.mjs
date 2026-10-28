@@ -8,8 +8,8 @@ const report = JSON.parse(readFileSync(input, 'utf8'))
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'))
 const evidence = report.socialEvidence ?? report.social_evidence
 const pains = report.painPoints ?? report.pain_points
-assert.ok(['problem-support-v2', 'topic-problem-support-v3'].includes(evidence?.verification?.version), 'Serve il protocollo con problema e referente separati')
-if (evidence.verification.version === 'topic-problem-support-v3') assert.equal(evidence.verification.topic, (report.keyword ?? report.meta?.topic)?.trim(), 'Il tema verificato deve coincidere con la keyword originale')
+assert.ok(['problem-support-v2', 'topic-problem-support-v3', 'topic-problem-support-v4'].includes(evidence?.verification?.version), 'Serve il protocollo con problema e referente separati')
+if (['topic-problem-support-v3', 'topic-problem-support-v4'].includes(evidence.verification.version)) assert.equal(evidence.verification.topic, (report.keyword ?? report.meta?.topic)?.trim(), 'Il tema verificato deve coincidere con la keyword originale')
 const pain = pains.find(p => selectedId ? p.id === selectedId : p.pain_point === fixture.painPoint && p.fonte === fixture.platform)
 assert.ok(pain?.id, 'Pain point della fixture non presente')
 assert.equal(pain.pain_point, fixture.painPoint, 'La definizione del problema deve coincidere con quella preregistrata')

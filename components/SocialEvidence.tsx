@@ -18,6 +18,7 @@ export default function SocialEvidence({ painPointId, evidence }: {
         <p>{r.platform === 'reddit' ? 'Reddit' : 'YouTube'} · Commento: {r.sourceCommentId ?? 'ID originale assente'}</p>
         <p>Escluso dai conteggi confermati; valutazione incerta.</p>
         {verification?.decisions.some(v => v.recordId === r.recordId && v.painPointId === painPointId && v.reason === 'unclear_topic') && <p>Collegamento con l’argomento iniziale non dimostrato.</p>}
+        {verification?.decisions.some(v => v.recordId === r.recordId && v.painPointId === painPointId && v.evidenceKind === 'hypothesis') && <p>Giudizio ipotetico: non dimostra un problema vissuto o un bisogno attuale.</p>}
       </li>)}</ul>
     </details>
   )
@@ -36,9 +37,11 @@ export default function SocialEvidence({ painPointId, evidence }: {
       </p>
       <p>U: autori identificabili · T: thread/video distinti · M: commenti pertinenti distinti.</p>
       <p>Conteggi riferiti al campione analizzato; non misurano la prevalenza nel mercato.</p>
-      {verification?.version === 'topic-problem-support-v3'
+      {verification?.version === 'topic-problem-support-v4'
         ? <p>Verifica automatica: coerenza con l’argomento iniziale e sostegno al problema.</p>
-        : <p className="text-amber-700">{verification?.version === 'problem-support-v2'
+        : <p className="text-amber-700">{verification?.version === 'topic-problem-support-v3'
+          ? 'Questi conteggi precedono il controllo su oggetto del problema e tipo di testimonianza.'
+          : verification?.version === 'problem-support-v2'
           ? 'Questi conteggi precedono il controllo rispetto all’argomento iniziale.'
           : 'Questi conteggi precedono la nuova verifica di pertinenza.'}</p>}
       {offTopic > 0 && <p>Proposte escluse perché riguardano un altro argomento: {offTopic}.</p>}

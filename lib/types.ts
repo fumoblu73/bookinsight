@@ -325,11 +325,13 @@ export interface SocialVerificationDecision {
   recordId: string
   painPointId: string
   verdict: 'supported' | 'unsupported' | 'unclear'
-  reason: 'explicit_problem' | 'explicit_need' | 'resolved_problem' | 'linked_confirmation' | 'topic_only' | 'contradiction' | 'insufficient_evidence' | 'ambiguous_referent' | 'out_of_topic' | 'unclear_topic'
+  reason: 'explicit_problem' | 'explicit_need' | 'resolved_problem' | 'linked_confirmation' | 'topic_only' | 'contradiction' | 'insufficient_evidence' | 'ambiguous_referent' | 'out_of_topic' | 'unclear_topic' | 'scope_mismatch'
   problemQuote?: string
   problemExpressed?: 'yes' | 'no' | 'unclear'
   referentIdentified?: 'yes' | 'no' | 'unclear'
   topicRelevance?: 'yes' | 'no' | 'unclear'
+  scopeMatched?: 'yes' | 'no' | 'unclear'
+  evidenceKind?: 'stated_problem' | 'stated_need' | 'resolved_problem' | 'neutral_description' | 'hypothesis' | 'unclear'
   quoteAdjusted?: boolean
 }
 
@@ -350,7 +352,7 @@ export interface SocialEvidenceReport {
   reviewedRecordIds?: Record<string, string[]>
   uncertainRecordIds?: Record<string, string[]>
   unresolvedRecordIds?: Record<string, string[]>
-  verification?: { version: 'problem-support-v1' | 'problem-support-v2' | 'topic-problem-support-v3'; topic?: string; decisions: SocialVerificationDecision[] }
+  verification?: { version: 'problem-support-v1' | 'problem-support-v2' | 'topic-problem-support-v3' | 'topic-problem-support-v4'; topic?: string; decisions: SocialVerificationDecision[] }
   processing?: {
     budgetExhausted: boolean
     attemptedRecordIds: string[]

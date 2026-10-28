@@ -229,6 +229,41 @@ presenti e verificati nella fase di attribuzione. La loro effettiva presenza
 dipende dal payload dell'actor: i test usano risposte simulate, non una nuova
 raccolta live. In assenza di parentela le conferme non sono contate automaticamente.
 
+## Oggetto del problema e tipo di testimonianza
+
+Il protocollo `topic-problem-support-v4` aggiunge due giudizi distinti al
+controllo del tema: `scopeMatched` (oggetto e qualificazioni del problema) ed
+`evidenceKind` (problema dichiarato, bisogno attuale, problema risolto,
+descrizione neutra, ipotesi o indeterminato).
+
+Un'approvazione richiede anche `scopeMatched=yes` e un tipo di evidenza fra
+`stated_problem`, `stated_need` e `resolved_problem`. Il programma rifiuta
+approvazioni incoerenti con questi campi anche quando il modello restituisce
+`supported`. Una differenza esplicita nell'oggetto può essere esclusa come
+`scope_mismatch`; una previsione senza esperienza o bisogno attuale resta
+incerta e non entra nei conteggi. Il futuro grammaticale non è un filtro:
+un'ansia o un bisogno dichiarati adesso possono riguardare un evento futuro.
+
+Importi, porzioni e rapporti costo/quantità senza lamentela non diventano
+problemi economici. Il criterio non applica soglie di prezzo, parole vietate
+o eccezioni per argomenti, prodotti o ID commento specifici. Se una risposta
+omette i nuovi campi o è incoerente, riceve il recupero mirato già previsto;
+non estende tempi, concorrenza o tentativi. Le incertezze valide non vengono
+riprovate per ottenere un'approvazione.
+
+La UI segnala i giudizi ipotetici esclusi e distingue i report precedenti al
+nuovo protocollo, senza riscriverli. I metadati restano nel report salvato e
+nell'export. F/I/S, formule, ROI, Profitability Score e prompt strategici
+rimangono invariati.
+
+Venti nuovi casi sintetici su quattro ambiti verificano il contratto del
+programma, insieme ai sedici casi del precedente controllo del tema. Il
+benchmark di manutenzione usa ora per default
+`scripts/fixtures/social-claims-9.0.2.json`; un terzo argomento facoltativo
+permette di valutare le fixture storiche. Le attese dei casi non si modificano
+dopo la risposta del modello. I test locali simulati non misurano l'accuratezza
+del modello reale e non sostituiscono il collaudo live.
+
 ## Controllo automatico del tema originale
 
 La finalizzazione passa `intermediate.keyword` all'attribuzione e al revisore

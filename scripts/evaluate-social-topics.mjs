@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url'
 // Usa i moduli di produzione compilati con tsconfig.tests.json e la normale
 // ANTHROPIC_API_KEY del contesto di esecuzione. Non stampa credenziali o prompt.
 // node scripts/evaluate-social-topics.mjs /percorso/compilato /percorso/risultati
-const [compiledDir, outputDir] = process.argv.slice(2)
+const [compiledDir, outputDir, fixturePath] = process.argv.slice(2)
 assert.ok(compiledDir && outputDir, 'Indicare directory compilata e directory dei risultati')
 assert.ok(process.env.ANTHROPIC_API_KEY, 'ANTHROPIC_API_KEY non configurata nel contesto del benchmark live')
 const require = createRequire(import.meta.url)
 const { attributionBatches, aggregateSocialEvidence } = require(join(resolve(compiledDir), 'lib/social-attribution.js'))
 const { verificationCandidates, promptSocialVerification, parseSocialVerification } = require(join(resolve(compiledDir), 'lib/social-verification.js'))
 const { callSocialVerification } = require(join(resolve(compiledDir), 'lib/ai.js'))
-const fixture = JSON.parse(readFileSync(fileURLToPath(new URL('./fixtures/social-topics-9.0.2.json', import.meta.url)), 'utf8'))
+const fixture = JSON.parse(readFileSync(fixturePath ? resolve(fixturePath) : fileURLToPath(new URL('./fixtures/social-claims-9.0.2.json', import.meta.url)), 'utf8'))
 const out = resolve(outputDir)
 mkdirSync(out, { recursive: true })
 writeFileSync(join(out, 'preregistered-fixture.json'), JSON.stringify(fixture, null, 2))
@@ -41,13 +41,14 @@ for (const topic of fixture.topics) {
   const cases = topic.cases.map(c => {
     const d = decisions.find(v => v.recordId === c.id)
     return { id: c.id, expected: c.outcome, actual: d?.verdict ?? 'unresolved', topicRelevance: d?.topicRelevance ?? null,
+      scopeMatched: d?.scopeMatched ?? null, evidenceKind: d?.evidenceKind ?? null,
       reason: d?.reason ?? null, passed: d?.verdict === c.outcome && d?.topicRelevance === c.topicRelevance }
   })
   results.push({ topic: topic.keyword, error, passed: cases.filter(c => c.passed).length, total: cases.length, cases, metrics: evidence.metrics.pain })
   writeFileSync(join(out, topic.id + '.json'), JSON.stringify({ results: results.at(-1), evidence }, null, 2))
   console.log(JSON.stringify({ topic: topic.id, passed: cases.filter(c => c.passed).length, total: cases.length, error }))
 }
-const summary = { version: fixture.version, evaluatedAt: new Date().toISOString(), fixtureType: 'synthetic',
+const summary = { version: 'topic-problem-support-v4', fixtureVersion: fixture.version, evaluatedAt: new Date().toISOString(), fixtureType: 'synthetic',
   passed: results.reduce((n, r) => n + r.passed, 0), total: results.reduce((n, r) => n + r.total, 0), results }
 writeFileSync(join(out, 'summary.json'), JSON.stringify(summary, null, 2))
 if (summary.passed !== summary.total) process.exitCode = 1

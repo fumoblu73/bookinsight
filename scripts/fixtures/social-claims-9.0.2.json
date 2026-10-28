@@ -1,0 +1,62 @@
+{
+  "version": "topic-problem-support-v4",
+  "description": "Regressioni sintetiche preregistrate: oggetto specifico, descrizioni neutre, ipotesi, problemi vissuti e risolti. Non sono dati raccolti né validazioni umane indipendenti.",
+  "topics": [
+    {
+      "id": "gardening",
+      "keyword": "balcony herb gardening",
+      "platform": "reddit",
+      "sourceTitle": "Growing herbs on a balcony",
+      "painPoint": "I vasi per coltivare erbe sul balcone sono troppo costosi",
+      "cases": [
+        { "id": "gcp1", "text": "The planters for basil on my apartment balcony are too expensive for my budget.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "explicit_problem" },
+        { "id": "gcs1", "text": "The pruning shears I use for my balcony herbs are too expensive. The pots themselves are affordable.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "no", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "scope_mismatch" },
+        { "id": "gcn1", "text": "A pack of three pots for my balcony herbs costs thirty dollars, which is ten dollars per pot.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "neutral_description", "problemExpressed": "no", "reason": "topic_only" },
+        { "id": "gch1", "text": "I have not checked prices or bought herb planters; I am only guessing the balcony pots will cost too much.", "outcome": "unclear", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "hypothesis", "problemExpressed": "unclear", "reason": "insufficient_evidence" },
+        { "id": "gcr1", "text": "Balcony herb planters used to be too expensive for me, but reusing old food containers solved my budget problem.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "resolved_problem", "problemExpressed": "yes", "reason": "resolved_problem" }
+      ]
+    },
+    {
+      "id": "painting",
+      "keyword": "watercolor painting for beginners",
+      "platform": "youtube",
+      "sourceTitle": "Materials for watercolor beginners",
+      "painPoint": "I pennelli per acquerello perdono setole durante l'uso",
+      "cases": [
+        { "id": "wcp1", "text": "When I paint with watercolors, bristles fall out of my brush every time I wet it.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "explicit_problem" },
+        { "id": "wcs1", "text": "My watercolor paper sheds fibers when wet. My brushes do not lose bristles.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "no", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "scope_mismatch" },
+        { "id": "wcn1", "text": "My watercolor brushes come in packs of two and have synthetic bristles.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "neutral_description", "problemExpressed": "no", "reason": "topic_only" },
+        { "id": "wch1", "text": "I have never used this watercolor brush; I only suspect that its bristles will fall out.", "outcome": "unclear", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "hypothesis", "problemExpressed": "unclear", "reason": "insufficient_evidence" },
+        { "id": "wcr1", "text": "My old watercolor brush kept losing bristles; replacing it with a better one solved that problem.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "resolved_problem", "problemExpressed": "yes", "reason": "resolved_problem" }
+      ]
+    },
+    {
+      "id": "programming",
+      "keyword": "Python for data analysis",
+      "platform": "reddit",
+      "sourceTitle": "Learning pandas for data analysis",
+      "painPoint": "Le istruzioni per raggruppare righe con pandas groupby sono difficili da comprendere",
+      "cases": [
+        { "id": "pcp1", "text": "I cannot understand the pandas groupby instructions for grouping rows in my CSV dataset.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "explicit_problem" },
+        { "id": "pcs1", "text": "I understand pandas groupby, but the histogram plotting tutorial is impossible for me to follow.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "no", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "scope_mismatch" },
+        { "id": "pcn1", "text": "The pandas groupby documentation has a section on grouping rows by column values.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "neutral_description", "problemExpressed": "no", "reason": "topic_only" },
+        { "id": "pch1", "text": "I have not read the groupby tutorial yet; I am only guessing that its instructions will be confusing.", "outcome": "unclear", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "hypothesis", "problemExpressed": "unclear", "reason": "insufficient_evidence" },
+        { "id": "pcr1", "text": "I could not understand pandas groupby until a worked CSV example explained it; that solved my confusion.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "resolved_problem", "problemExpressed": "yes", "reason": "resolved_problem" }
+      ]
+    },
+    {
+      "id": "baking",
+      "keyword": "home sourdough bread baking",
+      "platform": "youtube",
+      "sourceTitle": "Baking sourdough at home",
+      "painPoint": "La crosta del pane a lievito madre fatto in casa è troppo dura da tagliare",
+      "cases": [
+        { "id": "bcp1", "text": "The crust of the sourdough bread I bake at home is so hard that I cannot slice it.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "explicit_problem" },
+        { "id": "bcs1", "text": "My sourdough starter is too thick to stir, but the crust of my baked loaves is easy to cut.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "no", "evidenceKind": "stated_problem", "problemExpressed": "yes", "reason": "scope_mismatch" },
+        { "id": "bcn1", "text": "The crust of my homemade sourdough loaf is golden brown after baking.", "outcome": "unsupported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "neutral_description", "problemExpressed": "no", "reason": "topic_only" },
+        { "id": "bch1", "text": "I have never baked sourdough; I am only guessing that my first loaf will have a crust too hard to cut.", "outcome": "unclear", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "hypothesis", "problemExpressed": "unclear", "reason": "insufficient_evidence" },
+        { "id": "bcr1", "text": "The crust of my homemade sourdough used to be too hard to slice, but adding steam fixed it.", "outcome": "supported", "topicRelevance": "yes", "scopeMatched": "yes", "evidenceKind": "resolved_problem", "problemExpressed": "yes", "reason": "resolved_problem" }
+      ]
+    }
+  ]
+}

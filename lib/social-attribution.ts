@@ -56,6 +56,8 @@ non soltanto parlare dello stesso argomento, target o situazione. Leggi il nucle
 Se topic è presente, verifica anche la coerenza con l'argomento ORIGINALE richiesto, senza affidarti soltanto al pain point o alla fonte recuperata.
 Valuta il significato, anche con sinonimi o altre lingue: non richiedere le stesse parole della keyword. Un problema simile in un ambito esplicitamente diverso non va associato.
 Se il problema è espresso ma il collegamento a topic non è dimostrabile, usa ambiguous; se riguarda chiaramente un altro argomento, non associarlo.
+Verifica anche oggetto e qualificazioni del pain point: non trasferire un problema fra prodotti, metodi o situazioni diversi, pur nello stesso tema.
+Una descrizione neutra di importi, porzioni o rapporti costo/quantità non esprime da sola un problema. Una previsione negativa senza esperienza o bisogno attuale esplicito resta ambiguous, non direct.
 Per direct il testo deve indicare un ostacolo, bisogno insoddisfatto, conseguenza negativa oppure un problema vissuto e poi risolto.
 Consigli, ricette, preferenze, confronti e descrizioni di abitudini non bastano: associa solo se il testo indica anche quale problema specifico affrontano.
 Non dedurre emozioni, inesperienza o difficoltà da attività, identità o contesto; non attribuire un problema che il commento nega di avere.
@@ -155,7 +157,8 @@ export function aggregateSocialEvidence(
           reject(id); invalidPains.add(id); continue
         }
         const review = verified.get(verificationKey(record.recordId, id))
-        if (options.requireVerification && options.topic?.trim() && review?.verdict === 'supported' && review.topicRelevance !== 'yes') {
+        if (options.requireVerification && options.topic?.trim() && review?.verdict === 'supported' &&
+          (review.topicRelevance !== 'yes' || review.scopeMatched !== 'yes' || !['stated_problem', 'stated_need', 'resolved_problem'].includes(review.evidenceKind ?? ''))) {
           invalidPains.add(id); continue
         }
         if (support === 'ambiguous') {
@@ -256,7 +259,7 @@ export function aggregateSocialEvidence(
     reviewedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => reviewed.has(`${p.id}:${r.recordId}`)).map(r => r.recordId)])),
     uncertainRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, [...(uncertain.get(p.id!) ?? [])]])),
     unresolvedRecordIds: Object.fromEntries(socialPains.map(p => [p.id!, manifest.records.filter(r => r.platform === p.fonte && !r.duplicateOf && !reviewed.has(`${p.id}:${r.recordId}`) && !uncertain.get(p.id!)?.has(r.recordId)).map(r => r.recordId)])),
-    ...(options.requireVerification ? { verification: { version: options.topic?.trim() ? 'topic-problem-support-v3' as const : 'problem-support-v2' as const,
+    ...(options.requireVerification ? { verification: { version: options.topic?.trim() ? 'topic-problem-support-v4' as const : 'problem-support-v2' as const,
       ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}), decisions: verification } } : {}),
     ...(options.processing ? { processing: options.processing } : {}),
   }

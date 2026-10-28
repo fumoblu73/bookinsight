@@ -37,6 +37,7 @@ test('quattro temi e due piattaforme: fuori tema e incerti non alimentano U/T/M,
         const expected = topic.cases.find(item => item.id === c.recordId)!
         assert.equal(c.sourceTitle, topic.sourceTitle)
         return { recordId: c.recordId, painPointId: c.painPointId, topicRelevance: expected.topicRelevance,
+          scopeMatched: 'yes', evidenceKind: expected.reason === 'topic_only' || expected.reason === 'contradiction' ? 'neutral_description' : 'stated_problem',
           verdict: expected.outcome, reason: expected.reason, problemExpressed: expected.reason === 'topic_only' || expected.reason === 'contradiction' ? 'no' : 'yes',
           referentIdentified: 'yes', ...(expected.outcome === 'supported' ? { problemQuote: c.text } : {}),
         }
@@ -49,7 +50,7 @@ test('quattro temi e due piattaforme: fuori tema e incerti non alimentano U/T/M,
     assert.deepEqual(result.uncertainRecordIds?.pain, [topic.cases[2].id])
     assert.deepEqual(result.unresolvedRecordIds?.pain, [])
     assert.ok(result.reviewedRecordIds?.pain.includes(topic.cases[1].id))
-    assert.equal(result.verification?.version, fixture.version)
+    assert.equal(result.verification?.version, 'topic-problem-support-v4')
     assert.equal(result.verification?.topic, topic.keyword)
     assert.equal(result.processing?.budgetExhausted, false)
   }
@@ -59,7 +60,7 @@ test('approvazione del problema insufficiente: tema assente, negativo, incerto o
   const topic = fixture.topics[0], { checks } = inputs(topic)
   const c = checks[0]
   const valid = { recordId: c.recordId, painPointId: c.painPointId, verdict: 'supported', reason: 'explicit_problem',
-    problemExpressed: 'yes', referentIdentified: 'yes', problemQuote: c.text, topicRelevance: 'yes' }
+    problemExpressed: 'yes', referentIdentified: 'yes', problemQuote: c.text, topicRelevance: 'yes', scopeMatched: 'yes', evidenceKind: 'stated_problem' }
   for (const value of [undefined, 'no', 'unclear', 'probably', true]) {
     assert.equal(parseSocialVerification(checks, { checks: [{ ...valid, topicRelevance: value }] }, topic.keyword).length, 0)
   }
@@ -75,7 +76,7 @@ test('un problema chiaramente fuori tema è un’esclusione valida anche se espr
   const topic = fixture.topics[0], { manifest, pain, batch, output, checks } = inputs(topic)
   const only = { ...batch, records: [manifest.records[0]] }
   const oneOutput = { decisions: [output.decisions[0]] }
-  const base = { recordId: checks[0].recordId, painPointId: 'pain', problemExpressed: 'yes', referentIdentified: 'yes' }
+  const base = { recordId: checks[0].recordId, painPointId: 'pain', problemExpressed: 'yes', referentIdentified: 'yes', scopeMatched: 'yes', evidenceKind: 'stated_problem' }
   for (const [topicRelevance, verdict, reason, expected] of [
     ['no', 'unsupported', 'out_of_topic', 0], ['unclear', 'unclear', 'unclear_topic', null],
   ] as const) {
@@ -107,6 +108,7 @@ test('risposte senza giudizio sul tema: un recupero delle sole coppie mancanti e
         const cs = payload(prompt).checks as { recordId: string; painPointId: string; text: string }[]
         calls.push(cs.map(c => c.recordId))
         return { checks: cs.map(c => ({ recordId: c.recordId, painPointId: c.painPointId, problemExpressed: 'yes', referentIdentified: 'yes',
+          scopeMatched: 'yes', evidenceKind: 'stated_problem',
           verdict: c.recordId === subset.records[0].recordId ? 'supported' : 'unsupported',
           reason: c.recordId === subset.records[0].recordId ? 'explicit_problem' : 'out_of_topic',
           problemQuote: c.text,
