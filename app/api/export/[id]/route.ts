@@ -27,6 +27,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
       sources: {
         reddit: report.redditMeta ?? null,
         youtube: report.youtubeMeta ?? null,
+        amazon_reviews: report.amazonReviewMeta ?? null,
       },
     },
     bookmarket: {

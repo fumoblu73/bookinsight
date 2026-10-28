@@ -47,8 +47,8 @@ export function evidenceCatalog(manifest: SocialCorpusManifest, reviews: BookRev
     }),
     ...reviews.flatMap((b, bi) => b.reviews.map((r, ri) => ({ id: reviewId(bi, ri), source: 'amazon' as const,
       text: r.body, excerpt: r.body.slice(0, 500), title: `${b.bookTitle}${r.title ? ` — ${r.title}` : ''}`,
-      url: /^[A-Z0-9]{10}$/i.test(b.asin) ? `https://www.amazon.${({ US: 'com', UK: 'co.uk', IT: 'it', DE: 'de', FR: 'fr', ES: 'es' } as Record<string, string>)[market] ?? 'com'}/dp/${b.asin}` : undefined,
-      urlKind: 'book' as const, containerId: b.asin, identityStatus: 'synthetic' as const, rating: r.rating }))),
+      url: r.url ?? (/^[A-Z0-9]{10}$/i.test(b.asin) ? `https://www.amazon.${({ US: 'com', UK: 'co.uk', IT: 'it', DE: 'de', FR: 'fr', ES: 'es' } as Record<string, string>)[market] ?? 'com'}/dp/${b.asin}` : undefined),
+      sourceId: r.id, urlKind: r.url ? 'comment' as const : 'book' as const, containerId: b.asin, identityStatus: r.id ? 'original' as const : 'synthetic' as const, rating: r.rating }))),
   ]
 }
 

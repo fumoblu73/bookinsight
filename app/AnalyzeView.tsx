@@ -8,6 +8,7 @@ import TargetSelector from '@/components/TargetSelector'
 import { calcRoyalty } from '@/lib/amazon'
 import { SOLVIBILITA_BADGE, SOLVIBILITA_LABEL } from '@/lib/solvibilita-ui'
 import EvidenceList from '@/components/EvidenceList'
+import AmazonReviewNotice from '@/components/AmazonReviewNotice'
 import type { EvidenceRecord, EvidenceReview, EvidenceSelection } from '@/lib/evidence-review'
 
 // Ogni stage corrisponde a un evento reale emesso dal server o a una fetch completata
@@ -40,7 +41,7 @@ const STAGE_LABELS: Record<Stage, string> = {
 type PainPointsPreviewData = {
   scoring: { score: number; trendSignal: string; entryDifficulty: string }
   passo0: { angolo: string; target_reader: string }
-  amazonSummary: { topBooks: FilteredBook[]; keyword: string }
+  amazonSummary: { topBooks: FilteredBook[]; keyword: string; reviewCollection?: AmazonData['reviewCollection'] }
   trendsSummary: { available: boolean; yoyGrowth: number; peakMonth: string | null }
   redditSummary: { available: boolean; postCount: number; commentCount: number }
 }
@@ -418,7 +419,7 @@ export default function AnalyzeView() {
         evidenceReview?: EvidenceReview
         scoring: { score: number; trendSignal: string; entryDifficulty: string }
         passo0: { angolo: string; target_reader: string }
-        amazonSummary: { topBooks: FilteredBook[]; keyword: string }
+        amazonSummary: PainPointsPreviewData['amazonSummary']
         trendsSummary: { available: boolean; yoyGrowth: number; peakMonth: string | null }
         redditSummary: { available: boolean; postCount: number; commentCount: number }
       }
@@ -1174,6 +1175,7 @@ function PainPointSelectionPanel({
       </div>
 
       {/* Selezione pain points */}
+      <AmazonReviewNotice collection={previewData.amazonSummary.reviewCollection} />
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6">
         <div className="flex items-start justify-between gap-4 mb-2">
           <div>

@@ -12,6 +12,8 @@ import ReportSelection, { SelectionScopeNote } from './ReportSelection'
 import { UNCHANGED_SCORES } from '../lib/report-selection'
 import type { EvidenceReview } from '../lib/evidence-review'
 import RedditCollectionNotice from './RedditCollectionNotice'
+import AmazonReviewNotice from './AmazonReviewNotice'
+import type { AmazonReviewCollection } from '../lib/types'
 import { formatItalianDate, formatItalianNumber, formatReportFileDate } from '../lib/format'
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
@@ -46,6 +48,7 @@ export interface FullReport {
   painPoints: { id?: string; pain_point: string; score: number; F: number; I: number; solvibilita?: 'affrontabile' | 'vincolo_formato' | 'mai_fatto' | 'fuori_portata'; requisito_forma?: string; evidence: string; fonte?: PainPoint['fonte']; criticalSignal?: boolean; voice_phrases?: string[]; emotional_register?: string; context?: string; evidence_quotes?: string[] }[]
   socialEvidence?: SocialEvidenceReport
   evidenceReview?: EvidenceReview
+  amazonReviewMeta?: AmazonReviewCollection
   gapAnalysis: {
     passo1_problemi_non_risolti: { items: string[] }
     passo2_angoli_mancanti: { items: string[] }
@@ -1361,6 +1364,7 @@ export default function ReportView({ report }: { report: FullReport }) {
         <div className="space-y-4">
 
           <SubCard title="Pain Points" accent="rose">
+            <AmazonReviewNotice collection={report.amazonReviewMeta} />
             <RedditCollectionNotice diagnostics={report.redditMeta?.collectionDiagnostics} />
             {report.redditMeta?.available && (report.redditMeta.corpusQuality?.coverage === 'limited' ||
               (!report.redditMeta.corpusQuality && report.redditMeta.insufficientCorpus)) && (

@@ -40,7 +40,7 @@ export default function EvidenceList({ records, selectedIds, onToggle, disabled 
                 {r.parentId && <p>Risposta a: {r.parentId}</p>}
               </details>
               {safeUrl && <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-indigo-700 underline">
-                {r.urlKind === 'book' ? 'Apri libro Amazon' : r.urlKind === 'comment' ? 'Apri commento originale' : 'Apri thread/video originale'}
+                {r.urlKind === 'book' ? 'Apri libro Amazon' : r.urlKind === 'comment' ? r.source === 'amazon' ? 'Apri recensione originale' : 'Apri commento originale' : 'Apri thread/video originale'}
               </a>}
             </div>
           </div>

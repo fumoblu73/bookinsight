@@ -40,6 +40,17 @@ export interface AmazonReview {
   title: string
   body: string
   date?: string        // data recensione normalizzata (ISO o stringa SerpApi)
+  id?: string
+  url?: string
+}
+
+export interface AmazonReviewCollection {
+  status: 'complete' | 'partial' | 'unavailable'
+  requestedBooks: number
+  booksWithReviews: number
+  reviewCount: number
+  fallback: 'not_needed' | 'cache' | 'apify' | 'unavailable'
+  reason?: 'missing_token' | 'provider_error' | 'empty_dataset' | 'time_budget'
 }
 
 export interface BookReviews {
@@ -97,6 +108,7 @@ export interface AmazonData {
   competitorTarget: FilteredBook
   scrapedAt: string
   topBookReviews?: BookReviews[] // recensioni testuali top 2 competitor
+  reviewCollection?: AmazonReviewCollection
   ads_intelligence: AdsIntelligence
 }
 

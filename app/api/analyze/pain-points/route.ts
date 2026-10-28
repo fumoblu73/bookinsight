@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
       amazonSummary: {
         topBooks: amazonData.topBooks.slice(0, 5),
         keyword: amazonData.keyword,
+        reviewCollection: intermediate.amazon.reviewCollection,
       },
       trendsSummary: {
         available: effectiveTrends.available,

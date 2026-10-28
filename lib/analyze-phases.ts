@@ -647,6 +647,7 @@ export async function runFinalizePhase(
       videoCount: originalYoutube?.videos?.length ?? 0,
       totalComments: originalYoutube?.totalComments ?? 0,
     },
+    ...(originalAmazon.reviewCollection ? { amazonReviewMeta: originalAmazon.reviewCollection } : {}),
     passo0,
     trends,
     trendForecast,
