@@ -8,6 +8,8 @@ import { redditCoverageNote } from '@/lib/reddit-corpus'
 import type { SocialEvidenceReport } from '../lib/types'
 import SocialEvidence from './SocialEvidence'
 import EvidenceList from './EvidenceList'
+import ReportSelection, { SelectionScopeNote } from './ReportSelection'
+import { UNCHANGED_SCORES } from '../lib/report-selection'
 import type { EvidenceReview } from '../lib/evidence-review'
 import RedditCollectionNotice from './RedditCollectionNotice'
 import { formatItalianDate, formatItalianNumber, formatReportFileDate } from '../lib/format'
@@ -711,6 +713,7 @@ function ExcludedBooks({ rawTop15, topBooks }: { rawTop15: RawBook[]; topBooks: 
 function PainPointsList({ painPoints, socialEvidence, evidenceReview }: { painPoints: FullReport['painPoints']; socialEvidence?: SocialEvidenceReport; evidenceReview?: EvidenceReview }) {
   const [showAll, setShowAll] = useState(false)
   const hiddenCount = Math.max(0, painPoints.length - 5)
+  const selectedRecords = evidenceReview?.selection?.records
 
   return (
     <>
@@ -746,6 +749,7 @@ function PainPointsList({ painPoints, socialEvidence, evidenceReview }: { painPo
             )}
 
             <p className="text-xs text-zinc-400 mt-1.5 italic">{pp.evidence}</p>
+            {selectedRecords && <p className="mt-2 text-xs font-semibold text-indigo-800">Pain point mantenuto nell’analisi · Testimonianze mantenute: {pp.id ? selectedRecords[pp.id]?.length ?? 0 : 0} su {pp.id ? evidenceReview?.groups[pp.id]?.length ?? 0 : 0} proposte.</p>}
             {(pp.fonte === 'reddit' || pp.fonte === 'youtube') && (
               <>
                 <p className="text-xs text-zinc-500 mt-1">Fonte: {pp.fonte === 'reddit' ? 'Reddit' : 'YouTube'}</p>
@@ -753,8 +757,11 @@ function PainPointsList({ painPoints, socialEvidence, evidenceReview }: { painPo
               </>
             )}
             {evidenceReview?.selection && pp.id && <>
-              <EvidenceList records={evidenceReview.records.filter(r => evidenceReview.selection!.records[pp.id!]?.includes(r.id))} title="Testimonianze mantenute" />
+              <EvidenceList records={evidenceReview.records.filter(r => evidenceReview.selection!.records[pp.id!]?.includes(r.id))} title="Testimonianze mantenute" printable />
               <p className="mt-1 text-xs text-zinc-500">Testimonianze escluse da questo gruppo: {(evidenceReview.groups[pp.id]?.length ?? 0) - (evidenceReview.selection.records[pp.id]?.length ?? 0)}.</p>
+              {(evidenceReview.groups[pp.id]?.some(id => !selectedRecords?.[pp.id!]?.includes(id))) && <EvidenceList
+                records={evidenceReview.records.filter(r => evidenceReview.groups[pp.id!]?.includes(r.id) && !selectedRecords?.[pp.id!]?.includes(r.id))}
+                selectedIds={[]} title="Testimonianze escluse da questo gruppo" />}
             </>}
           </li>
         ))}
@@ -925,8 +932,11 @@ export default function ReportView({ report }: { report: FullReport }) {
         </div>
       </div>
 
+      <ReportSelection review={report.evidenceReview} />
+
       {/* ── §1 Key Insights ─────────────────────────────────────────────── */}
       <Section num="1" title="Key Insights" breakBefore={false}>
+        {report.evidenceReview?.selection && <SelectionScopeNote />}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {report.keyInsights.map((ins, i) => (
             <div key={i} className={`p-4 rounded-xl border print:break-inside-avoid ${tipoStyle(ins.tipo)}`}>
@@ -1347,6 +1357,7 @@ export default function ReportView({ report }: { report: FullReport }) {
 
       {/* ── §5 Gap Analysis & Pain Points ────────────────────────────────── */}
       <Section num="5" title="Gap Analysis & Pain Points">
+        {report.evidenceReview?.selection && <SelectionScopeNote />}
         <div className="space-y-4">
 
           <SubCard title="Pain Points" accent="rose">
@@ -1542,6 +1553,7 @@ export default function ReportView({ report }: { report: FullReport }) {
 
       {/* ── §6 Series Strategy ───────────────────────────────────────────── */}
       <Section num="6" title="Series Strategy">
+        {report.evidenceReview?.selection && <SelectionScopeNote />}
         <div className="space-y-4">
 
           <SubCard title="Verdetto" accent="zinc">
@@ -1631,6 +1643,7 @@ export default function ReportView({ report }: { report: FullReport }) {
 
       {/* ── §7 Investment & ROI ──────────────────────────────────────────── */}
       <Section num="7" title="Investment & ROI">
+        {report.evidenceReview?.selection && <p className="mb-4 text-xs text-zinc-600">{UNCHANGED_SCORES}</p>}
         <div className="space-y-4">
 
           {/* 1. Bersaglio ROI */}

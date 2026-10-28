@@ -3,22 +3,24 @@
 import { useState } from 'react'
 import type { EvidenceRecord } from '../lib/evidence-review'
 
-export default function EvidenceList({ records, selectedIds, onToggle, disabled = false, title = 'Testimonianze', problem = '' }: {
+export default function EvidenceList({ records, selectedIds, onToggle, disabled = false, title = 'Testimonianze', problem = '', printable = false }: {
   records: EvidenceRecord[]
   selectedIds?: string[]
   onToggle?: (id: string) => void
   disabled?: boolean
   title?: string
   problem?: string
+  printable?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const selected = new Set(selectedIds ?? records.map(r => r.id))
   return <div className="mt-2 space-y-2">
-    <button type="button" aria-expanded={open} onClick={() => setOpen(v => !v)} className="text-xs font-medium text-indigo-700 hover:text-indigo-900">
+    <button type="button" aria-expanded={open} onClick={() => setOpen(v => !v)} className={`text-xs font-medium text-indigo-700 hover:text-indigo-900${printable ? ' print:hidden' : ''}`}>
       {open ? 'Nascondi' : 'Mostra'} {title.toLowerCase()} ({onToggle ? `${selected.size}/` : ''}{records.length})
     </button>
     {records.length === 0 && <p className="text-xs text-amber-700">Nessuna testimonianza collegata a questo pain point.</p>}
-    {open && <ul className="space-y-3">
+    {printable && <p className="hidden print:block text-xs font-semibold">{title} ({records.length})</p>}
+    {(open || printable) && <ul className={`space-y-3${!open ? ' hidden print:block' : ''}`}>
       {records.map((r, i) => {
         const safeUrl = r.url && /^https:\/\/(?:[\w-]+\.)*(?:reddit\.com|youtube\.com|amazon\.(?:com|co\.uk|it|de|fr|es))\//i.test(r.url) ? r.url : undefined
         return <li key={r.id} data-record-id={r.id} className={`rounded-lg border p-3 ${selected.has(r.id) ? 'border-indigo-200 bg-white' : 'border-zinc-200 bg-zinc-50 opacity-70'}`}>

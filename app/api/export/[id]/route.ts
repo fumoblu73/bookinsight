@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getReport } from '@/lib/upstash'
 import type { FullReport } from '@/components/ReportView'
+import { summarizeReportSelection } from '@/lib/report-selection'
 
 interface Props { params: Promise<{ id: string }> }
 
@@ -56,6 +57,7 @@ export async function GET(_req: NextRequest, { params }: Props) {
     pain_points: report.painPoints,
     social_evidence: report.socialEvidence ?? null,
     evidence_review: report.evidenceReview ?? null,
+    analysis_basis: summarizeReportSelection(report.evidenceReview),
     voice_data: report.voice_data ?? null,
     ads_intelligence: report.ads_intelligence ?? null,
     analysis_log: record.log ?? null,
