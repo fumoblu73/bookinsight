@@ -519,10 +519,7 @@ export async function runPainPointsAmazonReviews(
         ? r.emotional_register as PainPoint['emotional_register']
         : undefined
 
-      const fonte: 'recensione_negativa' | 'recensione_positiva' =
-        r.fonte === 'recensione_negativa' || r.fonte === 'recensione_positiva'
-          ? r.fonte
-          : 'recensione_negativa'
+      const fonte = 'recensione_negativa' as const
 
       const solvibilita = normalizeSolvibilita(r.solvibilita)
       const requisito_forma = normalizeRequisitoForma(r.requisito_forma, solvibilita)

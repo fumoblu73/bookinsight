@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     if (intermediate.socialManifest) {
       intermediate.evidenceReview = await groupEvidence(
         evidenceCatalog(intermediate.socialManifest, intermediate.amazon.topBookReviews ?? [], market!),
-        intermediate.painPoints, kw, callSocialAttribution, Math.max(0, Math.min(30_000, 150_000 - (Date.now() - startedAt))),
+        intermediate.painPoints, kw, callSocialAttribution, Math.max(0, Math.min(45_000, 150_000 - (Date.now() - startedAt))),
       )
     }
 

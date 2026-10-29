@@ -10,7 +10,7 @@ const row = { productAsin: 'B000000001', ratingScore: 2, reviewTitle: 'Needs exa
 const emptyCache = { read: async () => null, write: async () => true }
 
 test('normalizzazione: ASIN, ID e link originali; duplicati, rating e URL arbitrari', () => {
-  const got = mapAmazonReviews([row, row, { ...row, productAsin: 'B000000099' }, { ...row, ratingScore: 0 },
+  const got = mapAmazonReviews([row, row, { ...row, productAsin: 'B000000099' }, { ...row, ratingScore: 0 }, { ...row, ratingScore: 4 }, { ...row, ratingScore: 5 },
     { ...row, productAsin: 'B000000002', reviewUrl: 'https://attacker.example/review/R123ABC' }], data.topBooks, 'US')
   assert.equal(got.length, 2)
   assert.equal(got[0].reviews.length, 1)
@@ -37,6 +37,7 @@ test('un solo fallback limitato ai libri mancanti, senza token in URL; dati di m
       const body = JSON.parse(init!.body as string)
       assert.deepEqual(body.productUrls, [{ url: 'https://www.amazon.com/dp/B000000001' }])
       assert.equal(body.includeGdprSensitive, false)
+      assert.deepEqual(body.filterByRatings, ['oneStar', 'twoStar', 'threeStar'])
       return Response.json([row])
     }) as typeof fetch })
   assert.equal(calls, 1)
@@ -50,9 +51,10 @@ test('un solo fallback limitato ai libri mancanti, senza token in URL; dati di m
 
 test('cache positiva evita il run; guasti e campioni vuoti restano espliciti', async () => {
   const reviews: AmazonReview[] = [{ rating: 2, title: 'Review', body: row.reviewDescription }]
-  const cached = await supplementAmazonReviews(data, { token: 'test', cache: { read: async () => reviews, write: emptyCache.write }, fetcher: (async () => { throw Error('No network expected') }) as typeof fetch })
+  const cached = await supplementAmazonReviews(data, { token: 'test', cache: { read: async key => { assert.ok(key.includes('v2:stars-1-3')); return [...reviews, { ...reviews[0], rating: 5 }] }, write: emptyCache.write }, fetcher: (async () => { throw Error('No network expected') }) as typeof fetch })
   assert.equal(cached.reviewCollection?.fallback, 'cache')
   assert.equal(cached.reviewCollection?.status, 'complete')
+  assert.ok(cached.topBookReviews?.every(b => b.reviews.every(r => r.rating <= 3)))
   const failed = await supplementAmazonReviews(data, { token: 'test', cache: emptyCache, fetcher: (async () => new Response('private provider details', { status: 403 })) as typeof fetch })
   assert.equal(failed.reviewCollection?.reason, 'provider_error')
   assert.equal(failed.reviewCollection?.status, 'unavailable')

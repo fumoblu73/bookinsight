@@ -587,16 +587,11 @@ export function promptPainPointsAmazonReviews(
 
   for (const br of topBookReviews) {
     const negEntries = br.reviews
-      .filter(r => r.rating <= 3)
+      .filter(r => Number.isInteger(r.rating) && r.rating >= 1 && r.rating <= 3)
       .slice(0, 5)
       .map(r => ({ label: `[NEG ${r.rating}★]`, text: `"${r.title}" — ${r.body.slice(0, 500)}` }))
 
-    const mixedEntries = br.reviews
-      .filter(r => r.rating === 4)
-      .slice(0, 2)
-      .map(r => ({ label: `[MIXED 4★]`, text: `"${r.title}" — ${r.body.slice(0, 500)}` }))
-
-    const bookEntries = [...negEntries, ...mixedEntries]
+    const bookEntries = negEntries
     if (bookEntries.length > 0) {
       perBook.push({ asin: br.asin, bookTitle: br.bookTitle, entries: bookEntries })
     }
@@ -619,6 +614,8 @@ export function promptPainPointsAmazonReviews(
 CORPUS RECENSIONI COMPETITOR (keyword: "${keyword}", mercato: ${market}):
 
 ${corpus}
+
+Il corpus ammesso contiene esclusivamente recensioni da 1 a 3 stelle. Estrai solo problemi esplicitamente descritti: non dedurre mancanze da elogi o descrizioni neutre. La fonte è sempre "recensione_negativa".
 
 CALIBRAZIONE F (Frequenza) — scala obbligatoria 1-10:
 - F=1-2: il problema appare in 1 sola recensione di 1 solo libro
@@ -701,7 +698,7 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo):
     "requisito_forma": "scelta editoriale concreta (max 20 parole) se vincolo_formato, altrimenti null",
     "num_fonti": "<numero di libri distinti in cui il problema appare, minimo 1>",
     "evidence": "parafrasi sintetica in italiano (max 200 chars) che riassume cosa dicono le recensioni",
-    "fonte": "recensione_negativa | recensione_positiva (in base al rating prevalente delle recensioni di supporto)",
+    "fonte": "recensione_negativa",
     "evidence_quotes": ["VERBATIM dal testo originale, no parafrasi, max 200 chars", "..."],
     "voice_phrases": ["VERBATIM 2-6 parole dal testo originale, no parafrasi", "..."],
     "emotional_register": "frustrazione | rabbia | ansia | rassegnazione | desiderio | confusione | orgoglio | neutro",

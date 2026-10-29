@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { EvidenceRecord } from '../lib/evidence-review'
 
-export default function EvidenceList({ records, selectedIds, onToggle, disabled = false, title = 'Testimonianze', problem = '', printable = false }: {
+export default function EvidenceList({ records, selectedIds, onToggle, disabled = false, title = 'Testimonianze', problem = '', printable = false, supportQuotes }: {
   records: EvidenceRecord[]
   selectedIds?: string[]
   onToggle?: (id: string) => void
@@ -11,6 +11,7 @@ export default function EvidenceList({ records, selectedIds, onToggle, disabled 
   title?: string
   problem?: string
   printable?: boolean
+  supportQuotes?: Record<string, string>
 }) {
   const [open, setOpen] = useState(false)
   const selected = new Set(selectedIds ?? records.map(r => r.id))
@@ -30,6 +31,7 @@ export default function EvidenceList({ records, selectedIds, onToggle, disabled 
               className="mt-0.5 h-4 w-4 shrink-0 accent-indigo-600" />}
             <div className="min-w-0 flex-1 space-y-1 text-xs">
               <p className="font-medium text-zinc-700">{r.source === 'amazon' ? 'Amazon' : r.source === 'reddit' ? 'Reddit' : 'YouTube'}{r.rating ? ` · ${r.rating}/5` : ''} · {r.title}</p>
+              {supportQuotes?.[r.id] && <p className="border-l-2 border-indigo-300 pl-2 text-indigo-900"><strong>Passaggio collegato al pain point:</strong> “{supportQuotes[r.id]}”</p>}
               <p className="whitespace-pre-wrap break-words text-zinc-700">{r.text.length > 220 ? `${r.text.slice(0, 220)}…` : r.text}</p>
               <details className="text-zinc-500">
                 <summary className="cursor-pointer">Testo raccolto e provenienza</summary>

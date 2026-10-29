@@ -428,7 +428,7 @@ export default function AnalyzeView() {
       setPainPointsToReview(data.painPoints)
       setEvidenceReview(data.evidenceReview)
       setEvidenceSelection(data.evidenceReview ? structuredClone(data.evidenceReview.groups) : {})
-      setSelectedPainPointIds(new Set(data.painPoints.filter(p => p.id).map(p => p.id!)))
+      setSelectedPainPointIds(new Set(data.painPoints.filter(p => p.id && (!data.evidenceReview || (data.evidenceReview.groups[p.id]?.length ?? 0) > 0)).map(p => p.id!)))
       setPreviewData({
         scoring: data.scoring,
         passo0: data.passo0,
@@ -969,7 +969,7 @@ export default function AnalyzeView() {
                   })
                 }}
                 onSelectAll={() => {
-                  setSelectedPainPointIds(new Set(painPointsToReview.filter(p => p.id).map(p => p.id!)))
+                  setSelectedPainPointIds(new Set(painPointsToReview.filter(p => p.id && (!evidenceReview || (evidenceReview.groups[p.id]?.length ?? 0) > 0)).map(p => p.id!)))
                 }}
                 onDeselectAll={() => setSelectedPainPointIds(new Set())}
                 onContinue={handlePhase3}
@@ -1017,13 +1017,14 @@ function registerBadgeClass(reg: string): string {
 
 // ─── Pain Point Card ──────────────────────────────────────────────────────────
 
-function PainPointCard({ pp, isSelected, onToggle, records, selectedRecords, onToggleRecord }: {
+function PainPointCard({ pp, isSelected, onToggle, records, selectedRecords, onToggleRecord, supportQuotes }: {
   pp: PainPoint
   isSelected: boolean
   onToggle: () => void
   records?: EvidenceRecord[]
   selectedRecords?: string[]
   onToggleRecord?: (id: string) => void
+  supportQuotes?: Record<string, string>
 }) {
   const [expanded, setExpanded] = useState(false)
   const hasId = !!pp.id
@@ -1040,7 +1041,7 @@ function PainPointCard({ pp, isSelected, onToggle, records, selectedRecords, onT
           aria-label={`Mantieni pain point: ${pp.pain_point}`}
           checked={isSelected}
           onChange={onToggle}
-          disabled={!hasId}
+          disabled={!hasId || records?.length === 0}
           className="mt-0.5 shrink-0 w-4 h-4 rounded accent-indigo-600 cursor-pointer disabled:cursor-default"
         />
         <div className="flex-1 min-w-0">
@@ -1075,7 +1076,8 @@ function PainPointCard({ pp, isSelected, onToggle, records, selectedRecords, onT
               <span className="font-semibold">Requisito di forma:</span> {pp.requisito_forma}
             </p>
           )}
-          {records ? <EvidenceList records={records} selectedIds={selectedRecords} onToggle={onToggleRecord} disabled={!isSelected} problem={pp.pain_point} /> : hasEvidence ? (
+          {records?.length === 0 && <p className="mb-2 text-xs text-amber-800">Nessuna testimonianza con supporto sufficiente per questo pain point: escluso dalla selezione.</p>}
+          {records ? <EvidenceList records={records} selectedIds={selectedRecords} onToggle={onToggleRecord} disabled={!isSelected} problem={pp.pain_point} supportQuotes={supportQuotes} /> : hasEvidence ? (
             <>
               <button
                 type="button"
@@ -1201,6 +1203,7 @@ function PainPointSelectionPanel({
               records={evidenceReview && pp.id ? (evidenceReview.groups[pp.id] ?? []).map(id => records.get(id)!).filter(Boolean) : undefined}
               selectedRecords={pp.id ? evidenceSelection[pp.id] : undefined}
               onToggleRecord={pp.id ? id => onToggleEvidence(pp.id!, id) : undefined}
+              supportQuotes={Object.fromEntries((evidenceReview?.proposals ?? []).filter(p => p.painPointId === pp.id).map(p => [p.recordId, p.quote]))}
             />
           ))}
         </div>

@@ -760,7 +760,8 @@ function PainPointsList({ painPoints, socialEvidence, evidenceReview }: { painPo
               </>
             )}
             {evidenceReview?.selection && pp.id && <>
-              <EvidenceList records={evidenceReview.records.filter(r => evidenceReview.selection!.records[pp.id!]?.includes(r.id))} title="Testimonianze mantenute" printable />
+              <EvidenceList records={evidenceReview.records.filter(r => evidenceReview.selection!.records[pp.id!]?.includes(r.id))} title="Testimonianze mantenute" printable
+                supportQuotes={Object.fromEntries((evidenceReview.proposals ?? []).filter(p => p.painPointId === pp.id).map(p => [p.recordId, p.quote]))} />
               <p className="mt-1 text-xs text-zinc-500">Testimonianze escluse da questo gruppo: {(evidenceReview.groups[pp.id]?.length ?? 0) - (evidenceReview.selection.records[pp.id]?.length ?? 0)}.</p>
               {(evidenceReview.groups[pp.id]?.some(id => !selectedRecords?.[pp.id!]?.includes(id))) && <EvidenceList
                 records={evidenceReview.records.filter(r => evidenceReview.groups[pp.id!]?.includes(r.id) && !selectedRecords?.[pp.id!]?.includes(r.id))}

@@ -29,6 +29,7 @@ import { buildSocialManifest } from './social-corpus'
 import { aggregateSocialEvidence, runSocialAttribution } from './social-attribution'
 import { manualSocialEvidence, selectedPainEvidence, selectedSources, validateEvidenceSelection } from './evidence-review'
 import type { EvidenceReview, EvidenceSelection } from './evidence-review'
+import { painReviews } from './amazon-review-filter'
 
 // ─── Tipi intermedi ───────────────────────────────────────────────────────────
 
@@ -79,6 +80,14 @@ export async function runPainPointsPhase(
   reddit: RedditData,
   youtube: YouTubeData | undefined,
 ): Promise<PainPointsIntermediate> {
+  // Difesa anche per client o campioni salvati prima del filtro 1–3 stelle.
+  amazon = { ...amazon, topBookReviews: painReviews(amazon.topBookReviews) }
+  if (amazon.reviewCollection) {
+    const count = amazon.topBookReviews!.reduce((n, b) => n + b.reviews.length, 0)
+    amazon = { ...amazon, reviewCollection: { ...amazon.reviewCollection,
+      reviewCount: count, booksWithReviews: amazon.topBookReviews!.length,
+      status: count === 0 ? 'unavailable' : amazon.topBookReviews!.length === amazon.reviewCollection.requestedBooks ? 'complete' : 'partial' } }
+  }
   const keyword = amazon.keyword
   const market  = amazon.market
 

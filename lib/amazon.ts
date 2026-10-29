@@ -1,4 +1,5 @@
 import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, BookReviews, AdsIntelligence } from './types'
+import { isPainReview } from './amazon-review-filter'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -374,7 +375,7 @@ async function fetchBookReviews(asin: string, market: Market): Promise<AmazonRev
       : [...local, ...foreign]
 
     return raw
-      .filter(r => (r.text ?? '').length >= 50)
+      .filter(r => (r.text ?? '').length >= 50 && isPainReview({ rating: Number(r.rating) }))
       .sort((a, b) => (b.helpful_count ?? 0) - (a.helpful_count ?? 0))
       .slice(0, 10)
       .map(r => ({

@@ -132,13 +132,13 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   manual.reddit.posts[0].comments.push({ ...manual.reddit.posts[0].comments[0], id: 'c2', author: 'bob', body: 'DROP_REDDIT',
     provenance: { originalId: 'c2', idStatus: 'original', containerId: 'p1' } })
   manual.amazon.topBookReviews = [{ asin: book.asin, bookTitle: book.title, reviews: [
-    { rating: 2, title: 'Kept', body: 'KEEP_AMAZON' }, { rating: 2, title: 'Removed', body: 'DROP_AMAZON' },
+    { rating: 2, title: 'Kept', body: 'KEEP_AMAZON full testimony' }, { rating: 2, title: 'Removed', body: 'DROP_AMAZON full testimony' },
   ] }]
   manual.painPoints.push({ ...painPoints[0], id: 'ppA', fonte: 'recensione_negativa', evidence: 'DROP_AMAZON', evidence_quotes: ['DROP_AMAZON'] })
   manual.socialManifest = buildSocialManifest(manual.reddit)
   manual.evidenceReview = await groupEvidence(evidenceCatalog(manual.socialManifest, manual.amazon.topBookReviews, 'US'), manual.painPoints, 'meals', async prompt => {
     const d = JSON.parse(prompt.split('DATI:\n')[1])
-    return { decisions: d.recordsToReview.map((r: { recordId: string; allowedPainPointIds: string[] }) => ({ recordId: r.recordId, painPointIds: r.allowedPainPointIds })) }
+    return { decisions: d.recordsToReview.map((r: { recordId: string; text: string; allowedPainPointIds: string[] }) => ({ recordId: r.recordId, matches: r.allowedPainPointIds.map(painPointId => ({ painPointId, quote: r.text.slice(0, 200), kind: 'problem', topicRelevant: true, problemExpressed: true, scopeMatched: true })) })) }
   })
   const evidenceSelection = { pp1: ['reddit:post:0:comment:0'], ppA: ['amazon:book:0:review:0'] }
   const callsBefore = attribution.mock.callCount()
@@ -156,10 +156,10 @@ test('pipeline e export: provenienza persistita, modalità curated, guasti opzio
   assert.deepEqual([keptPain.F, keptPain.I, keptPain.score], [painPoints[0].F, painPoints[0].I, painPoints[0].score])
   const originalVoice = curated.voice_data as { reddit: { posts: typeof reddit.posts }; reviews: typeof manual.amazon.topBookReviews }
   assert.equal(originalVoice.reddit.posts[0].comments[1].body, 'DROP_REDDIT')
-  assert.equal(originalVoice.reviews![0].reviews[1].body, 'DROP_AMAZON')
+  assert.equal(originalVoice.reviews![0].reviews[1].body, 'DROP_AMAZON full testimony')
   t.mock.method(storage, 'getReport', async () => ({ id: 'test', keyword: 'meals', market: 'US', status: 'complete', createdAt: '2026-10-01', data: { id: 'test', ...curated } }))
   const manualExport = await (await exportReport({} as Parameters<typeof exportReport>[0], { params: Promise.resolve({ id: 'test' }) })).json()
   assert.deepEqual(manualExport.evidence_review.selection.records, evidenceSelection)
   assert.deepEqual(manualExport.social_evidence, JSON.parse(JSON.stringify(curatedSocial)))
-  assert.equal(manualExport.voice_data.reviews[0].reviews[1].body, 'DROP_AMAZON')
+  assert.equal(manualExport.voice_data.reviews[0].reviews[1].body, 'DROP_AMAZON full testimony')
 })

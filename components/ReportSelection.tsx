@@ -13,6 +13,7 @@ export default function ReportSelection({ review }: { review?: EvidenceReview })
   const excluded = summary.painPoints.filter(p => !p.selected)
   return <section aria-label="Selezione utilizzata nel report" className="report-section rounded-2xl border border-indigo-200 bg-indigo-50 p-6 print:bg-white">
     <h2 className="text-lg font-bold text-indigo-950">Selezione utilizzata nel report</h2>
+    {!review?.groupingPolicy && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Questo report usa i criteri di raggruppamento precedenti. Per applicare gli abbinamenti con citazione di supporto e il filtro Amazon da 1 a 3 stelle occorre generare una nuova analisi.</p>}
     <p className="mt-2 text-sm text-indigo-950">{SELECTION_BASIS}</p>
     <p className="mt-2 text-sm font-semibold text-indigo-950">
       Pain point mantenuti: {summary.selectedPainPoints} su {summary.painPoints.length} · Esclusi: {summary.excludedPainPoints}.

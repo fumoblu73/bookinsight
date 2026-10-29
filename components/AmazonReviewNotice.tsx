@@ -6,6 +6,6 @@ export default function AmazonReviewNotice({ collection }: { collection?: Amazon
     <strong>Recensioni Amazon: {collection.reviewCount} testi raccolti da {collection.booksWithReviews}/{collection.requestedBooks} libri.</strong>{' '}
     {collection.status === 'unavailable' ? 'Nessun testo di recensione disponibile: Amazon non contribuisce alle testimonianze di questa analisi.'
       : collection.status === 'partial' ? 'Campione parziale: alcuni libri non hanno restituito testi di recensione.' : 'Campione disponibile per la selezione manuale.'}
-    {' '}Il numero totale di recensioni dei libri è un dato di mercato distinto dai testi effettivamente raccolti.
+    {' '}Nelle nuove analisi sono ammesse solo recensioni da 1 a 3 stelle. Il numero totale di recensioni e il rating medio dei libri restano dati di mercato distinti.
   </p>
 }

@@ -1,5 +1,6 @@
 import type { AmazonData, AmazonReview, AmazonReviewCollection, BookReviews, Market } from './types'
 import { cacheGet, cacheSet } from './upstash'
+import { isPainReview, painReviews } from './amazon-review-filter'
 
 const DOMAINS: Record<Market, string> = { US: 'amazon.com', UK: 'amazon.co.uk', IT: 'amazon.it', DE: 'amazon.de', FR: 'amazon.fr', ES: 'amazon.es' }
 const ACTOR = 'junglee~amazon-reviews-scraper'
@@ -18,7 +19,7 @@ export function mapAmazonReviews(items: unknown, books: AmazonData['topBooks'], 
     const book = byAsin.get(String(row.productAsin ?? '').toUpperCase())
     const body = typeof row.reviewDescription === 'string' ? row.reviewDescription.trim() : ''
     const rating = Number(row.ratingScore)
-    if (!book || book.reviews.length >= MAX_REVIEWS || body.length < 50 || !Number.isFinite(rating) || rating < 1 || rating > 5) continue
+    if (!book || book.reviews.length >= MAX_REVIEWS || body.length < 50 || !isPainReview({ rating })) continue
     let id: string | undefined, url: string | undefined
     try {
       const original = new URL(String(row.reviewUrl ?? ''))
@@ -41,11 +42,12 @@ export async function supplementAmazonReviews(data: AmazonData, options: Options
   const cache = options.cache ?? { read: key => cacheGet<AmazonReview[]>(key), write: cacheSet }
   const token = options.token ?? process.env.APIFY_TOKEN
   const books = [...new Map(data.topBooks.slice(0, 5).map(b => [b.asin, b])).values()]
-  const groups = new Map((data.topBookReviews ?? []).filter(b => b.reviews.length).map(b => [b.asin, b]))
-  const cacheKey = (asin: string) => `amazon-reviews:apify:v1:${data.market}:${asin}`
+  const groups = new Map(painReviews(data.topBookReviews).map(b => [b.asin, b]))
+  const cacheKey = (asin: string) => `amazon-reviews:apify:v2:stars-1-3:${data.market}:${asin}`
   let fallback: AmazonReviewCollection['fallback'] = 'not_needed', reason: AmazonReviewCollection['reason']
   await Promise.all(books.filter(b => !groups.has(b.asin)).map(async b => {
-    const reviews = await cache.read(cacheKey(b.asin)).catch(() => null)
+    const cached = await cache.read(cacheKey(b.asin)).catch(() => null)
+    const reviews = cached?.filter(isPainReview)
     if (reviews?.length) { groups.set(b.asin, { asin: b.asin, bookTitle: b.title, reviews }); fallback = 'cache' }
   }))
   const missing = books.filter(b => !groups.has(b.asin))
@@ -60,7 +62,7 @@ export async function supplementAmazonReviews(data: AmazonData, options: Options
         const response = await (options.fetcher ?? fetch)(`https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?${query}`, {
           method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ productUrls: missing.map(b => ({ url: `https://www.${DOMAINS[data.market]}/dp/${b.asin}` })),
-            maxReviews: MAX_REVIEWS, sort: 'helpful', includeGdprSensitive: false, scrapeProductDetails: false }),
+            maxReviews: MAX_REVIEWS, filterByRatings: ['oneStar', 'twoStar', 'threeStar'], sort: 'helpful', includeGdprSensitive: false, scrapeProductDetails: false }),
           signal: AbortSignal.timeout((seconds + 3) * 1000),
         })
         if (!response.ok) throw new Error('provider_error')
