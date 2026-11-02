@@ -42,3 +42,6 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# sonda 9.0.2: payload grezzi con dati personali, mai versionati
+/.probe-raw/
