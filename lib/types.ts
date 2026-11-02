@@ -134,7 +134,16 @@ export interface RedditComment {
   author: string
   createdUtc: number
   month: string   // YYYY-MM per metadata stagionalità
+  // 9.0.2 — opzionali, assenti nei dati precedenti.
+  // 'collector' = ID fornito dallo scraper; 'synthetic' = generato localmente
+  // (c_<postId>_<n>), non riconducibile al commento originale.
+  idSource?: RedditIdSource
+  // Riferimento grezzo al genitore (commento o post). Nome del campo Apify e
+  // prefissi t1_/t3_ da confermare con la sonda: non ancora valorizzato.
+  parentId?: string
 }
+
+export type RedditIdSource = 'collector' | 'url' | 'synthetic'
 
 export interface RedditPost {
   id: string
@@ -146,6 +155,10 @@ export interface RedditPost {
   month: string
   comments: RedditComment[]
   link?: string   // URL originale Google result
+  // 9.0.2 — opzionali. 'url' = ID estratto dal link; 'synthetic' = g_<n> locale.
+  idSource?: RedditIdSource
+  // Autore del post grezzo: campo Apify da confermare con la sonda, non ancora valorizzato.
+  author?: string
 }
 
 export interface RedditData {
@@ -181,6 +194,9 @@ export interface YouTubeComment {
   text: string
   likeCount: number
   publishedAt: string  // ISO date
+  // 9.0.2 — opzionale: snippet.authorChannelId.value (forma da confermare con la sonda).
+  // È l'unico identificativo d'autore ammesso: il display name non va mai usato.
+  authorChannelId?: string
 }
 
 export interface YouTubeVideo {
@@ -188,6 +204,7 @@ export interface YouTubeVideo {
   title: string
   viewCount: number
   comments: YouTubeComment[]
+  channelId?: string  // 9.0.2 — opzionale: canale del video (videos.snippet.channelId), da confermare con la sonda
 }
 
 export interface YouTubeData {
@@ -195,7 +212,7 @@ export interface YouTubeData {
   videos: YouTubeVideo[]
   totalComments: number
   available: boolean
-  insufficientCorpus: boolean  // true se < 10 commenti filtrati
+  insufficientCorpus: boolean  // true se < 25 commenti filtrati (MIN_COMMENTS in lib/youtube.ts)
 }
 
 // ─── Pain Point (output Haiku) ────────────────────────────────────────────────

@@ -111,7 +111,7 @@ export async function fetchYouTubeData(keyword: string, market: Market = 'US'): 
       })
     )
 
-    // Tronca a max 150 commenti totali, priorità ai video con più views
+    // Tronca a max 400 commenti totali, priorità ai video con più views
     const sorted = [...videos].sort((a, b) => b.viewCount - a.viewCount)
     let totalComments = 0
     const capped: YouTubeVideo[] = []

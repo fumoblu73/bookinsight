@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { fetchRedditData } from './reddit'
+
+// 9.0.2 passo 1: origine degli ID nel collector Reddit. Fetch e variabili
+// d'ambiente sono simulati: nessuna chiamata reale, nessuna credenziale.
+// I nomi dei campi Apify qui usati sono quelli già letti da lib/reddit.ts,
+// non i campi ancora da confermare con la sonda (parentId, autore del post).
+
+const URL_A = 'https://www.reddit.com/r/camping/comments/aaa111/slug_a/'
+const URL_B = 'https://www.reddit.com/r/hiking/comments/bbb222/slug_b/'
+
+async function withStubs<T>(apifyItems: Record<string, unknown[]>, run: () => Promise<T>): Promise<T> {
+  const saved = { fetch: globalThis.fetch, env: { ...process.env } }
+  delete process.env.ANTHROPIC_API_KEY // traduzione: fallback alla keyword originale
+  process.env.APIFY_TOKEN = 'test-token'
+  process.env.SERPAPI_KEY = 'test-key'
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.startsWith('https://serpapi.com/')) {
+      return new Response(JSON.stringify({ organic_results: [{ link: URL_A, title: 'A' }, { link: URL_B, title: 'B' }] }))
+    }
+    if (url.startsWith('https://api.apify.com/')) {
+      const target = JSON.parse(String(init?.body)).urls[0] as string
+      return new Response(JSON.stringify(apifyItems[target] ?? []))
+    }
+    throw new Error(`fetch inatteso: ${url}`)
+  }) as typeof fetch
+  const log = console.log
+  console.log = () => {}
+  try {
+    return await run()
+  } finally {
+    console.log = log
+    globalThis.fetch = saved.fetch
+    process.env = saved.env
+  }
+}
+
+test('ID del collector e ID sintetici sono distinti da idSource', async () => {
+  const data = await withStubs({
+    [URL_A]: [
+      { kind: 'post', id: 'aaa111', url: URL_A, title: 'A', body: 'text', subreddit: 'camping', score: 5 },
+      { kind: 'comment', id: 'c1', postId: 'aaa111', body: 'real id comment', author: 'u1', score: 3 },
+      { kind: 'comment', postId: 'aaa111', body: 'comment without id', author: 'u2', score: 2 },
+    ],
+    [URL_B]: [
+      { kind: 'post', url: URL_B, title: 'B', body: '', subreddit: 'hiking', score: 1 },
+      { kind: 'comment', id: 'c9', postId: 'bbb222', body: 'post id from url', author: 'u3', score: 1 },
+    ],
+  }, () => fetchRedditData('test keyword'))
+
+  const a = data.posts.find(p => p.id === 'aaa111')!
+  const b = data.posts.find(p => p.id === 'bbb222')!
+  assert.equal(a.idSource, 'collector')
+  assert.equal(b.idSource, 'url', 'ID ricavato dal link, non fornito dal collector')
+  const real = a.comments.find(c => c.id === 'c1')!
+  const synthetic = a.comments.find(c => c.body === 'comment without id')!
+  assert.equal(real.idSource, 'collector')
+  assert.equal(synthetic.idSource, 'synthetic')
+  assert.match(synthetic.id, /^c_aaa111_\d+$/, 'formato sintetico legacy invariato')
+  assert.equal(b.comments[0].idSource, 'collector')
+  // Campi dipendenti dalla sonda: non ancora valorizzati.
+  assert.equal(a.author, undefined)
+  assert.equal(real.parentId, undefined)
+})

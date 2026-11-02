@@ -1,4 +1,4 @@
-import { RedditData, RedditPost, RedditComment } from './types'
+import { RedditData, RedditPost, RedditComment, RedditIdSource } from './types'
 import { prepareRedditCorpus, REDDIT_CORPUS_LIMITS } from './reddit-corpus'
 
 const MAX_POSTS = REDDIT_CORPUS_LIMITS.maxPosts
@@ -394,8 +394,10 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       : 0
     if (!commentsByPostId.has(postId)) commentsByPostId.set(postId, [])
     const bucket = commentsByPostId.get(postId)!
+    const hasCollectorId = c.id !== undefined && c.id !== null
     bucket.push({
       id: String(c.id ?? `c_${postId}_${bucket.length}`),
+      idSource: hasCollectorId ? 'collector' : 'synthetic',
       body: (c.body as string) ?? '',
       score: (c.score as number) ?? 0,
       author: (c.author as string) ?? '',
@@ -412,6 +414,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   const enrichedPosts = postsRaw.map(p => {
     const postUrl = (p.url as string) ?? ''
     const postId = (p.id as string) ?? extractPostId(postUrl) ?? ''
+    const postIdSource: RedditIdSource = !postId ? 'synthetic'
+      : p.id !== undefined && p.id !== null ? 'collector' : 'url'
     const candidate = topCandidates.find(c => c.postId === postId)
     const upVotes = (p.score as number) ?? 0
 
@@ -424,7 +428,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     const upVotesScore = (upVotes / maxUpVotes) * 50
     const finalScore = appearancesScore + positionScore + upVotesScore
 
-    return { rawPost: p, postId, upVotes, finalScore }
+    return { rawPost: p, postId, postIdSource, upVotes, finalScore }
   })
 
   enrichedPosts.sort((a, b) => b.finalScore - a.finalScore)
@@ -442,6 +446,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
 
     return {
       id: e.postId || `g_${i}`,
+      idSource: e.postId ? e.postIdSource : 'synthetic',
       title: (p.title as string) ?? '',
       selftext: (p.body as string) ?? '',
       score: e.upVotes,
