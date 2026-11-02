@@ -248,7 +248,7 @@ export interface FrequencyShadow {
   status: 'ok' | 'not_calculable' | 'failed' | 'not_applicable'
   U: number | null                 // autori distinti con relazione problem/request
   U_withConfirmations: number | null
-  T: number | null                 // thread/video distinti dei record problem/request
+  T: number | null                 // thread/video distinti dei record di M (contestazioni incluse)
   M: number                        // record distinti con relazione diversa da context
   M_anon: number                   // di cui senza autore identificabile
   D: number | null                 // account identificabili trasmessi sulla piattaforma
