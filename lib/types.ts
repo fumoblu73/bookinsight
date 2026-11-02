@@ -215,6 +215,52 @@ export interface YouTubeData {
   insufficientCorpus: boolean  // true se < 25 commenti filtrati (MIN_COMMENTS in lib/youtube.ts)
 }
 
+// ─── Evidenze verificabili e frequenza shadow (9.0.2) ────────────────────────
+// Tutto opzionale nei report: assente nei report 8.6 e 9.0.1.
+
+export type EvidenceSource = 'reddit' | 'youtube'
+export type EvidenceRecordType = 'post' | 'comment'
+export type EvidenceRelation = 'problem' | 'request' | 'objection' | 'contextual_confirmation' | 'context'
+export type EvidenceAuthorKind = 'reddit_user' | 'youtube_channel'
+
+/** Un testo effettivamente trasmesso all'AI. I titoli di post/video sono solo
+ * contesto e non diventano record (mai citazioni). */
+export interface EvidenceRecord {
+  recordKey: string            // stabile, es. reddit:comment:abc123 / youtube:comment:Ugx…
+  alias: string                // breve, solo per il prompt di attribuzione (R12, Y7)
+  source: EvidenceSource
+  type: EvidenceRecordType
+  sourceItemId: string | null  // ID originale; null se sintetico
+  threadId: string             // reddit:<postId> / youtube:<videoId>
+  authorKey: string | null     // pseudonimo <tipo>:<hash>; null se assente, cancellato o bot
+  parentKey: string | null     // recordKey del genitore, anche se non trasmesso
+  text: string                 // esattamente il testo trasmesso (dopo il troncamento del prompt)
+  truncated: boolean
+}
+
+export interface EvidenceRef {
+  recordKey: string
+  relation: EvidenceRelation
+}
+
+export interface FrequencyShadow {
+  algorithmVersion: 'b-0.1'
+  status: 'ok' | 'not_calculable' | 'failed' | 'not_applicable'
+  U: number | null                 // autori distinti con relazione problem/request
+  U_withConfirmations: number | null
+  T: number | null                 // thread/video distinti dei record problem/request
+  M: number                        // record distinti con relazione diversa da context
+  M_anon: number                   // di cui senza autore identificabile
+  D: number | null                 // account identificabili trasmessi sulla piattaforma
+  K: number | null                 // thread/video trasmessi sulla piattaforma
+  authorKnownRate: number | null
+  F_legacy: number
+  F_candidate: number | null       // modello B senza cap
+  F_candidate_capped: number | null // con F <= 4 se T = 1
+  calculable: boolean
+  limitations: string[]
+}
+
 // ─── Pain Point (output Haiku) ────────────────────────────────────────────────
 
 export const SOLVIBILITA_VALUES = ['affrontabile', 'vincolo_formato', 'mai_fatto', 'fuori_portata'] as const

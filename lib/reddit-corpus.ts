@@ -24,6 +24,12 @@ function usableComment(comment: RedditComment): boolean {
     /[\p{L}\p{N}]/u.test(body.replace(/https?:\/\/\S+/gi, ''))
 }
 
+/** Identità del thread usata per deduplica e, dalla 9.0.2, per l'indice evidenze. */
+export function redditThreadId(post: Pick<RedditPost, 'link' | 'id' | 'subreddit' | 'title'>): string {
+  const urlId = post.link?.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)/i)?.[1]
+  return (urlId || post.id?.replace(/^t3_/, '') || `${post.subreddit}:${post.title}`).toLowerCase()
+}
+
 /** Ricalcola sempre dai testi effettivamente inviabili, anche per dati legacy.
  * Non si fida dei contatori salvati o del vecchio insufficientCorpus. Elimina
  * duplicati e commenti tecnicamente inutilizzabili senza mutare i dati originali.
@@ -37,9 +43,7 @@ export function prepareRedditCorpus(
   const seenComments = new Set<string>()
 
   for (const post of reddit?.available ? reddit.posts : []) {
-    const urlId = post.link?.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)/i)?.[1]
-    const threadId = (urlId || post.id?.replace(/^t3_/, '') ||
-      `${post.subreddit}:${post.title}`).toLowerCase()
+    const threadId = redditThreadId(post)
     let thread = threads.get(threadId)
     if (!thread) {
       thread = { ...post, comments: [] }
