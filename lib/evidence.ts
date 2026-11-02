@@ -9,9 +9,9 @@ export const YOUTUBE_COMMENT_CHARS = 300
 
 export interface EvidenceSourceStats {
   records: number
-  D: number            // authorKey distinti fra i record trasmessi (autori dei post inclusi)
+  D: number            // authorKey distinti fra i record trasmessi (autori dei post con testo inclusi)
   K: number            // thread/video con almeno un record trasmesso
-  authorKnownRate: number | null // record con authorKey / record; null se nessun record
+  authorKnownRate: number | null // record con authorKey / tutti i record della piattaforma; null se nessuno
 }
 
 export interface EvidenceIndex {
@@ -108,7 +108,9 @@ export function buildEvidenceIndex(
       const threadId = `reddit:${tid}`
       const postKey = `reddit:post:${tid}`
       const selftext = post.selftext ?? ''
-      push({
+      // Decisione 9.0.2: un post con solo titolo non è un record (il titolo è
+      // contesto) e il suo autore non entra in D, come il canale del video YouTube.
+      if (selftext.trim()) push({
         recordKey: postKey, source: 'reddit', type: 'post',
         // Thread reale solo se l'ID è base36 Reddit (da URL o collector); g_<n> e
         // il fallback subreddit:titolo non sono riconducibili al post originale.

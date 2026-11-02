@@ -168,6 +168,20 @@ test('statistiche per piattaforma: D con autori dei post, K, quota autori noti',
   assert.equal(s.authorKnownRate, 4 / 6)
 })
 
+test('post con solo titolo: nessun record e autore escluso da D; canale del video mai in D', () => {
+  const index = buildEvidenceIndex({
+    reddit: reddit([post('aaa111', [comment('c1', 'reply to a title only post', 'alice', { parentId: 't3_aaa111' })],
+      { author: 'op_title_only', selftext: '   ' })]),
+    youtube: youtube([{ id: 'v1', title: 'V', viewCount: 1, channelId: 'UCcreator', comments: [
+      { id: 'Ugx1', text: 'a viewer comment', likeCount: 3, publishedAt: '2026-01-01', authorChannelId: 'UCviewer' }] }]),
+  }, { authorSalt: SALT })
+  assert.equal(index.records.filter(r => r.type === 'post').length, 0)
+  assert.equal(index.stats.reddit.D, 1)
+  assert.equal(index.stats.reddit.K, 1)
+  assert.equal(index.stats.youtube.D, 1)
+  assert.equal(index.records[0].parentKey, 'reddit:post:aaa111', 'genitore non trasmesso')
+})
+
 test('deterministico a parità di sale e senza mutare i dati di ingresso', () => {
   const data = reddit([post('aaa111', [comment('c1', 'some text here', 'alice', { parentId: 't3_aaa111' })])])
   const before = JSON.stringify(data)
