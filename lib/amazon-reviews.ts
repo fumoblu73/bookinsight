@@ -85,7 +85,9 @@ export async function fetchAmazonReviewsApifyPartial(
       },
     )
     if (!runRes.ok) {
-      console.log(`[amazon-reviews] ${asin}/${market} avvio Apify status:${runRes.status}`)
+      // Il corpo dell'errore Apify dice il motivo (es. 402: credito o limite mensile esaurito).
+      const detail = (await runRes.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200)
+      console.log(`[amazon-reviews] ${asin}/${market} avvio Apify status:${runRes.status} body:${detail}`)
       return { reviews: [], status: `http_${runRes.status}` }
     }
     const run = await runRes.json() as { data?: { id?: string; status?: string; defaultDatasetId?: string } }

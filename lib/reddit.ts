@@ -168,7 +168,8 @@ export async function searchRedditViaLabrat(
       },
     )
     if (!runRes.ok) {
-      console.log(`[reddit-search] avvio status:${runRes.status}`)
+      const detail = (await runRes.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200)
+      console.log(`[reddit-search] avvio status:${runRes.status} body:${detail}`)
       return []
     }
     const run = await runRes.json() as { data?: { id?: string; status?: string; defaultDatasetId?: string } }
@@ -369,7 +370,8 @@ async function fetchSinglePostViaLabrat(
       },
     )
     if (!runRes.ok) {
-      console.log(`[reddit-labrat] status:${runRes.status} url:${url.substring(0, 80)}`)
+      const detail = (await runRes.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200)
+      console.log(`[reddit-labrat] status:${runRes.status} body:${detail} url:${url.substring(0, 80)}`)
       return { items: [], success: false }
     }
     const run = await runRes.json() as { data?: { id?: string; status?: string; defaultDatasetId?: string } }
