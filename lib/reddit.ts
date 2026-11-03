@@ -141,6 +141,59 @@ async function searchRedditViaGoogle(query: string): Promise<GoogleResult[]> {
   }
 }
 
+// ─── Miglioramento b: ricerca interna di Reddit (labrat011, modalità search) ──
+// Complementa Google con il motore di Reddit. Una sola esecuzione con la keyword tra
+// virgolette: secondo la documentazione dell'actor le parole sciolte danno risultati
+// "close to random", e con il piano gratuito (25 risultati per esecuzione, budget
+// condiviso fra le query in ordine) una seconda query non riceverebbe risultati.
+
+export async function searchRedditViaLabrat(
+  keyword: string,
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GoogleResult[]> {
+  const auth = { Authorization: `Bearer ${token}` }
+  try {
+    const runRes = await fetchImpl(
+      'https://api.apify.com/v2/acts/labrat011~reddit-scraper/runs?timeout=30&waitForFinish=35',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...auth },
+        body: JSON.stringify({
+          mode: 'search', searchQuery: `"${keyword.replace(/"/g, '').trim()}"`, searchSort: 'relevance',
+          maxResults: 25, includeComments: false, includeNsfw: false,
+          proxyConfiguration: { useApifyProxy: true },
+        }),
+        signal: AbortSignal.timeout(40_000),
+      },
+    )
+    if (!runRes.ok) {
+      console.log(`[reddit-search] avvio status:${runRes.status}`)
+      return []
+    }
+    const run = await runRes.json() as { data?: { id?: string; status?: string; defaultDatasetId?: string } }
+    if (run.data?.id && (run.data.status === 'RUNNING' || run.data.status === 'READY')) {
+      fetchImpl(`https://api.apify.com/v2/actor-runs/${run.data.id}/abort`, { method: 'POST', headers: auth, signal: AbortSignal.timeout(5000) })
+        .catch(() => {})
+    }
+    if (!run.data?.defaultDatasetId) return []
+    const itemsRes = await fetchImpl(
+      `https://api.apify.com/v2/datasets/${encodeURIComponent(run.data.defaultDatasetId)}/items?clean=true&format=json`,
+      { headers: auth, signal: AbortSignal.timeout(10_000) },
+    )
+    if (!itemsRes.ok) return []
+    const items = await itemsRes.json() as ApifyItem[]
+    const results = (Array.isArray(items) ? items : [])
+      .filter(it => it.type === 'post' && typeof it.url === 'string' && extractPostId(it.url as string))
+      .map(it => ({ link: it.url as string, title: typeof it.title === 'string' ? it.title : '' }))
+    console.log(`[reddit-search] run:${run.data.status} posts:${results.length}`)
+    return results
+  } catch (err) {
+    console.log(`[reddit-search] FAILED error:${err}`)
+    return []
+  }
+}
+
 interface RankedCandidate {
   url: string
   postId: string
@@ -151,10 +204,12 @@ interface RankedCandidate {
   totalScore: number
 }
 
-async function searchRedditMulti(queries: string[]): Promise<RankedCandidate[]> {
-  const resultsByQuery = await Promise.all(
-    queries.map(q => searchRedditViaGoogle(q))
-  )
+async function searchRedditMulti(queries: string[], extraResultLists: GoogleResult[][] = []): Promise<RankedCandidate[]> {
+  // Ogni lista extra (es. ricerca interna di Reddit) conta come una query in più.
+  const resultsByQuery = [
+    ...await Promise.all(queries.map(q => searchRedditViaGoogle(q))),
+    ...extraResultLists,
+  ]
 
   const candidateMap = new Map<string, RankedCandidate>()
 
@@ -184,15 +239,15 @@ async function searchRedditMulti(queries: string[]): Promise<RankedCandidate[]> 
 
   const candidates = Array.from(candidateMap.values())
   candidates.forEach(c => {
-    const appearancesScore = (c.appearancesInQueries / queries.length) * 60
-    const positionScore = ((16 - c.bestPosition) / 15) * 40
+    const appearancesScore = (c.appearancesInQueries / resultsByQuery.length) * 60
+    const positionScore = ((16 - Math.min(15, c.bestPosition)) / 15) * 40
     c.totalScore = appearancesScore + positionScore
   })
 
   candidates.sort((a, b) => b.totalScore - a.totalScore)
 
   console.log(
-    `[reddit-aggregate] queries:${queries.length} uniqueUrls:${candidates.length} ` +
+    `[reddit-aggregate] queries:${queries.length} extraLists:${extraResultLists.length} uniqueUrls:${candidates.length} ` +
     `topScore:${candidates[0]?.totalScore.toFixed(1) ?? 'N/A'}`
   )
 
@@ -462,11 +517,14 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   // Le 5 query tradotte cambiano a ogni analisi: nell'analisi reale del 2026-11-03
   // (15:03 UTC) hanno prodotto solo 2 URL unici, contro 15 di un'ora prima. La keyword
   // originale si aggiunge come sesta query per una base stabile (una ricerca SerpApi in più).
+  // La ricerca interna di Reddit parte subito, in parallelo con traduzione e Google.
+  const redditSearchPromise = searchRedditViaLabrat(keyword, apifyToken)
   const translated = await translateKeywordForReddit(keyword)
   const queries = [...new Set([...translated, keyword.trim().toLowerCase()])]
 
   // STEP 2: SerpApi multi-query
-  const candidates = await searchRedditMulti(queries)
+  const redditSearchResults = await redditSearchPromise
+  const candidates = await searchRedditMulti(queries, [redditSearchResults])
 
   if (candidates.length === 0) {
     console.log(`[reddit-summary] keyword:"${keyword}" status:NO_GOOGLE_RESULTS`)
@@ -608,6 +666,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     `[reddit-summary] keyword:"${keyword}" ` +
     `translatedQueries:${queries.length} ` +
     `googleCandidates:${candidates.length} ` +
+    `redditSearchPosts:${redditSearchResults.length} ` +
     `apifyAttempted:${urlsToFetch.length} ` +
     `apifySuccess:${successCount} ` +
     `apifyFailure:${failureCount} ` +

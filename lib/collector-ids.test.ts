@@ -250,10 +250,12 @@ test('Reddit end-to-end: dati labrat011 → RedditData con autore del post e par
     const url = String(input)
     if (url.startsWith('https://serpapi.com/')) return new Response(JSON.stringify({ organic_results: [{ link: URL_A, title: 'Camping meals : r/camping - Reddit' }] }))
     if (url.includes('/acts/labrat011~reddit-scraper/runs')) {
+      if (JSON.parse(String(init?.body)).mode === 'search') return new Response(JSON.stringify({ data: { id: 's', status: 'SUCCEEDED', defaultDatasetId: 'dsEmpty' } }))
       assert.deepEqual(JSON.parse(String(init?.body)).postUrls, [URL_A])
       return new Response(JSON.stringify({ data: { id: 'r1', status: 'SUCCEEDED', defaultDatasetId: 'ds1' } }))
     }
     if (url.includes('/datasets/ds1/items')) return new Response(JSON.stringify(items))
+    if (url.includes('/datasets/dsEmpty/items')) return new Response('[]')
     if (url.includes('fatihtahta')) { fatihtahtaCalls++; return new Response('[]') }
     throw new Error(`fetch inatteso: ${url}`)
   }) as typeof fetch
@@ -299,4 +301,44 @@ test('Reddit: testi [deleted] sospetti in labrat011 → prova fatihtahta e tiene
     const kept = await fetchSinglePost('u', 't', { primary: async () => ({ items: suspect, success: true }), fallback: async () => worse })
     assert.equal(kept.items, suspect, 'se la riserva non dà di più resta labrat011')
   } finally { console.log = log }
+})
+
+test('Reddit b: la ricerca interna di Reddit aggiunge discussioni che Google non trova', async () => {
+  const saved = { fetch: globalThis.fetch, env: { ...process.env } }
+  delete process.env.ANTHROPIC_API_KEY
+  process.env.APIFY_TOKEN = 'test-token'
+  process.env.SERPAPI_KEY = 'test-key'
+  const bodies: Record<string, unknown>[] = []
+  const thread = (id: string, url: string) => [
+    { type: 'post', id, title: `T ${id}`, selftext: 'post text', author: 'op', score: 1, subreddit: 'camping', created: '2026-05-01T10:00:00Z', url },
+    { type: 'comment', id: `${id}c`, postId: id, body: `a real comment in ${id}`, author: 'u', score: 1, subreddit: 'camping', created: '2026-05-02T10:00:00Z', depth: 0 },
+  ]
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.startsWith('https://serpapi.com/')) return new Response(JSON.stringify({ organic_results: [{ link: URL_A, title: 'A' }] }))
+    if (url.includes('/acts/labrat011~reddit-scraper/runs')) {
+      const body = JSON.parse(String(init?.body))
+      bodies.push(body)
+      const ds = body.mode === 'search' ? 'dsSearch' : (body.postUrls[0] === URL_A ? 'dsA' : 'dsB')
+      return new Response(JSON.stringify({ data: { id: 'r', status: 'SUCCEEDED', defaultDatasetId: ds } }))
+    }
+    if (url.includes('/datasets/dsSearch/items')) return new Response(JSON.stringify([{ type: 'post', id: 'bbb222', url: URL_B, title: '' }]))
+    if (url.includes('/datasets/dsA/items')) return new Response(JSON.stringify(thread('aaa111', URL_A)))
+    if (url.includes('/datasets/dsB/items')) return new Response(JSON.stringify(thread('bbb222', URL_B)))
+    if (url.includes('fatihtahta')) return new Response('[]')
+    throw new Error(`fetch inatteso: ${url}`)
+  }) as typeof fetch
+  const log = console.log
+  console.log = () => {}
+  try {
+    const data = await fetchRedditData('just add water meals')
+    const search = bodies.find(b => b.mode === 'search')!
+    assert.equal(search.searchQuery, '"just add water meals"', 'keyword tra virgolette')
+    assert.equal(search.maxResults, 25)
+    assert.deepEqual(data.posts.map(p => p.id).sort(), ['aaa111', 'bbb222'], 'Google + ricerca Reddit')
+  } finally {
+    console.log = log
+    globalThis.fetch = saved.fetch
+    process.env = saved.env
+  }
 })
