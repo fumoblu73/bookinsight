@@ -230,21 +230,24 @@ async function probeAmazon() {
 async function probeAmazonReviewsApify() {
   if (!env.APIFY_TOKEN || !env.PROBE_ASIN) return { skipped: 'APIFY_TOKEN o PROBE_ASIN mancante' }
   const domain = env.PROBE_AMAZON_DOMAIN || 'amazon.com'
+  // lib/amazon-reviews.ts usa timeout=45 s. PROBE_APIFY_TIMEOUT (secondi, max 280) serve a
+  // misurare se l'actor finisce con più tempo o se resta bloccato.
+  const timeoutS = Math.min(280, Math.max(10, parseInt(env.PROBE_APIFY_TIMEOUT ?? '45', 10) || 45))
   const started = Date.now()
   const items = await getJson(
-    'https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?timeout=45',
+    `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?timeout=${timeoutS}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.APIFY_TOKEN}` },
       body: JSON.stringify({ productUrls: [{ url: `https://www.${domain}/dp/${env.PROBE_ASIN}` }], maxReviews: 20 }),
     },
-    90_000,
+    (timeoutS + 20) * 1000,
   )
   const durationMs = Date.now() - started
   if (!Array.isArray(items)) throw new Error('risposta Apify non è un array')
   const has = k => items.filter(i => i && i[k] !== undefined && i[k] !== null && i[k] !== '').length
   const report = {
-    request: { asin: env.PROBE_ASIN, amazon_domain: domain, maxReviews: 20 },
+    request: { asin: env.PROBE_ASIN, amazon_domain: domain, maxReviews: 20, timeoutS },
     durationMs,
     itemCount: items.length,
     itemKeys: keysOf(items),
