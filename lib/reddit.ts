@@ -242,6 +242,102 @@ async function fetchSinglePostViaApify(
   }
 }
 
+// ─── Fonte primaria: labrat011~reddit-scraper (modalità post_comments) ───────
+// Dal 20 ottobre 2026 Reddit blocca le pagine dei thread ai visitatori non
+// autenticati: fatihtahta restituiva dataset vuoti per la maggior parte degli URL
+// (2 thread su 15 in un'analisi reale del 2026-11-03). labrat011 legge le pagine
+// renderizzate con proxy residenziali inclusi; nella sonda reale un thread sempre
+// vuoto con fatihtahta ha restituito post + 24 commenti in 7,5 s.
+// Piano gratuito Apify: 25 risultati per esecuzione (post incluso).
+// L'output non ha parentId ma solo depth: per depth 0 il genitore è il post (t3_),
+// per le risposte annidate il genitore resta sconosciuto (nessuna ricostruzione
+// dall'ordine, che non è documentato).
+const LABRAT_MAX_RESULTS = 1 + MAX_COMMENTS_PER_POST
+
+/** Converte gli elementi di labrat011 nel formato già letto da fetchRedditData. */
+export function adaptLabratItems(items: ApifyItem[]): ApifyItem[] {
+  return items.flatMap((it): ApifyItem[] => {
+    const type = typeof it.type === 'string' ? it.type : ''
+    // created: ISO nella sonda; per prudenza anche secondi epoch (numero o stringa).
+    const created = typeof it.created === 'number' || (typeof it.created === 'string' && /^\d+$/.test(it.created))
+      ? new Date(Number(it.created) * 1000).toISOString()
+      : it.created
+    const common = {
+      id: it.id, author: it.author, score: it.score, subreddit: it.subreddit,
+      created_utc: created, url: it.url,
+    }
+    if (type === 'post') {
+      return [{ ...common, kind: 'post', title: it.title, body: it.selftext ?? '', stickied: it.isPinned === true }]
+    }
+    if (type === 'comment') {
+      const postId = typeof it.postId === 'string' ? it.postId.replace(/^t3_/, '') : ''
+      return [{
+        ...common, kind: 'comment', postId, body: it.body,
+        ...(it.depth === 0 && postId ? { parentId: `t3_${postId}` } : {}),
+      }]
+    }
+    return []
+  })
+}
+
+async function fetchSinglePostViaLabrat(
+  url: string,
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ items: ApifyItem[]; success: boolean }> {
+  const auth = { Authorization: `Bearer ${token}` }
+  try {
+    const runRes = await fetchImpl(
+      'https://api.apify.com/v2/acts/labrat011~reddit-scraper/runs?timeout=40&waitForFinish=45',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...auth },
+        body: JSON.stringify({
+          mode: 'post_comments', postUrls: [url],
+          maxCommentsPerPost: MAX_COMMENTS_PER_POST, maxResults: LABRAT_MAX_RESULTS,
+          proxyConfiguration: { useApifyProxy: true }, // senza gruppo = RESIDENTIAL secondo l'actor
+        }),
+        signal: AbortSignal.timeout(50_000),
+      },
+    )
+    if (!runRes.ok) {
+      console.log(`[reddit-labrat] status:${runRes.status} url:${url.substring(0, 80)}`)
+      return { items: [], success: false }
+    }
+    const run = await runRes.json() as { data?: { id?: string; status?: string; defaultDatasetId?: string } }
+    if (run.data?.id && (run.data.status === 'RUNNING' || run.data.status === 'READY')) {
+      fetchImpl(`https://api.apify.com/v2/actor-runs/${run.data.id}/abort`, { method: 'POST', headers: auth, signal: AbortSignal.timeout(5000) })
+        .catch(() => {})
+    }
+    if (!run.data?.defaultDatasetId) return { items: [], success: false }
+    // Il dataset si legge anche dopo TIMED-OUT/FAILED: conserva ciò che è stato salvato.
+    const itemsRes = await fetchImpl(
+      `https://api.apify.com/v2/datasets/${encodeURIComponent(run.data.defaultDatasetId)}/items?clean=true&format=json`,
+      { headers: auth, signal: AbortSignal.timeout(10_000) },
+    )
+    if (!itemsRes.ok) return { items: [], success: false }
+    const raw = await itemsRes.json() as ApifyItem[]
+    const items = adaptLabratItems(Array.isArray(raw) ? raw : [])
+    console.log(`[reddit-labrat] run:${run.data.status} items:${items.length} url:${url.substring(0, 80)}`)
+    return { items, success: items.length > 0 }
+  } catch (err) {
+    console.log(`[reddit-labrat] FAILED url:${url.substring(0, 80)} error:${err}`)
+    return { items: [], success: false }
+  }
+}
+
+/** labrat011 per primo; se non restituisce nulla, fatihtahta come riserva (gli
+ * esiti vuoti di fatihtahta non vengono addebitati). */
+export async function fetchSinglePost(
+  url: string,
+  token: string,
+  deps: { primary?: typeof fetchSinglePostViaLabrat; fallback?: typeof fetchSinglePostViaApify } = {},
+): Promise<{ items: ApifyItem[]; success: boolean }> {
+  const primary = await (deps.primary ?? fetchSinglePostViaLabrat)(url, token)
+  if (primary.success) return primary
+  return (deps.fallback ?? fetchSinglePostViaApify)(url, token)
+}
+
 const BATCH_SIZE = 5
 // Soglia dall'ingresso in fetchRedditData (non dall'inizio della fase Apify):
 // include quindi traduzione + SerpApi. Con tetto per batch di 50s (client abort),
@@ -275,14 +371,14 @@ async function fetchPostsViaApifyBatched(
 
     const batch = urls.slice(i, i + BATCH_SIZE)
     let batchResults = await Promise.all(
-      batch.map(url => fetchSinglePostViaApify(url, token))
+      batch.map(url => fetchSinglePost(url, token))
     )
     let batchSuccessCount = batchResults.filter(r => r.success).length
 
     if (batchIndex === 0 && batchSuccessCount === 0) {
       await new Promise(resolve => setTimeout(resolve, 3000))
       batchResults = await Promise.all(
-        batch.map(url => fetchSinglePostViaApify(url, token))
+        batch.map(url => fetchSinglePost(url, token))
       )
       batchSuccessCount = batchResults.filter(r => r.success).length
 

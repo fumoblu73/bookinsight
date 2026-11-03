@@ -201,3 +201,76 @@ test('YouTube: risposte incluse con parentId, niente minimo di like, ordine per 
     else process.env.YOUTUBE_API_KEY = saved.key
   }
 })
+
+test('Reddit labrat011: adattamento al formato del collector, parentId solo per depth 0', async () => {
+  const { adaptLabratItems } = await import('./reddit')
+  const out = adaptLabratItems([
+    { type: 'post', id: 'abc1234', title: 'T', selftext: 'body', author: 'op', score: 3, subreddit: 'camping', created: '2026-05-01T10:00:00Z', url: 'https://www.reddit.com/r/camping/comments/abc1234/t/' },
+    { type: 'comment', id: 'c000001', postId: 'abc1234', body: 'top level', author: 'u1', score: 2, subreddit: 'camping', created: '2026-05-02T10:00:00Z', depth: 0 },
+    { type: 'comment', id: 'c000002', postId: 't3_abc1234', body: 'nested', author: 'u2', score: 1, subreddit: 'camping', created: 1777777777, depth: 1 },
+    { type: 'other', id: 'x' },
+  ])
+  assert.equal(out.length, 3)
+  assert.deepEqual(
+    { kind: out[0].kind, id: out[0].id, body: out[0].body, author: out[0].author },
+    { kind: 'post', id: 'abc1234', body: 'body', author: 'op' },
+  )
+  assert.equal(out[1].kind, 'comment')
+  assert.equal(out[1].postId, 'abc1234')
+  assert.equal(out[1].parentId, 't3_abc1234')
+  assert.equal(out[2].postId, 'abc1234', 'prefisso t3_ rimosso')
+  assert.equal(out[2].parentId, undefined, 'genitore delle risposte annidate non ricostruito')
+  assert.match(String(out[2].created_utc), /^\d{4}-\d{2}-\d{2}T/, 'epoch convertito in ISO')
+})
+
+test('Reddit: labrat011 per primo, fatihtahta solo come riserva', async () => {
+  const { fetchSinglePost } = await import('./reddit')
+  let fallbackCalls = 0
+  const fallback = async () => { fallbackCalls++; return { items: [{ kind: 'post' }], success: true } }
+  const ok = await fetchSinglePost('u', 't', { primary: async () => ({ items: [{ kind: 'post' }, { kind: 'comment' }], success: true }), fallback })
+  assert.equal(ok.items.length, 2)
+  assert.equal(fallbackCalls, 0)
+  const fb = await fetchSinglePost('u', 't', { primary: async () => ({ items: [], success: false }), fallback })
+  assert.equal(fb.success, true)
+  assert.equal(fallbackCalls, 1)
+})
+
+test('Reddit end-to-end: dati labrat011 → RedditData con autore del post e parentId', async () => {
+  const items = [
+    { type: 'post', id: 'aaa111', title: 'A', selftext: 'post text here', author: 'op_a', score: 5, subreddit: 'camping', created: '2026-05-01T10:00:00Z', url: URL_A },
+    { type: 'comment', id: 'k1', postId: 'aaa111', body: 'top level comment text', author: 'u1', score: 3, subreddit: 'camping', created: '2026-05-02T10:00:00Z', depth: 0 },
+    { type: 'comment', id: 'k2', postId: 'aaa111', body: 'nested reply text', author: 'u2', score: 1, subreddit: 'camping', created: '2026-05-03T10:00:00Z', depth: 1 },
+  ]
+  const saved = { fetch: globalThis.fetch, env: { ...process.env } }
+  delete process.env.ANTHROPIC_API_KEY
+  process.env.APIFY_TOKEN = 'test-token'
+  process.env.SERPAPI_KEY = 'test-key'
+  let fatihtahtaCalls = 0
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.startsWith('https://serpapi.com/')) return new Response(JSON.stringify({ organic_results: [{ link: URL_A, title: 'A' }] }))
+    if (url.includes('/acts/labrat011~reddit-scraper/runs')) {
+      assert.deepEqual(JSON.parse(String(init?.body)).postUrls, [URL_A])
+      return new Response(JSON.stringify({ data: { id: 'r1', status: 'SUCCEEDED', defaultDatasetId: 'ds1' } }))
+    }
+    if (url.includes('/datasets/ds1/items')) return new Response(JSON.stringify(items))
+    if (url.includes('fatihtahta')) { fatihtahtaCalls++; return new Response('[]') }
+    throw new Error(`fetch inatteso: ${url}`)
+  }) as typeof fetch
+  const log = console.log
+  console.log = () => {}
+  try {
+    const data = await fetchRedditData('k')
+    assert.equal(fatihtahtaCalls, 0, 'riserva non usata se labrat011 restituisce dati')
+    const post = data.posts.find(p => p.id === 'aaa111')!
+    assert.equal(post.author, 'op_a')
+    assert.equal(post.selftext, 'post text here')
+    assert.deepEqual(post.comments.map(c => [c.id, c.parentId]), [['k1', 't3_aaa111'], ['k2', undefined]])
+    assert.equal(post.comments[0].month, '2026-05')
+    assert.equal(data.available, true)
+  } finally {
+    console.log = log
+    globalThis.fetch = saved.fetch
+    process.env = saved.env
+  }
+})
