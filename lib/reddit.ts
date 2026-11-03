@@ -427,7 +427,11 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   }
 
   // STEP 1: Traduzione AI
-  const queries = await translateKeywordForReddit(keyword)
+  // Le 5 query tradotte cambiano a ogni analisi: nell'analisi reale del 2026-11-03
+  // (15:03 UTC) hanno prodotto solo 2 URL unici, contro 15 di un'ora prima. La keyword
+  // originale si aggiunge come sesta query per una base stabile (una ricerca SerpApi in più).
+  const translated = await translateKeywordForReddit(keyword)
+  const queries = [...new Set([...translated, keyword.trim().toLowerCase()])]
 
   // STEP 2: SerpApi multi-query
   const candidates = await searchRedditMulti(queries)

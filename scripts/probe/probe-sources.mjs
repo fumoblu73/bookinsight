@@ -361,6 +361,16 @@ async function probeRedditLabrat() {
     itemCount: items.length,
     itemKeys: keysOf(items),
     typeLikeValues: countBy(items.map(i => String(i?.type ?? i?.kind ?? i?.dataType ?? 'absent'))),
+    // Perché l'app scarta commenti: corpo vuoto, [deleted], [removed] o presente.
+    commentBodyClass: countBy(items.filter(i => i?.type === 'comment').map(i => {
+      const b = typeof i.body === 'string' ? i.body.trim() : null
+      return b === null ? 'absent' : b === '' ? 'empty' : /^\[(deleted|removed)\]$/i.test(b) ? b.toLowerCase() : 'text'
+    })),
+    commentAuthorClass: countBy(items.filter(i => i?.type === 'comment').map(i => {
+      const a = typeof i.author === 'string' ? i.author.trim() : null
+      return a === null ? 'absent' : a === '' ? 'empty' : /^\[deleted\]$/i.test(a) ? '[deleted]' : a === 'AutoModerator' ? 'AutoModerator' : 'present'
+    })),
+    postTitle: countBy(items.filter(i => i?.type === 'post').map(i => (typeof i.title === 'string' && i.title.trim() ? 'present' : 'empty-or-absent'))),
     parentLikeKeys: allKeys.filter(k => /parent|depth|link_?id|post_?id/i.test(k)),
     authorLikeKeys: allKeys.filter(k => /author|user/i.test(k)),
     idFormats: countBy(items.map(i => idFormat(i?.id))),
