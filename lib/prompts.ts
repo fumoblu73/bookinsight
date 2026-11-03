@@ -586,9 +586,11 @@ export function promptPainPointsAmazonReviews(
   const perBook: Array<{ asin: string; bookTitle: string; entries: Array<{ label: string; text: string }> }> = []
 
   for (const br of topBookReviews) {
+    // Fino a 10 negative per libro (prima 5): le recensioni Amazon raccolte sono ora
+    // solo 1-3 stelle e le più recenti, per avere più testimonianze dei problemi.
     const negEntries = br.reviews
       .filter(r => r.rating <= 3)
-      .slice(0, 5)
+      .slice(0, 10)
       .map(r => ({ label: `[NEG ${r.rating}★]`, text: `"${r.title}" — ${r.body.slice(0, 500)}` }))
 
     const mixedEntries = br.reviews

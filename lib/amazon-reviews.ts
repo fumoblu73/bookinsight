@@ -26,6 +26,14 @@ export function parseReviewedIn(reviewedIn: string): string | undefined {
 
 const ACTOR = 'junglee~amazon-reviews-scraper'
 
+/** Recensioni per libro. Piano gratuito Apify: 10 per esecuzione (dal log dell'actor);
+ * con un piano a pagamento si alza con la variabile d'ambiente APIFY_AMAZON_MAX_REVIEWS
+ * (massimo 100, limite dell'actor per filtro di stelle). */
+export function amazonReviewsMax(): number {
+  const n = parseInt(process.env.APIFY_AMAZON_MAX_REVIEWS ?? '', 10)
+  return Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 10
+}
+
 export interface ApifyReviewsResult {
   reviews: AmazonReview[]
   status: string // stato dell'esecuzione Apify o descrizione dell'errore
@@ -50,12 +58,12 @@ type FetchLike = typeof fetch
 export async function fetchAmazonReviewsApifyPartial(
   asin: string,
   market: Market,
-  opts: { maxReviews?: number; actorTimeoutS?: number; fetchImpl?: FetchLike; filterByRatings?: string[] } = {},
+  opts: { maxReviews?: number; actorTimeoutS?: number; fetchImpl?: FetchLike; filterByRatings?: string[]; sort?: 'helpful' | 'recent' } = {},
 ): Promise<ApifyReviewsResult> {
   const token = process.env.APIFY_TOKEN
   if (!token) return { reviews: [], status: 'no_token' }
   const doFetch = opts.fetchImpl ?? fetch
-  const maxReviews = opts.maxReviews ?? 10
+  const maxReviews = opts.maxReviews ?? amazonReviewsMax()
   const actorTimeoutS = opts.actorTimeoutS ?? 40
   const auth = { Authorization: `Bearer ${token}` }
   const url = `https://www.${MARKET_DOMAIN[market]}/dp/${asin}`
@@ -66,13 +74,12 @@ export async function fetchAmazonReviewsApifyPartial(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth },
-        // Valori dall'OpenAPI dell'actor: "critical" = 1-3 stelle, "fourStar" = 4 stelle.
-        // Il prompt delle recensioni usa proprio le ≤3★ e le 4★; con allStars + helpful la prima
-        // analisi reale aveva 28 recensioni da 5★ su 41. L'ordine fra i filtri con un solo
-        // maxReviews condiviso non è documentato.
+        // Su richiesta: solo 1-3 stelle ("critical" nell'OpenAPI dell'actor), dalle più
+        // recenti (sort "recent"). Con allStars + helpful la prima analisi reale aveva 28
+        // recensioni da 5★ su 41.
         body: JSON.stringify({
-          productUrls: [{ url }], maxReviews, sort: 'helpful', includeGdprSensitive: false,
-          filterByRatings: opts.filterByRatings ?? ['critical', 'fourStar'],
+          productUrls: [{ url }], maxReviews, sort: opts.sort ?? 'recent', includeGdprSensitive: false,
+          filterByRatings: opts.filterByRatings ?? ['critical'],
         }),
         signal: AbortSignal.timeout((actorTimeoutS + 15) * 1000),
       },
@@ -120,7 +127,7 @@ export async function fetchAmazonReviewsApify(
   maxReviews = 10,
 ): Promise<AmazonReview[]> {
   // Valutazione del concorrente: tutte le stelle (debolezze e velocità recente).
-  return (await fetchAmazonReviewsApifyPartial(asin, market, { maxReviews, filterByRatings: ['allStars'] })).reviews
+  return (await fetchAmazonReviewsApifyPartial(asin, market, { maxReviews, filterByRatings: ['allStars'], sort: 'helpful' })).reviews
 }
 
 /** "17 people found this helpful" → 17; "One person found this helpful" → 1. */

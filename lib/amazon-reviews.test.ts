@@ -59,7 +59,8 @@ test('Apify: legge il dataset anche se l\'esecuzione va in TIMED-OUT', async () 
   assert.deepEqual(body.productUrls, [{ url: 'https://www.amazon.com/dp/1612431631' }])
   assert.equal(body.maxReviews, 10)
   assert.equal(body.includeGdprSensitive, false, 'nessun dato personale dei recensori')
-  assert.deepEqual(body.filterByRatings, ['critical', 'fourStar'], 'recensioni negative e miste per i pain point')
+  assert.deepEqual(body.filterByRatings, ['critical'], 'solo 1-3 stelle')
+  assert.equal(body.sort, 'recent', 'dalle più recenti')
   assert.ok(!calls[0].url.includes('run-sync'), 'non usa run-sync, che scarta i dati dei timeout')
   assert.ok(!calls[0].url.includes('token='), 'token nell\'header, non nell\'URL')
   assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer test-token')
@@ -109,4 +110,22 @@ test('fetchBookReviews: SerpApi per primo, Apify solo se SerpApi è vuoto', asyn
   assert.equal(none.source, undefined)
   assert.equal(none.reviews.length, 0)
   assert.equal(none.attempt.apifyStatus, 'TIMED-OUT')
+})
+
+test('amazonReviewsMax: 10 di default, configurabile, limitato a 1-100', async () => {
+  const { amazonReviewsMax } = await import('./amazon-reviews')
+  const saved = process.env.APIFY_AMAZON_MAX_REVIEWS
+  try {
+    delete process.env.APIFY_AMAZON_MAX_REVIEWS
+    assert.equal(amazonReviewsMax(), 10)
+    process.env.APIFY_AMAZON_MAX_REVIEWS = '30'
+    assert.equal(amazonReviewsMax(), 30)
+    process.env.APIFY_AMAZON_MAX_REVIEWS = '500'
+    assert.equal(amazonReviewsMax(), 100)
+    process.env.APIFY_AMAZON_MAX_REVIEWS = 'abc'
+    assert.equal(amazonReviewsMax(), 10)
+  } finally {
+    if (saved === undefined) delete process.env.APIFY_AMAZON_MAX_REVIEWS
+    else process.env.APIFY_AMAZON_MAX_REVIEWS = saved
+  }
 })
