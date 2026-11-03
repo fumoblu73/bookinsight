@@ -56,6 +56,9 @@ function keysOf(items) {
 
 async function probeReddit() {
   if (!env.APIFY_TOKEN || !env.PROBE_REDDIT_URL) return { skipped: 'APIFY_TOKEN o PROBE_REDDIT_URL mancante' }
+  if (!/^https:\/\/(www\.)?reddit\.com\/r\/[^/]+\/comments\/[a-z0-9]+\//i.test(env.PROBE_REDDIT_URL)) {
+    throw new Error('PROBE_REDDIT_URL non nel formato https://www.reddit.com/r/<sub>/comments/<id>/<titolo>/ (i link di condivisione /s/ non vanno bene)')
+  }
   // Stesso input usato da lib/reddit.ts. Token nell'header, non nell'URL.
   const items = await getJson(
     'https://api.apify.com/v2/acts/fatihtahta~reddit-scraper-search-fast/run-sync-get-dataset-items?timeout=45',
@@ -100,7 +103,10 @@ async function probeReddit() {
     commentCreatedFormat: countBy(comments.map(c => dateClass(c.created_utc))),
     shape: shapeTable(items),
   }
-  return { raw: items, sample: items, report }
+  const warning = items.length === 0
+    ? 'dataset vuoto: link non nel formato /r/<sub>/comments/<id>/, thread rimosso/privato/NSFW o actor non concluso entro 45 s'
+    : undefined
+  return { raw: items, sample: items, report, warning }
 }
 
 function authorClass(v) {
@@ -205,7 +211,10 @@ async function probeAmazon() {
     shapeReviewsInformation: shapeTable(ri),
   }
   // Nella fixture solo reviews_information: il resto del prodotto non serve a 9.0.2.
-  return { raw: data, sample: { reviews_information: ri }, report }
+  const warning = allReviews.length === 0
+    ? `nessuna lista di recensioni singole in reviews_information (chiavi presenti: ${Object.keys(ri).join(', ') || 'nessuna'})`
+    : undefined
+  return { raw: data, sample: { reviews_information: ri }, report, warning }
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -229,8 +238,8 @@ async function main() {
         writeFileSync(join(RAW_DIR, `${name}.raw.json`), JSON.stringify(res.raw, null, 2))
       }
       writeFileSync(join(OUT_DIR, `${name}.sample.json`), JSON.stringify(anon.anonymize(res.sample), null, 2) + '\n')
-      summary.sources[name] = { status: 'ok', ...res.report }
-      console.log(`[probe] ${name}: ok`)
+      summary.sources[name] = res.warning ? { status: 'empty', warning: res.warning, ...res.report } : { status: 'ok', ...res.report }
+      console.log(res.warning ? `[probe] ${name}: VUOTA (${res.warning})` : `[probe] ${name}: ok`)
     } catch (err) {
       summary.sources[name] = { status: 'failed', error: redact(err?.message ?? err) }
       console.log(`[probe] ${name}: FALLITA ${redact(err?.message ?? err)}`)
