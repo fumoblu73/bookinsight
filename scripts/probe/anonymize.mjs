@@ -39,7 +39,7 @@ const TEXT_KEYS = new Set([
 ])
 const KEEP_KEYS = new Set(['kind', 'subreddit', 'subreddit_name_prefixed', 'type', 'distinguished',
   'moderationstatus', 'canrate', 'viewerrating', 'country', 'rating', 'verified_purchase',
-  'reviewedin', 'post_hint', 'suggested_sort', 'whitelist_status', 'kind_label', 'amazon_domain', 'engine', 'status'])
+  'reviewedin', 'reviewreaction', 'productasin', 'post_hint', 'suggested_sort', 'whitelist_status', 'kind_label', 'amazon_domain', 'engine', 'status'])
 const DATE_KEY = /(date|time|created|published|updated|edited)/i
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}([T ][\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/
 const STRUCTURAL_PATH = new Set(['r', 'comments', 'dp', 'watch', 'channel', 'product-reviews', 'gp',

@@ -233,13 +233,16 @@ async function probeAmazonReviewsApify() {
   // lib/amazon-reviews.ts usa timeout=45 s. PROBE_APIFY_TIMEOUT (secondi, max 280) serve a
   // misurare se l'actor finisce con più tempo o se resta bloccato.
   const timeoutS = Math.min(280, Math.max(10, parseInt(env.PROBE_APIFY_TIMEOUT ?? '45', 10) || 45))
+  // Piano gratuito Apify: massimo 10 recensioni e 1 URL per esecuzione (dal log dell'actor).
+  const maxReviews = Math.min(100, Math.max(1, parseInt(env.PROBE_MAX_REVIEWS ?? '10', 10) || 10))
   const started = Date.now()
   const items = await getJson(
     `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?timeout=${timeoutS}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.APIFY_TOKEN}` },
-      body: JSON.stringify({ productUrls: [{ url: `https://www.${domain}/dp/${env.PROBE_ASIN}` }], maxReviews: 20 }),
+      // includeGdprSensitive false: niente nomi, ID o immagini dei recensori (privacy).
+      body: JSON.stringify({ productUrls: [{ url: `https://www.${domain}/dp/${env.PROBE_ASIN}` }], maxReviews, sort: 'helpful', includeGdprSensitive: false }),
     },
     (timeoutS + 20) * 1000,
   )
@@ -247,7 +250,13 @@ async function probeAmazonReviewsApify() {
   if (!Array.isArray(items)) throw new Error('risposta Apify non è un array')
   const has = k => items.filter(i => i && i[k] !== undefined && i[k] !== null && i[k] !== '').length
   const report = {
-    request: { asin: env.PROBE_ASIN, amazon_domain: domain, maxReviews: 20, timeoutS },
+    request: { asin: env.PROBE_ASIN, amazon_domain: domain, maxReviews, timeoutS, sort: 'helpful', includeGdprSensitive: false },
+    ratingDistribution: countBy(items.map(i => String(i?.ratingScore ?? 'absent'))),
+    reviewUrlHasReviewId: items.filter(i => /\/customer-reviews\/R[A-Z0-9]+/.test(String(i?.reviewUrl ?? ''))).length,
+    reviewReactionFormat: countBy(items.map(i => typeof i?.reviewReaction === 'string'
+      ? (/^\d[\d,]* people found this helpful$/.test(i.reviewReaction) ? '<N> people found this helpful'
+        : /^One person found this helpful$/.test(i.reviewReaction) ? 'One person found this helpful' : 'other-string')
+      : 'absent')),
     durationMs,
     itemCount: items.length,
     itemKeys: keysOf(items),
