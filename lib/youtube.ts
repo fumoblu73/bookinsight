@@ -54,18 +54,25 @@ async function searchVideos(keyword: string, market: Market): Promise<string[]> 
   return (data.items ?? []).map(i => i.id.videoId)
 }
 
-async function fetchVideoDetails(videoId: string): Promise<{ title: string; viewCount: number }> {
+async function fetchVideoDetails(videoId: string): Promise<{ title: string; viewCount: number; channelId?: string }> {
   const url = `${YT_API}/videos?part=snippet,statistics&id=${videoId}&key=${getApiKey()}`
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
   if (!res.ok) return { title: '', viewCount: 0 }
   const data = await res.json() as {
-    items?: { snippet: { title: string }; statistics: { viewCount: string } }[]
+    items?: { snippet: { title: string; channelId?: string }; statistics: { viewCount: string } }[]
   }
   const item = data.items?.[0]
   return {
     title: item?.snippet.title ?? '',
     viewCount: parseInt(item?.statistics.viewCount ?? '0', 10),
+    // Canale del video (confermato dalla sonda 9.0.2): non è l'autore dei commenti.
+    channelId: typeof item?.snippet.channelId === 'string' && item.snippet.channelId ? item.snippet.channelId : undefined,
   }
+}
+
+function authorChannelIdOf(raw: { value?: string } | undefined): { authorChannelId?: string } {
+  const value = raw?.value
+  return typeof value === 'string' && value.trim() ? { authorChannelId: value.trim() } : {}
 }
 
 async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
@@ -77,7 +84,10 @@ async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
       snippet: {
         topLevelComment: {
           id: string
-          snippet: { textOriginal: string; likeCount: number; publishedAt: string }
+          snippet: {
+            textOriginal: string; likeCount: number; publishedAt: string
+            authorChannelId?: { value?: string }
+          }
         }
       }
     }[]
@@ -88,6 +98,10 @@ async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
       text: i.snippet.topLevelComment.snippet.textOriginal,
       likeCount: i.snippet.topLevelComment.snippet.likeCount,
       publishedAt: i.snippet.topLevelComment.snippet.publishedAt,
+      // Autore: solo snippet.topLevelComment.snippet.authorChannelId.value. La sonda 9.0.2
+      // conferma che snippet.channelId è il canale del VIDEO, mai usarlo come autore;
+      // il display name non viene letto.
+      ...(authorChannelIdOf(i.snippet.topLevelComment.snippet.authorChannelId)),
     }))
     .filter(c => isRecentEnough(c.publishedAt) && isValidComment(c.text, c.likeCount))
     .sort((a, b) => b.likeCount - a.likeCount)
@@ -107,7 +121,10 @@ export async function fetchYouTubeData(keyword: string, market: Market = 'US'): 
     const videos: YouTubeVideo[] = await Promise.all(
       videoIds.map(async id => {
         const [details, comments] = await Promise.all([fetchVideoDetails(id), fetchComments(id)])
-        return { id, title: details.title, viewCount: details.viewCount, comments }
+        return {
+          id, title: details.title, viewCount: details.viewCount, comments,
+          ...(details.channelId ? { channelId: details.channelId } : {}),
+        }
       })
     )
 

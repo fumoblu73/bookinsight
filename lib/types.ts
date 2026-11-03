@@ -194,7 +194,8 @@ export interface YouTubeComment {
   text: string
   likeCount: number
   publishedAt: string  // ISO date
-  // 9.0.2 — opzionale: snippet.authorChannelId.value (forma da confermare con la sonda).
+  // 9.0.2 — opzionale: topLevelComment.snippet.authorChannelId.value (oggetto {value},
+  // ID UC… da 24 caratteri: confermato dalla sonda reale del 2026-11-03).
   // È l'unico identificativo d'autore ammesso: il display name non va mai usato.
   authorChannelId?: string
 }
@@ -204,7 +205,7 @@ export interface YouTubeVideo {
   title: string
   viewCount: number
   comments: YouTubeComment[]
-  channelId?: string  // 9.0.2 — opzionale: canale del video (videos.snippet.channelId), da confermare con la sonda
+  channelId?: string  // 9.0.2 — opzionale: canale del video (videos.snippet.channelId, confermato dalla sonda); non è un autore
 }
 
 export interface YouTubeData {

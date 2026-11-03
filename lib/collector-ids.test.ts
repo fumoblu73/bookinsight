@@ -64,3 +64,58 @@ test('ID del collector e ID sintetici sono distinti da idSource', async () => {
   assert.equal(a.author, undefined)
   assert.equal(real.parentId, undefined)
 })
+
+// 9.0.2: autore YouTube da authorChannelId.value e canale del video, secondo la
+// struttura confermata dalla sonda reale (2026-11-03). Fetch simulato.
+test('YouTube: authorChannelId dal commento, channelId dal video, mai dal thread o dal display name', async () => {
+  const saved = { fetch: globalThis.fetch, key: process.env.YOUTUBE_API_KEY }
+  process.env.YOUTUBE_API_KEY = 'test-key'
+  const recent = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const top = (id: string, text: string, author?: { value?: string }) => ({
+    snippet: {
+      channelId: 'UCvideoChannel0000000000', // canale del VIDEO, non dell'autore
+      topLevelComment: {
+        id,
+        snippet: {
+          channelId: 'UCvideoChannel0000000000', textOriginal: text, textDisplay: `<b>${text}</b>`,
+          authorDisplayName: '@DisplayName', likeCount: 5, publishedAt: recent,
+          ...(author ? { authorChannelId: author } : {}),
+        },
+      },
+    },
+  })
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input)
+    if (url.includes('/search?')) return new Response(JSON.stringify({ items: [{ id: { videoId: 'vid1' } }] }))
+    if (url.includes('/videos?')) {
+      return new Response(JSON.stringify({ items: [{ snippet: { title: 'T', channelId: 'UCvideoChannel0000000000' }, statistics: { viewCount: '10' } }] }))
+    }
+    if (url.includes('/commentThreads?')) {
+      return new Response(JSON.stringify({ items: [
+        top('Ugx1', 'comment with channel id', { value: 'UCauthor00000000000000a1' }),
+        top('Ugx2', 'comment without channel id'),
+        top('Ugx3', 'comment with empty channel id', { value: '  ' }),
+      ] }))
+    }
+    throw new Error(`fetch inatteso: ${url}`)
+  }) as typeof fetch
+  const log = console.log
+  console.log = () => {}
+  try {
+    const { fetchYouTubeData } = await import('./youtube')
+    const data = await fetchYouTubeData('k')
+    const [video] = data.videos
+    assert.equal(video.channelId, 'UCvideoChannel0000000000')
+    const byId = new Map(video.comments.map(c => [c.id, c]))
+    assert.equal(byId.get('Ugx1')!.authorChannelId, 'UCauthor00000000000000a1')
+    assert.equal(byId.get('Ugx2')!.authorChannelId, undefined, 'mai ripiegare su snippet.channelId')
+    assert.equal(byId.get('Ugx3')!.authorChannelId, undefined)
+    assert.equal(byId.get('Ugx1')!.text, 'comment with channel id', 'resta textOriginal, non textDisplay')
+    assert.ok(!JSON.stringify(data).includes('DisplayName'), 'display name mai letto')
+  } finally {
+    console.log = log
+    globalThis.fetch = saved.fetch
+    if (saved.key === undefined) delete process.env.YOUTUBE_API_KEY
+    else process.env.YOUTUBE_API_KEY = saved.key
+  }
+})
