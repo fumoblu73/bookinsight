@@ -20,6 +20,15 @@ function extractPostId(link: string): string | null {
 
 type ApifyItem = Record<string, unknown>
 
+/** "No cook ideas : r/EatCheapAndHealthy - Reddit" → "No cook ideas". */
+export function cleanGoogleRedditTitle(title: string): string {
+  return title
+    .replace(/\s*[-–|]\s*Reddit\s*$/i, '')
+    .replace(/\s*:\s*r\/[A-Za-z0-9_]+\s*$/i, '')
+    .replace(/\s*-\s*r\/[A-Za-z0-9_]+\s*$/i, '')
+    .trim()
+}
+
 // ─── Componente 1: Traduzione AI della keyword ────────────────────────────────
 
 async function translateKeywordForReddit(keyword: string): Promise<string[]> {
@@ -534,7 +543,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     const upVotesScore = (upVotes / maxUpVotes) * 50
     const finalScore = appearancesScore + positionScore + upVotesScore
 
-    return { rawPost: p, postId, postIdSource, upVotes, finalScore }
+    return { rawPost: p, postId, postIdSource, upVotes, finalScore, googleTitle: candidate?.title ?? '' }
   })
 
   enrichedPosts.sort((a, b) => b.finalScore - a.finalScore)
@@ -555,7 +564,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
       idSource: e.postId ? e.postIdSource : 'synthetic',
       // Autore del post (campo author, confermato dalla sonda). Non entra in report ed export.
       ...(typeof p.author === 'string' ? { author: p.author } : {}),
-      title: (p.title as string) ?? '',
+      // labrat011 (build 1.5.10) restituisce il titolo vuoto: si usa quello del risultato Google.
+      title: (typeof p.title === 'string' && p.title.trim()) ? p.title : cleanGoogleRedditTitle(e.googleTitle),
       selftext: (p.body as string) ?? '',
       score: e.upVotes,
       subreddit: (p.subreddit as string) ?? 'reddit',

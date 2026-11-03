@@ -237,7 +237,7 @@ test('Reddit: labrat011 per primo, fatihtahta solo come riserva', async () => {
 
 test('Reddit end-to-end: dati labrat011 → RedditData con autore del post e parentId', async () => {
   const items = [
-    { type: 'post', id: 'aaa111', title: 'A', selftext: 'post text here', author: 'op_a', score: 5, subreddit: 'camping', created: '2026-05-01T10:00:00Z', url: URL_A },
+    { type: 'post', id: 'aaa111', title: '', selftext: 'post text here', author: 'op_a', score: 5, subreddit: 'camping', created: '2026-05-01T10:00:00Z', url: URL_A },
     { type: 'comment', id: 'k1', postId: 'aaa111', body: 'top level comment text', author: 'u1', score: 3, subreddit: 'camping', created: '2026-05-02T10:00:00Z', depth: 0 },
     { type: 'comment', id: 'k2', postId: 'aaa111', body: 'nested reply text', author: 'u2', score: 1, subreddit: 'camping', created: '2026-05-03T10:00:00Z', depth: 1 },
   ]
@@ -248,7 +248,7 @@ test('Reddit end-to-end: dati labrat011 → RedditData con autore del post e par
   let fatihtahtaCalls = 0
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
-    if (url.startsWith('https://serpapi.com/')) return new Response(JSON.stringify({ organic_results: [{ link: URL_A, title: 'A' }] }))
+    if (url.startsWith('https://serpapi.com/')) return new Response(JSON.stringify({ organic_results: [{ link: URL_A, title: 'Camping meals : r/camping - Reddit' }] }))
     if (url.includes('/acts/labrat011~reddit-scraper/runs')) {
       assert.deepEqual(JSON.parse(String(init?.body)).postUrls, [URL_A])
       return new Response(JSON.stringify({ data: { id: 'r1', status: 'SUCCEEDED', defaultDatasetId: 'ds1' } }))
@@ -264,6 +264,7 @@ test('Reddit end-to-end: dati labrat011 → RedditData con autore del post e par
     assert.equal(fatihtahtaCalls, 0, 'riserva non usata se labrat011 restituisce dati')
     const post = data.posts.find(p => p.id === 'aaa111')!
     assert.equal(post.author, 'op_a')
+    assert.equal(post.title, 'Camping meals', 'titolo vuoto di labrat sostituito da quello di Google')
     assert.equal(post.selftext, 'post text here')
     assert.deepEqual(post.comments.map(c => [c.id, c.parentId]), [['k1', 't3_aaa111'], ['k2', undefined]])
     assert.equal(post.comments[0].month, '2026-05')
@@ -273,4 +274,11 @@ test('Reddit end-to-end: dati labrat011 → RedditData con autore del post e par
     globalThis.fetch = saved.fetch
     process.env = saved.env
   }
+})
+
+test('Reddit: titolo dal risultato Google quando labrat011 lo restituisce vuoto', async () => {
+  const { cleanGoogleRedditTitle } = await import('./reddit')
+  assert.equal(cleanGoogleRedditTitle('No cook ideas : r/EatCheapAndHealthy - Reddit'), 'No cook ideas')
+  assert.equal(cleanGoogleRedditTitle('Dehydrated meals advice - r/backpacking'), 'Dehydrated meals advice')
+  assert.equal(cleanGoogleRedditTitle('Plain title'), 'Plain title')
 })
