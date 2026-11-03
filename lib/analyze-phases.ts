@@ -103,24 +103,32 @@ export async function runPainPointsPhase(
   })
 
   // ── Log: Recensioni Amazon ────────────────────────────────────────────────
+  // topBookReviews contiene solo i libri CON recensioni: i tentativi veri sono in
+  // reviewAttempts (assente nei dati precedenti, dove si ricade sul vecchio conteggio).
   const reviewsList = amazon.topBookReviews ?? []
+  const attempts = amazon.reviewAttempts
   const totalReviews = reviewsList.reduce((acc, br) => acc + br.reviews.length, 0)
-  const emptyASINs = reviewsList.filter(br => br.reviews.length === 0).map(br => br.asin)
+  const booksAttempted = attempts?.length ?? reviewsList.length
+  const emptyASINs = attempts
+    ? attempts.filter(a => a.serpapiCount === 0 && !a.apifyCount).map(a => a.asin)
+    : reviewsList.filter(br => br.reviews.length === 0).map(br => br.asin)
   logEntries.push({
     step: 'reviews', label: 'Recensioni Amazon',
     status: totalReviews === 0 ? 'warn' : 'ok',
     summary: totalReviews === 0
-      ? `Nessuna recensione raccolta (${reviewsList.length} ASIN tentati)`
-      : `${totalReviews} recensioni · ${reviewsList.length} libri`,
+      ? `Nessuna recensione raccolta (${booksAttempted} ASIN tentati)`
+      : `${totalReviews} recensioni · ${reviewsList.length}/${booksAttempted} libri`,
     details: {
-      booksAttempted: reviewsList.length,
+      booksAttempted,
       totalReviews,
       emptyASINs,
       perBook: reviewsList.map(br => ({
         asin: br.asin,
         title: br.bookTitle.slice(0, 60),
         reviewCount: br.reviews.length,
+        source: br.source ?? null,
       })),
+      attempts: attempts ?? null,
     },
   })
 

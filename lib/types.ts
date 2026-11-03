@@ -46,6 +46,17 @@ export interface BookReviews {
   asin: string
   bookTitle: string
   reviews: AmazonReview[]
+  source?: AmazonReviewSource // opzionale: assente nei report precedenti
+}
+
+export type AmazonReviewSource = 'serpapi' | 'apify'
+
+/** Diagnostica per libro, prima del filtro sui libri senza recensioni. */
+export interface AmazonReviewAttempt {
+  asin: string
+  serpapiCount: number
+  apifyCount: number | null   // null = Apify non tentato (SerpApi sufficiente o token assente)
+  apifyStatus?: string        // stato dell'esecuzione Apify (SUCCEEDED, TIMED-OUT, …) o errore
 }
 
 export interface RoiPerformanceTarget {
@@ -96,7 +107,8 @@ export interface AmazonData {
   subNiches: SubNiche[]
   competitorTarget: FilteredBook
   scrapedAt: string
-  topBookReviews?: BookReviews[] // recensioni testuali top 2 competitor
+  topBookReviews?: BookReviews[] // recensioni testuali dei competitor (solo libri con recensioni)
+  reviewAttempts?: AmazonReviewAttempt[] // tutti i libri tentati, anche senza recensioni
   ads_intelligence: AdsIntelligence
 }
 

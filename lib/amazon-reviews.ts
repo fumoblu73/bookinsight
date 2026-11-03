@@ -11,11 +11,12 @@ const MARKET_DOMAIN: Record<Market, string> = {
 
 // Handles "Reviewed in Italy on November 19, 2023" — English markets parse reliably.
 // Non-English date strings (il, am, le…) may return undefined; callers handle null gracefully.
-function parseReviewedIn(reviewedIn: string): string | undefined {
+export function parseReviewedIn(reviewedIn: string): string | undefined {
   const m = reviewedIn.match(/\b(?:on|il|am|le|el)\s+(.+)$/i)
   if (!m) return undefined
   try {
-    const d = new Date(m[1])
+    // Interpretata in UTC: con l'ora locale la data poteva slittare di un giorno.
+    const d = new Date(`${m[1]} UTC`)
     if (isNaN(d.getTime())) return undefined
     return d.toISOString().slice(0, 10)
   } catch {
@@ -23,46 +24,104 @@ function parseReviewedIn(reviewedIn: string): string | undefined {
   }
 }
 
-export async function fetchAmazonReviewsApify(
+const ACTOR = 'junglee~amazon-reviews-scraper'
+
+export interface ApifyReviewsResult {
+  reviews: AmazonReview[]
+  status: string // stato dell'esecuzione Apify o descrizione dell'errore
+}
+
+type FetchLike = typeof fetch
+
+/**
+ * Recensioni Amazon via Apify (junglee~amazon-reviews-scraper).
+ *
+ * Da ottobre 2026 amazon.com mostra le recensioni solo a utenti con login: SerpApi
+ * (segnalazione pubblica serpapi/public-roadmap#4505) non le restituisce più. L'actor
+ * le raggiunge con i propri mezzi, senza account dell'utente.
+ *
+ * Log reali (2026-11-03): l'actor salva le prime 10 recensioni dopo la prima pagina
+ * e poi continua a paginare, rallentato dai 429 di Amazon, fino al timeout, anche
+ * con maxReviews 10. run-sync-get-dataset-items scarterebbe i dati di un TIMED-OUT:
+ * qui l'esecuzione parte con timeout breve, si attende la fine e si legge comunque
+ * il dataset. Piano gratuito Apify: 1 URL e 10 recensioni per esecuzione.
+ * includeGdprSensitive false: nessun nome, ID o immagine dei recensori.
+ */
+export async function fetchAmazonReviewsApifyPartial(
   asin: string,
   market: Market,
-  maxReviews = 20,
-): Promise<AmazonReview[]> {
+  opts: { maxReviews?: number; actorTimeoutS?: number; fetchImpl?: FetchLike } = {},
+): Promise<ApifyReviewsResult> {
   const token = process.env.APIFY_TOKEN
-  if (!token) return []
-
-  const domain = MARKET_DOMAIN[market]
-  const url = `https://www.${domain}/dp/${asin}`
+  if (!token) return { reviews: [], status: 'no_token' }
+  const doFetch = opts.fetchImpl ?? fetch
+  const maxReviews = opts.maxReviews ?? 10
+  const actorTimeoutS = opts.actorTimeoutS ?? 40
+  const auth = { Authorization: `Bearer ${token}` }
+  const url = `https://www.${MARKET_DOMAIN[market]}/dp/${asin}`
 
   try {
-    const res = await fetch(
-      `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?token=${token}&timeout=45`,
+    const runRes = await doFetch(
+      `https://api.apify.com/v2/acts/${ACTOR}/runs?timeout=${actorTimeoutS}&memory=1024&waitForFinish=${Math.min(60, actorTimeoutS + 5)}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productUrls: [{ url }], maxReviews }),
-        signal: AbortSignal.timeout(50000),
+        headers: { 'Content-Type': 'application/json', ...auth },
+        body: JSON.stringify({ productUrls: [{ url }], maxReviews, sort: 'helpful', includeGdprSensitive: false }),
+        signal: AbortSignal.timeout((actorTimeoutS + 15) * 1000),
       },
     )
+    if (!runRes.ok) {
+      console.log(`[amazon-reviews] ${asin}/${market} avvio Apify status:${runRes.status}`)
+      return { reviews: [], status: `http_${runRes.status}` }
+    }
+    const run = await runRes.json() as { data?: { id?: string; status?: string; defaultDatasetId?: string } }
+    const status = run.data?.status ?? 'unknown'
+    const datasetId = run.data?.defaultDatasetId
+    // Se l'attesa scade prima della fine, si interrompe l'esecuzione per non pagare oltre.
+    if (run.data?.id && (status === 'RUNNING' || status === 'READY')) {
+      doFetch(`https://api.apify.com/v2/actor-runs/${run.data.id}/abort`, { method: 'POST', headers: auth, signal: AbortSignal.timeout(5000) })
+        .catch(() => {})
+    }
+    if (!datasetId) return { reviews: [], status }
 
-    console.log(`[amazon-reviews] ${asin}/${market} status:${res.status}`)
-    if (!res.ok) return []
-
-    const items = await res.json() as Record<string, unknown>[]
-    console.log(`[amazon-reviews] ${asin}/${market} items:${items.length}`)
-
-    return items
+    const itemsRes = await doFetch(
+      `https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true&format=json&limit=${maxReviews}`,
+      { headers: auth, signal: AbortSignal.timeout(10_000) },
+    )
+    if (!itemsRes.ok) return { reviews: [], status: `${status}/dataset_http_${itemsRes.status}` }
+    const items = await itemsRes.json() as Record<string, unknown>[]
+    const reviews = (Array.isArray(items) ? items : [])
       .map(item => ({
         rating: Number(item.ratingScore ?? 0),
-        title: String(item.reviewTitle ?? ''),
-        body: String(item.reviewDescription ?? ''),
+        title: String(item.reviewTitle ?? '').slice(0, 100),
+        body: String(item.reviewDescription ?? '').slice(0, 500),
         date: item.reviewedIn ? parseReviewedIn(String(item.reviewedIn)) : undefined,
       }))
       .filter(r => r.body.length > 20)
+    console.log(`[amazon-reviews] ${asin}/${market} apify status:${status} items:${reviews.length}`)
+    return { reviews, status }
   } catch (err) {
     console.log(`[amazon-reviews] FAILED ${asin}/${market} error:${err}`)
-    return []
+    return { reviews: [], status: 'error' }
   }
+}
+
+/** Compatibilità con /api/target/viability: stessa fonte, stessa firma di prima. */
+export async function fetchAmazonReviewsApify(
+  asin: string,
+  market: Market,
+  maxReviews = 10,
+): Promise<AmazonReview[]> {
+  return (await fetchAmazonReviewsApifyPartial(asin, market, { maxReviews })).reviews
+}
+
+/** "17 people found this helpful" → 17; "One person found this helpful" → 1. */
+export function parseHelpfulVotes(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value !== 'string') return 0
+  if (/^\s*one person/i.test(value)) return 1
+  const m = value.replace(/[.,](?=\d{3}\b)/g, '').match(/\d+/)
+  return m ? parseInt(m[0], 10) : 0
 }
 
 // Returns reviews per month in the last `windowDays` days, or null if no dated reviews found.

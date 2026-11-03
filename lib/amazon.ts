@@ -1,4 +1,5 @@
-import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, BookReviews, AdsIntelligence } from './types'
+import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, BookReviews, AdsIntelligence, AmazonReviewAttempt, AmazonReviewSource } from './types'
+import { fetchAmazonReviewsApifyPartial, parseHelpfulVotes } from './amazon-reviews'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -351,7 +352,12 @@ function defaultProductDetails(): ProductDetails {
 
 const NON_ENGLISH_MARKETS_REVIEWS = new Set<Market>(['IT', 'DE', 'FR', 'ES'])
 
-async function fetchBookReviews(asin: string, market: Market): Promise<AmazonReview[]> {
+type SerpReview = { rating?: number; title?: string; text?: string; helpful_votes?: string | number; helpful_count?: number }
+
+/** Recensioni da SerpApi amazon_product. Da ottobre 2026 su amazon.com arrivano solo il
+ * riassunto e l'istogramma (serpapi/public-roadmap#4505): la lista è vuota; sugli altri
+ * marketplace le recensioni sono ancora presenti. */
+async function fetchBookReviewsSerpApi(asin: string, market: Market): Promise<AmazonReview[]> {
   const domain = MARKET_AMAZON_DOMAIN[market]
   try {
     const data = await serpApiFetch({
@@ -360,8 +366,8 @@ async function fetchBookReviews(asin: string, market: Market): Promise<AmazonRev
       amazon_domain: domain,
     }) as {
       reviews_information?: {
-        authors_reviews?: Array<{ rating?: number; title?: string; text?: string; helpful_count?: number }>
-        other_countries_reviews?: Array<{ rating?: number; title?: string; text?: string; helpful_count?: number }>
+        authors_reviews?: SerpReview[]
+        other_countries_reviews?: SerpReview[]
       }
     }
     const ri = data.reviews_information ?? {}
@@ -373,9 +379,12 @@ async function fetchBookReviews(asin: string, market: Market): Promise<AmazonRev
       ? local
       : [...local, ...foreign]
 
+    // SerpApi documenta helpful_votes come testo ("17 people found this helpful");
+    // helpful_count resta come fallback per risposte precedenti.
+    const helpful = (r: SerpReview) => Math.max(parseHelpfulVotes(r.helpful_votes), r.helpful_count ?? 0)
     return raw
       .filter(r => (r.text ?? '').length >= 50)
-      .sort((a, b) => (b.helpful_count ?? 0) - (a.helpful_count ?? 0))
+      .sort((a, b) => helpful(b) - helpful(a))
       .slice(0, 10)
       .map(r => ({
         rating: Number(r.rating ?? 0),
@@ -385,6 +394,26 @@ async function fetchBookReviews(asin: string, market: Market): Promise<AmazonRev
   } catch (err) {
     console.error(`[amazon] fetchBookReviews failed for ${asin}:`, err)
     return []
+  }
+}
+
+/** SerpApi per primo (gratuito entro il piano, funziona fuori da amazon.com); se non
+ * restituisce recensioni, Apify junglee sullo stesso marketplace (necessario per
+ * amazon.com). Nessun account Amazon dell'utente. */
+export async function fetchBookReviews(
+  asin: string,
+  market: Market,
+  deps: { serp?: typeof fetchBookReviewsSerpApi; apify?: typeof fetchAmazonReviewsApifyPartial } = {},
+): Promise<{ reviews: AmazonReview[]; source?: AmazonReviewSource; attempt: AmazonReviewAttempt }> {
+  const serp = await (deps.serp ?? fetchBookReviewsSerpApi)(asin, market)
+  if (serp.length > 0) {
+    return { reviews: serp, source: 'serpapi', attempt: { asin, serpapiCount: serp.length, apifyCount: null } }
+  }
+  const apify = await (deps.apify ?? fetchAmazonReviewsApifyPartial)(asin, market)
+  return {
+    reviews: apify.reviews,
+    source: apify.reviews.length > 0 ? 'apify' : undefined,
+    attempt: { asin, serpapiCount: 0, apifyCount: apify.status === 'no_token' ? null : apify.reviews.length, apifyStatus: apify.status },
   }
 }
 
@@ -756,15 +785,19 @@ export async function fetchAmazonData(keyword: string, market: Market, targetAsi
   for (const b of topBooks) reviewCandidatesMap.set(b.asin, b)
   const reviewCandidates = [...reviewCandidatesMap.values()]
 
-  const topBookReviews: BookReviews[] = (
-    await Promise.all(
-      reviewCandidates.map(async b => ({
-        asin: b.asin,
-        bookTitle: b.title,
-        reviews: await fetchBookReviews(b.asin, market),
-      }))
-    )
-  ).filter(br => br.reviews.length > 0)
+  const reviewResults = await Promise.all(
+    reviewCandidates.map(async b => ({ book: b, result: await fetchBookReviews(b.asin, market) }))
+  )
+  // Diagnostica su tutti i libri tentati: il filtro successivo toglie quelli vuoti.
+  const reviewAttempts: AmazonReviewAttempt[] = reviewResults.map(r => r.result.attempt)
+  const topBookReviews: BookReviews[] = reviewResults
+    .filter(r => r.result.reviews.length > 0)
+    .map(r => ({
+      asin: r.book.asin,
+      bookTitle: r.book.title,
+      reviews: r.result.reviews,
+      ...(r.result.source ? { source: r.result.source } : {}),
+    }))
 
   return {
     market,
@@ -775,6 +808,7 @@ export async function fetchAmazonData(keyword: string, market: Market, targetAsi
     competitorTarget,
     scrapedAt: new Date().toISOString(),
     topBookReviews: topBookReviews.length > 0 ? topBookReviews : undefined,
+    reviewAttempts,
     ads_intelligence,
   }
 }
