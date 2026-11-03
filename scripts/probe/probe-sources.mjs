@@ -230,27 +230,36 @@ async function probeAmazon() {
 async function probeAmazonReviewsApify() {
   if (!env.APIFY_TOKEN || !env.PROBE_ASIN) return { skipped: 'APIFY_TOKEN o PROBE_ASIN mancante' }
   const domain = env.PROBE_AMAZON_DOMAIN || 'amazon.com'
-  // lib/amazon-reviews.ts usa timeout=45 s. PROBE_APIFY_TIMEOUT (secondi, max 280) serve a
-  // misurare se l'actor finisce con più tempo o se resta bloccato.
-  const timeoutS = Math.min(280, Math.max(10, parseInt(env.PROBE_APIFY_TIMEOUT ?? '45', 10) || 45))
+  // Il log reale mostra che l'actor salva le 10 recensioni della prima pagina e poi
+  // continua a paginare fino al timeout, frenato dai 429 di Amazon: con
+  // run-sync-get-dataset-items un TIMED-OUT scarta anche i dati già salvati.
+  // Qui si avvia l'esecuzione con un timeout breve, si attende la fine (anche
+  // TIMED-OUT) e si leggono comunque gli elementi salvati nel dataset.
+  const timeoutS = Math.min(55, Math.max(10, parseInt(env.PROBE_APIFY_TIMEOUT ?? '40', 10) || 40))
   // Piano gratuito Apify: massimo 10 recensioni e 1 URL per esecuzione (dal log dell'actor).
   const maxReviews = Math.min(100, Math.max(1, parseInt(env.PROBE_MAX_REVIEWS ?? '10', 10) || 10))
+  const auth = { Authorization: `Bearer ${env.APIFY_TOKEN}` }
   const started = Date.now()
-  const items = await getJson(
-    `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?timeout=${timeoutS}`,
+  const run = await getJson(
+    `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/runs?timeout=${timeoutS}&waitForFinish=60`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.APIFY_TOKEN}` },
+      headers: { 'Content-Type': 'application/json', ...auth },
       // includeGdprSensitive false: niente nomi, ID o immagini dei recensori (privacy).
       body: JSON.stringify({ productUrls: [{ url: `https://www.${domain}/dp/${env.PROBE_ASIN}` }], maxReviews, sort: 'helpful', includeGdprSensitive: false }),
     },
-    (timeoutS + 20) * 1000,
+    80_000,
   )
+  const runStatus = run?.data?.status ?? 'unknown'
+  const datasetId = run?.data?.defaultDatasetId
+  if (!datasetId) throw new Error(`esecuzione senza dataset (status ${runStatus})`)
+  const items = await getJson(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true&format=json`, { headers: auth }, 30_000)
   const durationMs = Date.now() - started
   if (!Array.isArray(items)) throw new Error('risposta Apify non è un array')
   const has = k => items.filter(i => i && i[k] !== undefined && i[k] !== null && i[k] !== '').length
   const report = {
     request: { asin: env.PROBE_ASIN, amazon_domain: domain, maxReviews, timeoutS, sort: 'helpful', includeGdprSensitive: false },
+    runStatus,
     ratingDistribution: countBy(items.map(i => String(i?.ratingScore ?? 'absent'))),
     reviewUrlHasReviewId: items.filter(i => /\/customer-reviews\/R[A-Z0-9]+/.test(String(i?.reviewUrl ?? ''))).length,
     reviewReactionFormat: countBy(items.map(i => typeof i?.reviewReaction === 'string'
