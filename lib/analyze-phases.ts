@@ -21,6 +21,7 @@ import {
 } from './ai'
 import { cacheGet } from './upstash'
 import { prepareRedditCorpus } from './reddit-corpus'
+import { stripYouTubeIdentifiers } from './youtube'
 
 // ─── Tipi intermedi ───────────────────────────────────────────────────────────
 
@@ -341,7 +342,7 @@ export async function runPainPointsPhase(
     amazon,
     trends,
     reddit: { ...reddit, insufficientCorpus: redditQuality.coverage !== 'diversified', corpusQuality: redditQuality },
-    youtube,
+    youtube: stripYouTubeIdentifiers(youtube), // snapshot Redis: niente ID canale (D6)
     painPoints: mergedPainPoints,
     subNiches: unifiedSubNiches,
     complianceRisk,

@@ -70,6 +70,25 @@ async function fetchVideoDetails(videoId: string): Promise<{ title: string; view
   }
 }
 
+/** D6 (9.0.2): gli identificativi dei canali servono solo durante la fase pain-points
+ * (pseudonimizzati nell'indice evidenze) e non vanno conservati negli snapshot:
+ * la retention YouTube resta quella precedente alla 9.0.2. Non muta l'input. */
+export function stripYouTubeIdentifiers(youtube: YouTubeData | undefined): YouTubeData | undefined {
+  if (!youtube) return youtube
+  return {
+    ...youtube,
+    videos: youtube.videos.map(v => {
+      const video: YouTubeVideo = { ...v, comments: v.comments.map(c => {
+        const comment: YouTubeComment = { ...c }
+        delete comment.authorChannelId
+        return comment
+      }) }
+      delete video.channelId
+      return video
+    }),
+  }
+}
+
 function authorChannelIdOf(raw: { value?: string } | undefined): { authorChannelId?: string } {
   const value = raw?.value
   return typeof value === 'string' && value.trim() ? { authorChannelId: value.trim() } : {}
