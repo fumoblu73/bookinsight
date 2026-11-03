@@ -30,14 +30,16 @@ const ID_KEYS = new Set([
   'id', 'parentid', 'parent_id', 'postid', 'post_id', 'link_id', 'commentid', 'comment_id',
   'authorchannelid', 'channelid', 'videoid', 'review_id', 'reviewid', 'author_fullname',
   'fullname', 'name', 'etag', 'nextpagetoken', 'value', 'asin', 'parentasin',
+  'userid', 'user_id', 'reviewerid', 'profileid',
 ])
 const TEXT_KEYS = new Set([
   'body', 'selftext', 'text', 'textoriginal', 'textdisplay', 'title', 'content', 'review',
   'description', 'body_html', 'selftext_html', 'html', 'snippet', 'comment', 'summary',
+  'reviewtitle', 'reviewdescription', 'reviewtext', 'reviewtextshort',
 ])
 const KEEP_KEYS = new Set(['kind', 'subreddit', 'subreddit_name_prefixed', 'type', 'distinguished',
   'moderationstatus', 'canrate', 'viewerrating', 'country', 'rating', 'verified_purchase',
-  'post_hint', 'suggested_sort', 'whitelist_status', 'kind_label', 'amazon_domain', 'engine', 'status'])
+  'reviewedin', 'post_hint', 'suggested_sort', 'whitelist_status', 'kind_label', 'amazon_domain', 'engine', 'status'])
 const DATE_KEY = /(date|time|created|published|updated|edited)/i
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}([T ][\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/
 const STRUCTURAL_PATH = new Set(['r', 'comments', 'dp', 'watch', 'channel', 'product-reviews', 'gp',

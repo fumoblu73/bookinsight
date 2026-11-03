@@ -223,6 +223,49 @@ async function probeAmazon() {
   return { raw: data, sample: { reviews_information: ri }, report, warning }
 }
 
+// ─── Recensioni Amazon via Apify (junglee~amazon-reviews-scraper) ───────────
+// Stesso actor e input di lib/amazon-reviews.ts. Serve a capire se può sostituire
+// SerpApi, che oggi restituisce solo il riassunto delle recensioni.
+
+async function probeAmazonReviewsApify() {
+  if (!env.APIFY_TOKEN || !env.PROBE_ASIN) return { skipped: 'APIFY_TOKEN o PROBE_ASIN mancante' }
+  const domain = env.PROBE_AMAZON_DOMAIN || 'amazon.com'
+  const started = Date.now()
+  const items = await getJson(
+    'https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?timeout=45',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.APIFY_TOKEN}` },
+      body: JSON.stringify({ productUrls: [{ url: `https://www.${domain}/dp/${env.PROBE_ASIN}` }], maxReviews: 20 }),
+    },
+    90_000,
+  )
+  const durationMs = Date.now() - started
+  if (!Array.isArray(items)) throw new Error('risposta Apify non è un array')
+  const has = k => items.filter(i => i && i[k] !== undefined && i[k] !== null && i[k] !== '').length
+  const report = {
+    request: { asin: env.PROBE_ASIN, amazon_domain: domain, maxReviews: 20 },
+    durationMs,
+    itemCount: items.length,
+    itemKeys: keysOf(items),
+    // Campi letti oggi da lib/amazon-reviews.ts
+    fieldsUsedByApp: {
+      ratingScore: has('ratingScore'), reviewTitle: has('reviewTitle'),
+      reviewDescription: has('reviewDescription'), reviewedIn: has('reviewedIn'),
+    },
+    bodyLongerThan20: items.filter(i => String(i?.reviewDescription ?? '').length > 20).length,
+    idLikeKeys: [...new Set(items.flatMap(i => Object.keys(i ?? {})).filter(k => /(^id$|reviewid|review_id|reviewurl)/i.test(k)))],
+    authorLikeKeys: [...new Set(items.flatMap(i => Object.keys(i ?? {})).filter(k => /author|user|profile|reviewer/i.test(k)))],
+    helpfulLikeKeys: [...new Set(items.flatMap(i => Object.keys(i ?? {})).filter(k => /helpful|vote/i.test(k)))],
+    reviewedInFormat: countBy(items.map(i => typeof i?.reviewedIn === 'string'
+      ? (/\bon\s+\w+ \d{1,2}, \d{4}$/.test(i.reviewedIn) ? 'Reviewed in <country> on <Month D, YYYY>' : 'other-string')
+      : 'absent')),
+    shape: shapeTable(items),
+  }
+  const warning = items.length === 0 ? 'dataset vuoto: nessuna recensione restituita dall\'actor' : undefined
+  return { raw: items, sample: items, report, warning }
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -231,7 +274,11 @@ async function main() {
   mkdirSync(OUT_DIR, { recursive: true })
   const summary = { probeVersion: '9.0.2-probe-1', generatedAt: new Date().toISOString(), sources: {} }
 
-  for (const [name, fn] of [['apify-reddit', probeReddit], ['youtube', probeYouTube], ['serpapi-amazon_product', probeAmazon]]) {
+  const sources = [['apify-reddit', probeReddit], ['youtube', probeYouTube], ['serpapi-amazon_product', probeAmazon],
+    ['apify-amazon-reviews', probeAmazonReviewsApify]]
+  // PROBE_ONLY=apify-amazon-reviews,youtube limita le fonti (evita costi inutili).
+  const only = (env.PROBE_ONLY ?? '').split(',').map(x => x.trim()).filter(Boolean)
+  for (const [name, fn] of sources.filter(([n]) => only.length === 0 || only.includes(n))) {
     try {
       const res = await fn()
       if (res.skipped) {
