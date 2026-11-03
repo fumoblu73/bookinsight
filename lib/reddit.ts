@@ -252,7 +252,11 @@ async function fetchSinglePostViaApify(
 // L'output non ha parentId ma solo depth: per depth 0 il genitore è il post (t3_),
 // per le risposte annidate il genitore resta sconosciuto (nessuna ricostruzione
 // dall'ordine, che non è documentato).
-const LABRAT_MAX_RESULTS = 1 + MAX_COMMENTS_PER_POST
+// Stessa configurazione della sonda riuscita (25/25 → post + 24 commenti). Nella prima
+// analisi reale con maxResults 31 (oltre il limite gratuito di 25) sono arrivati in media
+// 5-6 commenti per thread: causa non verificata, si torna ai valori provati.
+const LABRAT_MAX_RESULTS = 25
+const LABRAT_MAX_COMMENTS = LABRAT_MAX_RESULTS - 1
 
 /** Converte gli elementi di labrat011 nel formato già letto da fetchRedditData. */
 export function adaptLabratItems(items: ApifyItem[]): ApifyItem[] {
@@ -294,7 +298,7 @@ async function fetchSinglePostViaLabrat(
         headers: { 'Content-Type': 'application/json', ...auth },
         body: JSON.stringify({
           mode: 'post_comments', postUrls: [url],
-          maxCommentsPerPost: MAX_COMMENTS_PER_POST, maxResults: LABRAT_MAX_RESULTS,
+          maxCommentsPerPost: LABRAT_MAX_COMMENTS, maxResults: LABRAT_MAX_RESULTS,
           proxyConfiguration: { useApifyProxy: true }, // senza gruppo = RESIDENTIAL secondo l'actor
         }),
         signal: AbortSignal.timeout(50_000),
