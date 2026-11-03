@@ -326,6 +326,50 @@ async function probeRedditCrawlerbros() {
   return { raw: items, sample: items, report, warning }
 }
 
+// ─── Reddit via labrat011~reddit-scraper (modalità post_comments) ───────────
+// Dalla pagina dell'actor (v1.4.0, metà ottobre 2026): legge le pagine renderizzate
+// da Reddit invece dei .json bloccati, proxy residenziali inclusi nel prezzo, e
+// segna Failed (non Succeeded vuoto) quando Reddit blocca tutto. Piano gratuito:
+// 25 risultati per esecuzione.
+
+async function probeRedditLabrat() {
+  if (!env.APIFY_TOKEN || !env.PROBE_REDDIT_URL) return { skipped: 'APIFY_TOKEN o PROBE_REDDIT_URL mancante' }
+  const auth = { Authorization: `Bearer ${env.APIFY_TOKEN}` }
+  const started = Date.now()
+  const run = await getJson(
+    'https://api.apify.com/v2/acts/labrat011~reddit-scraper/runs?timeout=55&waitForFinish=60',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({
+        mode: 'post_comments', postUrls: [env.PROBE_REDDIT_URL], maxCommentsPerPost: 25, maxResults: 25,
+        proxyConfiguration: { useApifyProxy: true },
+      }),
+    },
+    80_000,
+  )
+  const runStatus = run?.data?.status ?? 'unknown'
+  const datasetId = run?.data?.defaultDatasetId
+  if (!datasetId) throw new Error(`esecuzione senza dataset (status ${runStatus})`)
+  const items = await getJson(`https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true&format=json`, { headers: auth }, 30_000)
+  if (!Array.isArray(items)) throw new Error('dataset non è un array')
+  const allKeys = [...new Set(items.flatMap(i => Object.keys(i ?? {})))]
+  const report = {
+    request: { mode: 'post_comments', maxCommentsPerPost: 25 },
+    runStatus,
+    durationMs: Date.now() - started,
+    itemCount: items.length,
+    itemKeys: keysOf(items),
+    typeLikeValues: countBy(items.map(i => String(i?.type ?? i?.kind ?? i?.dataType ?? 'absent'))),
+    parentLikeKeys: allKeys.filter(k => /parent|depth|link_?id|post_?id/i.test(k)),
+    authorLikeKeys: allKeys.filter(k => /author|user/i.test(k)),
+    idFormats: countBy(items.map(i => idFormat(i?.id))),
+    shape: shapeTable(items),
+  }
+  const warning = items.length === 0 ? `dataset vuoto (status ${runStatus})` : undefined
+  return { raw: items, sample: items, report, warning }
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -335,7 +379,8 @@ async function main() {
   const summary = { probeVersion: '9.0.2-probe-1', generatedAt: new Date().toISOString(), sources: {} }
 
   const sources = [['apify-reddit', probeReddit], ['youtube', probeYouTube], ['serpapi-amazon_product', probeAmazon],
-    ['apify-amazon-reviews', probeAmazonReviewsApify], ['apify-reddit-crawlerbros', probeRedditCrawlerbros]]
+    ['apify-amazon-reviews', probeAmazonReviewsApify], ['apify-reddit-crawlerbros', probeRedditCrawlerbros],
+    ['apify-reddit-labrat', probeRedditLabrat]]
   // PROBE_ONLY=apify-amazon-reviews,youtube limita le fonti (evita costi inutili).
   const only = (env.PROBE_ONLY ?? '').split(',').map(x => x.trim()).filter(Boolean)
   for (const [name, fn] of sources.filter(([n]) => only.length === 0 || only.includes(n))) {
