@@ -398,6 +398,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     bucket.push({
       id: String(c.id ?? `c_${postId}_${bucket.length}`),
       idSource: hasCollectorId ? 'collector' : 'synthetic',
+      // Confermato dalla sonda reale 9.0.2: parentId con prefisso t3_ (post) o t1_ (commento).
+      ...(typeof c.parentId === 'string' && c.parentId.trim() ? { parentId: c.parentId.trim() } : {}),
       body: (c.body as string) ?? '',
       score: (c.score as number) ?? 0,
       author: (c.author as string) ?? '',
@@ -447,6 +449,8 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
     return {
       id: e.postId || `g_${i}`,
       idSource: e.postId ? e.postIdSource : 'synthetic',
+      // Autore del post (campo author, confermato dalla sonda). Non entra in report ed export.
+      ...(typeof p.author === 'string' ? { author: p.author } : {}),
       title: (p.title as string) ?? '',
       selftext: (p.body as string) ?? '',
       score: e.upVotes,

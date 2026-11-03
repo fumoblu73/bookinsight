@@ -138,8 +138,8 @@ export interface RedditComment {
   // 'collector' = ID fornito dallo scraper; 'synthetic' = generato localmente
   // (c_<postId>_<n>), non riconducibile al commento originale.
   idSource?: RedditIdSource
-  // Riferimento grezzo al genitore (commento o post). Nome del campo Apify e
-  // prefissi t1_/t3_ da confermare con la sonda: non ancora valorizzato.
+  // Riferimento grezzo al genitore: Apify parentId con prefisso t3_ (post) o t1_
+  // (commento), mentre id e postId sono senza prefisso (sonda reale 2026-11-03).
   parentId?: string
 }
 
@@ -157,7 +157,7 @@ export interface RedditPost {
   link?: string   // URL originale Google result
   // 9.0.2 — opzionali. 'url' = ID estratto dal link; 'synthetic' = g_<n> locale.
   idSource?: RedditIdSource
-  // Autore del post grezzo: campo Apify da confermare con la sonda, non ancora valorizzato.
+  // Autore del post grezzo (Apify author, confermato dalla sonda). Mai in report ed export.
   author?: string
 }
 

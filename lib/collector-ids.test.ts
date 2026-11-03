@@ -40,9 +40,9 @@ async function withStubs<T>(apifyItems: Record<string, unknown[]>, run: () => Pr
 test('ID del collector e ID sintetici sono distinti da idSource', async () => {
   const data = await withStubs({
     [URL_A]: [
-      { kind: 'post', id: 'aaa111', url: URL_A, title: 'A', body: 'text', subreddit: 'camping', score: 5 },
-      { kind: 'comment', id: 'c1', postId: 'aaa111', body: 'real id comment', author: 'u1', score: 3 },
-      { kind: 'comment', postId: 'aaa111', body: 'comment without id', author: 'u2', score: 2 },
+      { kind: 'post', id: 'aaa111', url: URL_A, title: 'A', body: 'text', subreddit: 'camping', score: 5, author: 'op_a' },
+      { kind: 'comment', id: 'c1', postId: 'aaa111', parentId: 't3_aaa111', body: 'real id comment', author: 'u1', score: 3 },
+      { kind: 'comment', postId: 'aaa111', parentId: 't1_c1', body: 'comment without id', author: 'u2', score: 2 },
     ],
     [URL_B]: [
       { kind: 'post', url: URL_B, title: 'B', body: '', subreddit: 'hiking', score: 1 },
@@ -60,9 +60,12 @@ test('ID del collector e ID sintetici sono distinti da idSource', async () => {
   assert.equal(synthetic.idSource, 'synthetic')
   assert.match(synthetic.id, /^c_aaa111_\d+$/, 'formato sintetico legacy invariato')
   assert.equal(b.comments[0].idSource, 'collector')
-  // Campi dipendenti dalla sonda: non ancora valorizzati.
-  assert.equal(a.author, undefined)
-  assert.equal(real.parentId, undefined)
+  // Campi confermati dalla sonda reale (2026-11-03): author del post, parentId t3_/t1_.
+  assert.equal(a.author, 'op_a')
+  assert.equal(b.author, undefined, 'autore assente nel payload → campo assente')
+  assert.equal(real.parentId, 't3_aaa111')
+  assert.equal(synthetic.parentId, 't1_c1')
+  assert.equal(b.comments[0].parentId, undefined)
 })
 
 // 9.0.2: autore YouTube da authorChannelId.value e canale del video, secondo la
@@ -118,4 +121,19 @@ test('YouTube: authorChannelId dal commento, channelId dal video, mai dal thread
     if (saved.key === undefined) delete process.env.YOUTUBE_API_KEY
     else process.env.YOUTUBE_API_KEY = saved.key
   }
+})
+
+test('D6: lo snapshot intermedio non conserva gli ID dei canali YouTube', async () => {
+  const { stripYouTubeIdentifiers } = await import('./youtube')
+  const input = {
+    keyword: 'k', totalComments: 1, available: true, insufficientCorpus: false,
+    videos: [{ id: 'v1', title: 'T', viewCount: 1, channelId: 'UCvideo', comments: [
+      { id: 'Ugx1', text: 'hello', likeCount: 3, publishedAt: '2026-10-01', authorChannelId: 'UCauthor' }] }],
+  }
+  const before = JSON.stringify(input)
+  const out = stripYouTubeIdentifiers(input)!
+  assert.ok(!JSON.stringify(out).includes('UCauthor') && !JSON.stringify(out).includes('UCvideo'))
+  assert.equal(out.videos[0].comments[0].text, 'hello', 'testi e metriche invariati')
+  assert.equal(JSON.stringify(input), before, 'input non mutato')
+  assert.equal(stripYouTubeIdentifiers(undefined), undefined)
 })
