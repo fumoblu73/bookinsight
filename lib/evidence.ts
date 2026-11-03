@@ -154,7 +154,8 @@ export function buildEvidenceIndex(
         sourceItemId: hasId ? c.id.trim() : null,
         threadId: `youtube:${video.id}`,
         authorKey: pseudonymizeAuthor('youtube_channel', normalizeYouTubeAuthor(c.authorChannelId), salt),
-        parentKey: null, // risposte YouTube rinviate: solo commenti di primo livello
+        // Risposte (raccolte dal collector): il genitore è il commento principale.
+        parentKey: typeof c.parentId === 'string' && c.parentId.trim() ? `youtube:comment:${c.parentId.trim()}` : null,
         text: text.substring(0, YOUTUBE_COMMENT_CHARS),
         truncated: text.length > YOUTUBE_COMMENT_CHARS,
       }, 'Y')

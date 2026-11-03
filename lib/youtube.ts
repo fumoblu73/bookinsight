@@ -15,7 +15,7 @@ const MARKET_YOUTUBE_PARAMS: Record<Market, { relevanceLanguage: string; regionC
 const MIN_COMMENTS = 25
 const MAX_VIDEOS = 8
 const MAX_COMMENTS_PER_VIDEO = 100
-const MAX_COMMENT_AGE_MONTHS = 24
+const MAX_COMMENT_AGE_MONTHS = 36 // era 24: allargato su richiesta per avere più commenti
 
 function getApiKey(): string {
   const key = process.env.YOUTUBE_API_KEY
@@ -30,11 +30,42 @@ function isRecentEnough(publishedAt: string): boolean {
   return published >= cutoff
 }
 
-function isValidComment(text: string, likeCount: number): boolean {
-  if (text.length === 0) return false
-  if (likeCount < 2) return false
-  if (/https?:\/\//.test(text)) return false
-  if (/^[\s\p{Emoji}\p{P}]+$/u.test(text)) return false
+// Filtri tecnici: testo vuoto, link (spesso spam o autopromozione), solo emoji o
+// punteggiatura. Il minimo di 2 "mi piace" è stato rimosso: tagliava la maggior parte
+// dei commenti; la qualità è ora valutata da isUsefulComment.
+export function isValidComment(text: string): boolean {
+  if (text.trim().length === 0) return false
+  if (/https?:\/\/|www\./i.test(text)) return false
+  if (/^[\s\p{Emoji}\p{P}\p{S}]+$/u.test(text)) return false
+  return true
+}
+
+// Formule a basso contenuto informativo quando costituiscono tutto il commento.
+const LOW_VALUE = [
+  /^(thank(s| you)( (so|very) much)?|thx|ty)\b/i,
+  /^(great|nice|awesome|amazing|excellent|cool|wow|perfect|love (this|it|you|your)|best)( (video|tutorial|content|job|one|work|channel))?\b/i,
+  /^(good|great) (video|job|tutorial|content|work)\b/i,
+  /^(first|lol|haha+|lmao|same|this|me too|agreed?|yes|no|ok(ay)?)\b/i,
+  /^(grazie|bravo|bravissim[oa]|ottimo|bellissimo|danke|super|merci|génial|gracias|genial)\b/i,
+]
+const SELF_PROMO = /(check out my|subscribe to (my|me)|my channel|follow me|sub4sub|iscriviti al mio)/i
+
+/**
+ * Utilità del commento come testimonianza di un lettore (euristica deterministica,
+ * nessuna chiamata AI). Scarta: testi molto brevi (< 4 parole o < 20 caratteri),
+ * solo timestamp, autopromozione, e complimenti/ringraziamenti generici brevi senza
+ * contenuto (nessuna domanda né riferimento a difficoltà, bisogni o dettagli).
+ * Un commento che inizia con "thanks" ma descrive un problema resta valido.
+ */
+export function isUsefulComment(text: string): boolean {
+  const t = text.trim()
+  const words = t.split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w))
+  if (t.length < 20 || words.length < 4) return false
+  if (SELF_PROMO.test(t)) return false
+  // Solo confine iniziale: le radici (struggl, confus, need…) coprono anche le forme flesse.
+  const substantive = /\?|\b(how|why|what|when|where|which|can't|cannot|couldn't|don't|didn't|doesn't|won't|struggl|problem|issue|hard|difficult|confus|wish|need|want|would love|help|tried|wrong|fail|mistake|instead|but|however|too|not)/i.test(t) ||
+    /(^|\s)(come|perché|non|ma|però)(?=\s|$|[.,!?])|problem|difficil|vorrei|serv[eo]|aiut/i.test(t)
+  if (!substantive && t.length < 80 && LOW_VALUE.some(re => re.test(t))) return false
   return true
 }
 
@@ -94,36 +125,57 @@ function authorChannelIdOf(raw: { value?: string } | undefined): { authorChannel
   return typeof value === 'string' && value.trim() ? { authorChannelId: value.trim() } : {}
 }
 
-async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
-  const url = `${YT_API}/commentThreads?part=snippet&videoId=${videoId}&maxResults=${MAX_COMMENTS_PER_VIDEO}&order=relevance&key=${getApiKey()}`
+type RawYtComment = {
+  id: string
+  snippet: {
+    textOriginal: string; likeCount: number; publishedAt: string
+    parentId?: string
+    authorChannelId?: { value?: string }
+  }
+}
+
+function toComment(raw: RawYtComment, parentId?: string): YouTubeComment {
+  return {
+    id: raw.id,
+    text: raw.snippet.textOriginal,
+    likeCount: raw.snippet.likeCount,
+    publishedAt: raw.snippet.publishedAt,
+    // Autore: solo snippet.authorChannelId.value. La sonda 9.0.2 conferma che
+    // snippet.channelId è il canale del VIDEO: mai usarlo come autore; il display
+    // name non viene letto.
+    ...(authorChannelIdOf(raw.snippet.authorChannelId)),
+    ...(parentId ? { parentId } : {}),
+  }
+}
+
+function keepComment(c: YouTubeComment): boolean {
+  return typeof c.text === 'string' && isRecentEnough(c.publishedAt) && isValidComment(c.text) && isUsefulComment(c.text)
+}
+
+/** Commenti principali + risposte restituite insieme (part=replies: YouTube ne include
+ * solo una parte per thread). Ordine: thread per "mi piace" del commento principale,
+ * ogni risposta subito dopo il suo commento, così il contesto resta leggibile.
+ * Una risposta utile resta anche se il commento principale è stato scartato. */
+export async function fetchComments(videoId: string): Promise<YouTubeComment[]> {
+  const url = `${YT_API}/commentThreads?part=snippet,replies&videoId=${videoId}&maxResults=${MAX_COMMENTS_PER_VIDEO}&order=relevance&key=${getApiKey()}`
   const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
   if (!res.ok) return []
   const data = await res.json() as {
-    items?: {
-      snippet: {
-        topLevelComment: {
-          id: string
-          snippet: {
-            textOriginal: string; likeCount: number; publishedAt: string
-            authorChannelId?: { value?: string }
-          }
-        }
-      }
-    }[]
+    items?: { snippet: { topLevelComment: RawYtComment }; replies?: { comments?: RawYtComment[] } }[]
   }
-  return (data.items ?? [])
-    .map(i => ({
-      id: i.snippet.topLevelComment.id,
-      text: i.snippet.topLevelComment.snippet.textOriginal,
-      likeCount: i.snippet.topLevelComment.snippet.likeCount,
-      publishedAt: i.snippet.topLevelComment.snippet.publishedAt,
-      // Autore: solo snippet.topLevelComment.snippet.authorChannelId.value. La sonda 9.0.2
-      // conferma che snippet.channelId è il canale del VIDEO, mai usarlo come autore;
-      // il display name non viene letto.
-      ...(authorChannelIdOf(i.snippet.topLevelComment.snippet.authorChannelId)),
-    }))
-    .filter(c => isRecentEnough(c.publishedAt) && isValidComment(c.text, c.likeCount))
-    .sort((a, b) => b.likeCount - a.likeCount)
+  const threads = (data.items ?? [])
+    .filter(i => i?.snippet?.topLevelComment?.snippet)
+    .map(i => {
+      const top = toComment(i.snippet.topLevelComment)
+      const replies = (i.replies?.comments ?? [])
+        .filter(r => r?.snippet)
+        .map(r => toComment(r, r.snippet.parentId || top.id))
+        .filter(keepComment)
+        .sort((a, b) => a.publishedAt.localeCompare(b.publishedAt))
+      return { top, keepTop: keepComment(top), replies }
+    })
+    .sort((a, b) => b.top.likeCount - a.top.likeCount)
+  return threads.flatMap(t => [...(t.keepTop ? [t.top] : []), ...t.replies])
 }
 
 export async function fetchYouTubeData(keyword: string, market: Market = 'US'): Promise<YouTubeData> {

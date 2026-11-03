@@ -198,6 +198,8 @@ export interface YouTubeComment {
   // ID UC… da 24 caratteri: confermato dalla sonda reale del 2026-11-03).
   // È l'unico identificativo d'autore ammesso: il display name non va mai usato.
   authorChannelId?: string
+  // Opzionale: presente solo nelle risposte, ID del commento principale (sonda: replies[].snippet.parentId).
+  parentId?: string
 }
 
 export interface YouTubeVideo {

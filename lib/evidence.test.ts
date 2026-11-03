@@ -182,6 +182,19 @@ test('post con solo titolo: nessun record e autore escluso da D; canale del vide
   assert.equal(index.records[0].parentKey, 'reddit:post:aaa111', 'genitore non trasmesso')
 })
 
+test('YouTube: le risposte hanno parentKey verso il commento principale', () => {
+  const index = buildEvidenceIndex({
+    reddit: reddit([]),
+    youtube: youtube([{ id: 'v1', title: 'V', viewCount: 1, comments: [
+      { id: 'Ugx1', text: 'the jars leak in my backpack', likeCount: 0, publishedAt: '2026-10-01', authorChannelId: 'UCa' },
+      { id: 'Ugx1.r1', text: 'same here, every single time', likeCount: 0, publishedAt: '2026-10-02', authorChannelId: 'UCb', parentId: 'Ugx1' },
+    ] }]),
+  }, { authorSalt: SALT })
+  const k = recordsByKey(index)
+  assert.equal(k.get('youtube:comment:Ugx1')!.parentKey, null)
+  assert.equal(k.get('youtube:comment:Ugx1.r1')!.parentKey, 'youtube:comment:Ugx1')
+})
+
 test('deterministico a parità di sale e senza mutare i dati di ingresso', () => {
   const data = reddit([post('aaa111', [comment('c1', 'some text here', 'alice', { parentId: 't3_aaa111' })])])
   const before = JSON.stringify(data)

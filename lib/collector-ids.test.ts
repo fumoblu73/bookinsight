@@ -137,3 +137,67 @@ test('D6: lo snapshot intermedio non conserva gli ID dei canali YouTube', async 
   assert.equal(JSON.stringify(input), before, 'input non mutato')
   assert.equal(stripYouTubeIdentifiers(undefined), undefined)
 })
+
+test('YouTube: utilità del commento (euristica deterministica)', async () => {
+  const { isUsefulComment, isValidComment } = await import('./youtube')
+  const useless = [
+    'Great video!', 'Thanks so much for this', 'First', 'Nice tutorial man, thanks',
+    'Awesome content as always friend', 'Grazie mille, bravissimo davvero', 'Check out my channel for more recipes',
+    'lol same here', '2:35',
+  ]
+  for (const t of useless) assert.equal(isUsefulComment(t), false, t)
+  const useful = [
+    'Thanks! But how long do these jars last without a fridge?',
+    'I tried this twice and the rice was still crunchy in the middle',
+    'Great video but the portions are way too small for two adults',
+    'I wish there was a version without dehydrated milk, my son is allergic',
+    'Non riesco a capire quanta acqua aggiungere per ogni barattolo',
+  ]
+  for (const t of useful) assert.equal(isUsefulComment(t), true, t)
+  assert.equal(isValidComment('see www.example.com for the recipe list here'), false)
+  assert.equal(isValidComment('🔥🔥🔥 !!!'), false)
+})
+
+test('YouTube: risposte incluse con parentId, niente minimo di like, ordine per thread', async () => {
+  const saved = { fetch: globalThis.fetch, key: process.env.YOUTUBE_API_KEY }
+  process.env.YOUTUBE_API_KEY = 'test-key'
+  const recent = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const old = new Date(Date.now() - 40 * 30 * 86_400_000).toISOString() // ~40 mesi: oltre il limite di 36
+  const c = (id: string, text: string, likeCount: number, publishedAt = recent, parentId?: string) => ({
+    id, snippet: { textOriginal: text, likeCount, publishedAt, ...(parentId ? { parentId } : {}), authorChannelId: { value: `UC_${id}` } },
+  })
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input)
+    if (url.includes('/search?')) return new Response(JSON.stringify({ items: [{ id: { videoId: 'vid1' } }] }))
+    if (url.includes('/videos?')) return new Response(JSON.stringify({ items: [{ snippet: { title: 'T', channelId: 'UCv' }, statistics: { viewCount: '10' } }] }))
+    if (url.includes('/commentThreads?')) {
+      assert.ok(url.includes('part=snippet,replies'), 'richiede anche le risposte')
+      return new Response(JSON.stringify({ items: [
+        { snippet: { topLevelComment: c('A', 'The rice stays crunchy no matter how long I wait', 0) },
+          replies: { comments: [c('A.r2', 'Thanks!', 1, recent, 'A'), c('A.r1', 'Same problem here, I had to add boiling water twice', 0, recent, 'A')] } },
+        { snippet: { topLevelComment: c('B', 'Great video!', 50) },
+          replies: { comments: [c('B.r1', 'Does anyone know how long these keep in a hot car?', 2, recent, 'B')] } },
+        { snippet: { topLevelComment: c('C', 'This recipe never worked for me at altitude', 9, old) } },
+      ] }))
+    }
+    throw new Error(`fetch inatteso: ${url}`)
+  }) as typeof fetch
+  const log = console.log
+  console.log = () => {}
+  try {
+    const { fetchYouTubeData } = await import('./youtube')
+    const data = await fetchYouTubeData('k')
+    const ids = data.videos[0].comments.map(x => x.id)
+    // B (50 like) ordinato per primo ma scartato perché generico; la sua risposta utile resta.
+    assert.deepEqual(ids, ['B.r1', 'A', 'A.r1'])
+    const reply = data.videos[0].comments.find(x => x.id === 'A.r1')!
+    assert.equal(reply.parentId, 'A')
+    assert.equal(data.videos[0].comments.find(x => x.id === 'A')!.parentId, undefined)
+    assert.equal(data.totalComments, 3)
+  } finally {
+    console.log = log
+    globalThis.fetch = saved.fetch
+    if (saved.key === undefined) delete process.env.YOUTUBE_API_KEY
+    else process.env.YOUTUBE_API_KEY = saved.key
+  }
+})
