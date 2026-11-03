@@ -129,3 +129,44 @@ test('amazonReviewsMax: 10 di default, configurabile, limitato a 1-100', async (
     else process.env.APIFY_AMAZON_MAX_REVIEWS = saved
   }
 })
+
+test('piano b: tre esecuzioni (1, 2, 3 stelle), senza doppioni, alternate, con limite di concorrenza', async () => {
+  const { fetchAmazonNegativeReviewsByStars } = await import('./amazon-reviews')
+  const saved = process.env.APIFY_MAX_CONCURRENT_RUNS
+  process.env.APIFY_MAX_CONCURRENT_RUNS = '2'
+  let active = 0
+  let peak = 0
+  const bodies: Record<string, unknown>[] = []
+  const item = (rating: number, n: number) => ({ ...ITEM, ratingScore: rating, reviewTitle: `t${rating}-${n}`, reviewDescription: `${ITEM.reviewDescription} (${rating}/${n})` })
+  const datasets: Record<string, unknown[]> = {
+    ds_oneStar: [item(1, 1), item(1, 2), item(1, 3)],
+    ds_twoStar: [item(2, 1), item(1, 1)], // doppione di una recensione già vista
+    ds_threeStar: [item(3, 1)],
+  }
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/runs?')) {
+      const body = JSON.parse(String(init?.body))
+      bodies.push(body)
+      active++
+      peak = Math.max(peak, active)
+      await new Promise(r => setTimeout(r, 20))
+      active--
+      return new Response(JSON.stringify({ data: { id: 'r', status: 'SUCCEEDED', defaultDatasetId: `ds_${body.filterByRatings[0]}` } }))
+    }
+    const ds = url.match(/datasets\/(ds_\w+)\//)?.[1]
+    if (ds) return new Response(JSON.stringify(datasets[ds]))
+    throw new Error(url)
+  }) as typeof fetch
+  try {
+    const res = await withToken(() => fetchAmazonNegativeReviewsByStars('A1', 'US', { fetchImpl }))
+    assert.deepEqual(bodies.map(b => b.filterByRatings).sort(), [['oneStar'], ['threeStar'], ['twoStar']])
+    assert.ok(bodies.every(b => b.sort === 'recent' && b.includeGdprSensitive === false))
+    assert.ok(peak <= 2, `al massimo 2 esecuzioni contemporanee (osservate ${peak})`)
+    assert.deepEqual(res.reviews.map(r => r.title), ['t1-1', 't2-1', 't3-1', 't1-2', 't1-3'], 'alternate per stelle, doppione rimosso')
+    assert.equal(res.status, 'oneStar:SUCCEEDED/3,twoStar:SUCCEEDED/2,threeStar:SUCCEEDED/1')
+  } finally {
+    if (saved === undefined) delete process.env.APIFY_MAX_CONCURRENT_RUNS
+    else process.env.APIFY_MAX_CONCURRENT_RUNS = saved
+  }
+})

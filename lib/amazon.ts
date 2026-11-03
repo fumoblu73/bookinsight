@@ -1,5 +1,5 @@
 import { RawBook, FilteredBook, SubNiche, AmazonData, Market, AmazonReview, BookReviews, AdsIntelligence, AmazonReviewAttempt, AmazonReviewSource } from './types'
-import { fetchAmazonReviewsApifyPartial, parseHelpfulVotes } from './amazon-reviews'
+import { fetchAmazonNegativeReviewsByStars, parseHelpfulVotes } from './amazon-reviews'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -399,17 +399,18 @@ async function fetchBookReviewsSerpApi(asin: string, market: Market): Promise<Am
 
 /** SerpApi per primo (gratuito entro il piano, funziona fuori da amazon.com); se non
  * restituisce recensioni, Apify junglee sullo stesso marketplace (necessario per
- * amazon.com). Nessun account Amazon dell'utente. */
+ * amazon.com): tre esecuzioni (1, 2, 3 stelle), dalle più recenti. Nessun account
+ * Amazon dell'utente. */
 export async function fetchBookReviews(
   asin: string,
   market: Market,
-  deps: { serp?: typeof fetchBookReviewsSerpApi; apify?: typeof fetchAmazonReviewsApifyPartial } = {},
+  deps: { serp?: typeof fetchBookReviewsSerpApi; apify?: typeof fetchAmazonNegativeReviewsByStars } = {},
 ): Promise<{ reviews: AmazonReview[]; source?: AmazonReviewSource; attempt: AmazonReviewAttempt }> {
   const serp = await (deps.serp ?? fetchBookReviewsSerpApi)(asin, market)
   if (serp.length > 0) {
     return { reviews: serp, source: 'serpapi', attempt: { asin, serpapiCount: serp.length, apifyCount: null } }
   }
-  const apify = await (deps.apify ?? fetchAmazonReviewsApifyPartial)(asin, market)
+  const apify = await (deps.apify ?? fetchAmazonNegativeReviewsByStars)(asin, market)
   return {
     reviews: apify.reviews,
     source: apify.reviews.length > 0 ? 'apify' : undefined,

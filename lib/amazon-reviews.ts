@@ -120,6 +120,61 @@ export async function fetchAmazonReviewsApifyPartial(
   }
 }
 
+// ─── Più recensioni sul piano gratuito: un'esecuzione per numero di stelle ────
+// Il piano gratuito Apify limita ogni esecuzione a 10 recensioni: con tre esecuzioni
+// (1, 2 e 3 stelle) si arriva fino a 30 recensioni negative per libro. Le esecuzioni
+// contemporanee sono limitate (APIFY_MAX_CONCURRENT_RUNS, default 5: valore già
+// osservato funzionare nell'analisi reale con 5 libri in parallelo).
+
+const STAR_FILTERS = ['oneStar', 'twoStar', 'threeStar'] as const
+
+function maxConcurrentRuns(): number {
+  const n = parseInt(process.env.APIFY_MAX_CONCURRENT_RUNS ?? '', 10)
+  return Number.isFinite(n) ? Math.min(20, Math.max(1, n)) : 5
+}
+
+let activeRuns = 0
+const waiting: Array<() => void> = []
+async function withRunSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (activeRuns >= maxConcurrentRuns()) await new Promise<void>(resolve => waiting.push(resolve))
+  activeRuns++
+  try {
+    return await task()
+  } finally {
+    activeRuns--
+    waiting.shift()?.()
+  }
+}
+
+/** Fino a 3 × maxReviews recensioni da 1-3 stelle, dalle più recenti, senza duplicati. */
+export async function fetchAmazonNegativeReviewsByStars(
+  asin: string,
+  market: Market,
+  opts: { maxReviewsPerStar?: number; fetchImpl?: FetchLike } = {},
+): Promise<ApifyReviewsResult> {
+  const results = await Promise.all(STAR_FILTERS.map(filter =>
+    withRunSlot(() => fetchAmazonReviewsApifyPartial(asin, market, {
+      maxReviews: opts.maxReviewsPerStar, fetchImpl: opts.fetchImpl, filterByRatings: [filter], sort: 'recent',
+    })),
+  ))
+  const seen = new Set<string>()
+  const reviews: AmazonReview[] = []
+  // Alternanza 1★, 2★, 3★: se un prompt usa solo una parte, restano rappresentate tutte.
+  const longest = Math.max(0, ...results.map(r => r.reviews.length))
+  for (let i = 0; i < longest; i++) {
+    for (const r of results) {
+      const review = r.reviews[i]
+      if (!review) continue
+      const key = `${review.title}\u0000${review.body}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      reviews.push(review)
+    }
+  }
+  const status = STAR_FILTERS.map((f, i) => `${f}:${results[i].status}/${results[i].reviews.length}`).join(',')
+  return { reviews, status: results.every(r => r.status === 'no_token') ? 'no_token' : status }
+}
+
 /** Compatibilità con /api/target/viability: stessa fonte, stessa firma di prima. */
 export async function fetchAmazonReviewsApify(
   asin: string,

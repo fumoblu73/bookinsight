@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchAmazonData } from '@/lib/amazon'
 import { Market } from '@/lib/types'
 
-// 120 s: il ripiego Apify per le recensioni (amazon.com) aggiunge fino a ~55 s in parallelo.
-export const maxDuration = 120
+// 300 s: su amazon.com le recensioni richiedono 3 esecuzioni Apify per libro (15 con 5 libri),
+// al massimo 5 alla volta di ~45 s ciascuna (circa 3 turni).
+export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   try {
