@@ -282,3 +282,21 @@ test('Reddit: titolo dal risultato Google quando labrat011 lo restituisce vuoto'
   assert.equal(cleanGoogleRedditTitle('Dehydrated meals advice - r/backpacking'), 'Dehydrated meals advice')
   assert.equal(cleanGoogleRedditTitle('Plain title'), 'Plain title')
 })
+
+test('Reddit: testi [deleted] sospetti in labrat011 → prova fatihtahta e tiene il più leggibile', async () => {
+  const { fetchSinglePost, hasSuspectDeletedBodies } = await import('./reddit')
+  const c = (body: string, author = 'someone') => ({ kind: 'comment', body, author })
+  const suspect = [{ kind: 'post' }, c('[deleted]'), c('[deleted]'), c('real text'), c('[deleted]', '[deleted]')]
+  assert.equal(hasSuspectDeletedBodies(suspect), true)
+  assert.equal(hasSuspectDeletedBodies([{ kind: 'post' }, c('a'), c('b'), c('[deleted]', '[deleted]')]), false, 'cancellazioni vere: autore [deleted]')
+  const log = console.log
+  console.log = () => {}
+  try {
+    const better = { items: [{ kind: 'post' }, c('one'), c('two'), c('three')], success: true }
+    const picked = await fetchSinglePost('u', 't', { primary: async () => ({ items: suspect, success: true }), fallback: async () => better })
+    assert.equal(picked, better)
+    const worse = { items: [], success: false }
+    const kept = await fetchSinglePost('u', 't', { primary: async () => ({ items: suspect, success: true }), fallback: async () => worse })
+    assert.equal(kept.items, suspect, 'se la riserva non dà di più resta labrat011')
+  } finally { console.log = log }
+})

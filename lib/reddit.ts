@@ -339,16 +339,39 @@ async function fetchSinglePostViaLabrat(
   }
 }
 
-/** labrat011 per primo; se non restituisce nulla, fatihtahta come riserva (gli
- * esiti vuoti di fatihtahta non vengono addebitati). */
+/** Commenti con testo leggibile (non vuoto, non [deleted]/[removed]). */
+function readableComments(items: ApifyItem[]): number {
+  return items.filter(it => it.kind === 'comment' && typeof it.body === 'string' &&
+    it.body.trim() !== '' && !/^\[(deleted|removed)\]$/i.test(it.body.trim())).length
+}
+
+/** Anomalia vista nella sonda reale (2026-11-03): labrat011 restituisce "[deleted]" come
+ * testo di commenti che nel browser sono leggibili, con l'autore ancora presente
+ * (18 su 24 in r/EatCheapAndHealthy u7hori). Sospetta se riguarda almeno un terzo. */
+export function hasSuspectDeletedBodies(items: ApifyItem[]): boolean {
+  const comments = items.filter(it => it.kind === 'comment')
+  if (comments.length < 3) return false
+  const suspect = comments.filter(it => typeof it.body === 'string' && /^\[deleted\]$/i.test(it.body.trim()) &&
+    typeof it.author === 'string' && it.author.trim() !== '' && !/^\[deleted\]$/i.test(it.author.trim())).length
+  return suspect / comments.length >= 1 / 3
+}
+
+/** labrat011 per primo; fatihtahta come riserva se labrat non restituisce nulla, oppure
+ * se i suoi testi sono sospetti: in quel caso si tiene il risultato con più commenti
+ * leggibili (gli esiti vuoti di fatihtahta non vengono addebitati). */
 export async function fetchSinglePost(
   url: string,
   token: string,
   deps: { primary?: typeof fetchSinglePostViaLabrat; fallback?: typeof fetchSinglePostViaApify } = {},
 ): Promise<{ items: ApifyItem[]; success: boolean }> {
   const primary = await (deps.primary ?? fetchSinglePostViaLabrat)(url, token)
-  if (primary.success) return primary
-  return (deps.fallback ?? fetchSinglePostViaApify)(url, token)
+  if (primary.success && !hasSuspectDeletedBodies(primary.items)) return primary
+  const fallback = await (deps.fallback ?? fetchSinglePostViaApify)(url, token)
+  if (!primary.success) return fallback
+  const choice = readableComments(fallback.items) > readableComments(primary.items) ? 'fatihtahta' : 'labrat011'
+  console.log(`[reddit-labrat] testi [deleted] sospetti: leggibili labrat:${readableComments(primary.items)} ` +
+    `fatihtahta:${readableComments(fallback.items)} → uso ${choice} url:${url.substring(0, 80)}`)
+  return choice === 'fatihtahta' ? fallback : primary
 }
 
 const BATCH_SIZE = 5
