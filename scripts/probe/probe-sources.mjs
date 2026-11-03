@@ -190,11 +190,17 @@ async function probeAmazon() {
     engine: 'amazon_product', asin: env.PROBE_ASIN,
     amazon_domain: env.PROBE_AMAZON_DOMAIN || 'amazon.com', api_key: env.SERPAPI_KEY,
   })
+  // Produzione non passa device (default SerpApi: desktop). PROBE_AMAZON_DEVICE=mobile|tablet
+  // serve a verificare se le recensioni singole compaiono solo con altri dispositivi.
+  if (env.PROBE_AMAZON_DEVICE) qs.set('device', env.PROBE_AMAZON_DEVICE)
   const data = await getJson(`https://serpapi.com/search?${qs}`)
   const ri = data.reviews_information ?? {}
   const reviewLists = Object.entries(ri).filter(([, v]) => Array.isArray(v))
   const allReviews = reviewLists.flatMap(([, v]) => v)
   const report = {
+    request: { asin: env.PROBE_ASIN, amazon_domain: env.PROBE_AMAZON_DOMAIN || 'amazon.com', device: env.PROBE_AMAZON_DEVICE || 'default(desktop)' },
+    productReviewCount: data.product_results?.reviews ?? null,
+    productTitleLength: typeof data.product_results?.title === 'string' ? data.product_results.title.length : null,
     topLevelKeys: Object.keys(data),
     reviewsInformationKeys: Object.keys(ri),
     reviewListSizes: Object.fromEntries(reviewLists.map(([k, v]) => [k, v.length])),
