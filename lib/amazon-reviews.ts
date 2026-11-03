@@ -50,7 +50,7 @@ type FetchLike = typeof fetch
 export async function fetchAmazonReviewsApifyPartial(
   asin: string,
   market: Market,
-  opts: { maxReviews?: number; actorTimeoutS?: number; fetchImpl?: FetchLike } = {},
+  opts: { maxReviews?: number; actorTimeoutS?: number; fetchImpl?: FetchLike; filterByRatings?: string[] } = {},
 ): Promise<ApifyReviewsResult> {
   const token = process.env.APIFY_TOKEN
   if (!token) return { reviews: [], status: 'no_token' }
@@ -66,7 +66,14 @@ export async function fetchAmazonReviewsApifyPartial(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth },
-        body: JSON.stringify({ productUrls: [{ url }], maxReviews, sort: 'helpful', includeGdprSensitive: false }),
+        // Valori dall'OpenAPI dell'actor: "critical" = 1-3 stelle, "fourStar" = 4 stelle.
+        // Il prompt delle recensioni usa proprio le ≤3★ e le 4★; con allStars + helpful la prima
+        // analisi reale aveva 28 recensioni da 5★ su 41. L'ordine fra i filtri con un solo
+        // maxReviews condiviso non è documentato.
+        body: JSON.stringify({
+          productUrls: [{ url }], maxReviews, sort: 'helpful', includeGdprSensitive: false,
+          filterByRatings: opts.filterByRatings ?? ['critical', 'fourStar'],
+        }),
         signal: AbortSignal.timeout((actorTimeoutS + 15) * 1000),
       },
     )
@@ -112,7 +119,8 @@ export async function fetchAmazonReviewsApify(
   market: Market,
   maxReviews = 10,
 ): Promise<AmazonReview[]> {
-  return (await fetchAmazonReviewsApifyPartial(asin, market, { maxReviews })).reviews
+  // Valutazione del concorrente: tutte le stelle (debolezze e velocità recente).
+  return (await fetchAmazonReviewsApifyPartial(asin, market, { maxReviews, filterByRatings: ['allStars'] })).reviews
 }
 
 /** "17 people found this helpful" → 17; "One person found this helpful" → 1. */

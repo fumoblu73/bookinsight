@@ -1,4 +1,5 @@
 import { YouTubeData, YouTubeVideo, YouTubeComment, Market } from './types'
+import { classifyUsefulComments, USEFULNESS_MODEL } from './youtube-usefulness'
 
 const YT_API = 'https://www.googleapis.com/youtube/v3'
 
@@ -178,7 +179,29 @@ export async function fetchComments(videoId: string): Promise<YouTubeComment[]> 
   return threads.flatMap(t => [...(t.keepTop ? [t.top] : []), ...t.replies])
 }
 
-export async function fetchYouTubeData(keyword: string, market: Market = 'US'): Promise<YouTubeData> {
+const MAX_TOTAL_COMMENTS = 400
+// Commenti passati all'AI prima del tetto finale: margine per sostituire quelli scartati.
+const MAX_COMMENTS_FOR_AI = 600
+
+/** Tetto totale con priorità ai video più visti (ordinamento invariato). */
+function capComments(videos: YouTubeVideo[], max: number): YouTubeVideo[] {
+  let total = 0
+  const capped: YouTubeVideo[] = []
+  for (const v of [...videos].sort((a, b) => b.viewCount - a.viewCount)) {
+    const remaining = max - total
+    if (remaining <= 0) break
+    const sliced = { ...v, comments: v.comments.slice(0, remaining) }
+    capped.push(sliced)
+    total += sliced.comments.length
+  }
+  return capped
+}
+
+export async function fetchYouTubeData(
+  keyword: string,
+  market: Market = 'US',
+  deps: { classify?: typeof classifyUsefulComments } = {},
+): Promise<YouTubeData> {
   if (!process.env.YOUTUBE_API_KEY) {
     return { keyword, videos: [], totalComments: 0, available: false, insufficientCorpus: true }
   }
@@ -199,20 +222,25 @@ export async function fetchYouTubeData(keyword: string, market: Market = 'US'): 
       })
     )
 
-    // Tronca a max 400 commenti totali, priorità ai video con più views
-    const sorted = [...videos].sort((a, b) => b.viewCount - a.viewCount)
-    let totalComments = 0
-    const capped: YouTubeVideo[] = []
-    for (const v of sorted) {
-      const remaining = 400 - totalComments
-      if (remaining <= 0) break
-      const sliced = { ...v, comments: v.comments.slice(0, remaining) }
-      capped.push(sliced)
-      totalComments += sliced.comments.length
-    }
+    // Utilità: euristica gratuita già applicata in fetchComments, poi giudizio AI su al
+    // massimo 600 commenti; se l'AI non risponde si conserva il risultato euristico.
+    const preCapped = capComments(videos, MAX_COMMENTS_FOR_AI)
+    const candidates = preCapped.flatMap(v => v.comments.map(c => ({ id: c.id, text: c.text })))
+    const useful = await (deps.classify ?? classifyUsefulComments)(keyword, candidates)
+    const filtered = useful
+      ? preCapped.map(v => ({ ...v, comments: v.comments.filter(c => useful.has(c.id)) }))
+      : preCapped
+    const usefulnessFilter: YouTubeData['usefulnessFilter'] = useful
+      ? { method: 'ai', model: USEFULNESS_MODEL, evaluated: candidates.length, kept: useful.size }
+      : { method: 'heuristic', evaluated: candidates.length, kept: candidates.length }
+
+    const capped = capComments(filtered, MAX_TOTAL_COMMENTS)
+    const totalComments = capped.reduce((sum, v) => sum + v.comments.length, 0)
 
     const videosWithComments = capped.filter(v => v.comments.length > 0).length
-    console.log(`[youtube] "${keyword}" → ${videoIds.length} video → ${totalComments} commenti filtrati → ${videosWithComments}/${MAX_VIDEOS} video con commenti`)
+    console.log(`[youtube] "${keyword}" → ${videoIds.length} video → ${candidates.length} commenti dopo euristica → ` +
+      `${usefulnessFilter.method === 'ai' ? `${usefulnessFilter.kept} utili per AI` : 'AI non disponibile'} → ` +
+      `${totalComments} inviati → ${videosWithComments}/${MAX_VIDEOS} video con commenti`)
 
     return {
       keyword,
@@ -220,6 +248,7 @@ export async function fetchYouTubeData(keyword: string, market: Market = 'US'): 
       totalComments,
       available: totalComments > 0,
       insufficientCorpus: totalComments < MIN_COMMENTS,
+      usefulnessFilter,
     }
   } catch (err) {
     console.error('[youtube] fetch failed:', err)

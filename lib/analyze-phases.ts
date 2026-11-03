@@ -180,6 +180,7 @@ export async function runPainPointsPhase(
       insufficientCorpus: youtube?.insufficientCorpus ?? true,
       videoCount: youtube?.videos?.length ?? 0,
       totalComments: youtube?.totalComments ?? 0,
+      usefulnessFilter: youtube?.usefulnessFilter ?? null,
       videos: (youtube?.videos ?? []).map(v => ({
         title: v.title.slice(0, 80),
         viewCount: v.viewCount,

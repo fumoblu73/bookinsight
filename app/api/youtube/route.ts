@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchYouTubeData } from '@/lib/youtube'
 import type { Market } from '@/lib/types'
 
-export const maxDuration = 15
+// 60 s: include il giudizio AI sull'utilità dei commenti (timeout client 40 s).
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   try {

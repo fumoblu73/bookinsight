@@ -106,7 +106,7 @@ test('YouTube: authorChannelId dal commento, channelId dal video, mai dal thread
   console.log = () => {}
   try {
     const { fetchYouTubeData } = await import('./youtube')
-    const data = await fetchYouTubeData('k')
+    const data = await fetchYouTubeData('k', 'US', { classify: async () => null })
     const [video] = data.videos
     assert.equal(video.channelId, 'UCvideoChannel0000000000')
     const byId = new Map(video.comments.map(c => [c.id, c]))
@@ -186,7 +186,7 @@ test('YouTube: risposte incluse con parentId, niente minimo di like, ordine per 
   console.log = () => {}
   try {
     const { fetchYouTubeData } = await import('./youtube')
-    const data = await fetchYouTubeData('k')
+    const data = await fetchYouTubeData('k', 'US', { classify: async () => null })
     const ids = data.videos[0].comments.map(x => x.id)
     // B (50 like) ordinato per primo ma scartato perché generico; la sua risposta utile resta.
     assert.deepEqual(ids, ['B.r1', 'A', 'A.r1'])

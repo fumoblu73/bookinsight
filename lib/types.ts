@@ -228,6 +228,8 @@ export interface YouTubeData {
   totalComments: number
   available: boolean
   insufficientCorpus: boolean  // true se < 25 commenti filtrati (MIN_COMMENTS in lib/youtube.ts)
+  // Opzionale (assente nei dati precedenti): come è stata valutata l'utilità dei commenti.
+  usefulnessFilter?: { method: 'ai' | 'heuristic'; model?: string; evaluated: number; kept: number }
 }
 
 // ─── Evidenze verificabili e frequenza shadow (9.0.2) ────────────────────────
