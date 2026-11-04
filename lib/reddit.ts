@@ -1,5 +1,6 @@
 import { RedditData, RedditPost, RedditComment, RedditIdSource } from './types'
 import { prepareRedditCorpus, REDDIT_CORPUS_LIMITS } from './reddit-corpus'
+import { cacheGet, cacheSet } from './upstash'
 
 const MAX_POSTS = REDDIT_CORPUS_LIMITS.maxPosts
 /** Quanti commenti chiediamo ad Apify. Più alto del taglio finale perché
@@ -29,6 +30,54 @@ export function cleanGoogleRedditTitle(title: string): string {
     .trim()
 }
 
+// ─── Miglioramento a: frasi di ricerca più stabili e pertinenti ─────────────
+// Le 5 frasi generate dall'AI cambiavano a ogni analisi (stessa keyword: 15 URL in
+// un'analisi, 2 un'ora dopo) e a volte uscivano dal tema ("what to eat when lazy").
+// Ora: (1) ogni frase deve contenere una parola di contenuto della keyword, regola
+// nel prompt e verificata nel codice; (2) le frasi accettate si salvano per 30 giorni
+// per la stessa keyword, così le analisi ripetute sono confrontabili.
+
+const QUERY_STOPWORDS = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'you', 'how', 'what', 'that', 'this',
+  'book', 'books', 'guide', 'beginners', 'dummies', 'edition', 'just', 'add', 'easy', 'best', 'complete'])
+const REDDIT_QUERIES_TTL = 30 * 24 * 60 * 60
+
+function contentStems(text: string): string[] {
+  return text.toLowerCase().split(/[^\p{L}\p{N}]+/u)
+    .filter(w => w.length >= 3 && !QUERY_STOPWORDS.has(w))
+    .map(w => w.replace(/(ies|es|s)$/, ''))
+}
+
+/** Tiene solo le frasi con almeno una parola di contenuto della keyword (radice, senza
+ * plurali). Se ne restano meno di 2, tiene tutte le frasi: meglio varie che nessuna. */
+export function filterQueriesByKeyword(queries: string[], keyword: string): string[] {
+  const stems = new Set(contentStems(keyword))
+  if (stems.size === 0) return queries
+  const kept = queries.filter(q => contentStems(q).some(w => stems.has(w)))
+  return kept.length >= 2 ? kept : queries
+}
+
+export async function getRedditQueries(
+  keyword: string,
+  deps: {
+    translate?: (k: string) => Promise<string[]>
+    get?: (key: string) => Promise<string[] | null>
+    set?: (key: string, value: string[], ttl: number) => Promise<boolean>
+  } = {},
+): Promise<string[]> {
+  const key = `reddit:queries:v1:${keyword.trim().toLowerCase()}`
+  const cached = await (deps.get ?? (k => cacheGet<string[]>(k)))(key)
+  if (Array.isArray(cached) && cached.length > 0) {
+    console.log(`[reddit-translate] keyword:"${keyword}" frasi dalla cache (${cached.length})`)
+    return cached
+  }
+  const generated = await (deps.translate ?? translateKeywordForReddit)(keyword)
+  const filtered = filterQueriesByKeyword(generated, keyword)
+  console.log(`[reddit-translate] frasi pertinenti ${filtered.length}/${generated.length}`)
+  // Non si salva il ripiego sulla sola keyword (traduzione non riuscita).
+  if (filtered.length > 1) await (deps.set ?? cacheSet)(key, filtered, REDDIT_QUERIES_TTL)
+  return filtered
+}
+
 // ─── Componente 1: Traduzione AI della keyword ────────────────────────────────
 
 async function translateKeywordForReddit(keyword: string): Promise<string[]> {
@@ -52,6 +101,7 @@ Rules:
 - Queries must be substantially different from each other (different angles, not synonyms)
 - Avoid the literal Amazon keyword as a query (already too narrow)
 - Each query should be something a real Reddit user might write
+- Every query must contain at least one of the main content words of the Amazon keyword (singular or plural), so it stays on the same topic
 
 Amazon keyword: "${keyword}"
 
@@ -521,7 +571,7 @@ export async function fetchRedditData(keyword: string): Promise<RedditData> {
   // originale si aggiunge come sesta query per una base stabile (una ricerca SerpApi in più).
   // La ricerca interna di Reddit parte subito, in parallelo con traduzione e Google.
   const redditSearchPromise = searchRedditViaLabrat(keyword, apifyToken)
-  const translated = await translateKeywordForReddit(keyword)
+  const translated = await getRedditQueries(keyword)
   const queries = [...new Set([...translated, keyword.trim().toLowerCase()])]
 
   // STEP 2: SerpApi multi-query

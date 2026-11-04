@@ -342,3 +342,31 @@ test('Reddit b: la ricerca interna di Reddit aggiunge discussioni che Google non
     process.env = saved.env
   }
 })
+
+test('Reddit a: frasi fuori tema scartate, frasi salvate e riusate per la stessa keyword', async () => {
+  const { filterQueriesByKeyword, getRedditQueries } = await import('./reddit')
+  const generated = ['camping food that needs water', 'easy meals for busy people', 'quick dinner ideas no cooking',
+    'backpacking meals that rehydrate', 'what to eat when lazy']
+  assert.deepEqual(filterQueriesByKeyword(generated, 'just add water meals'),
+    ['camping food that needs water', 'easy meals for busy people', 'backpacking meals that rehydrate'])
+  assert.deepEqual(filterQueriesByKeyword(['a b c', 'd e f'], 'just add water meals'), ['a b c', 'd e f'], 'mai meno di 2: si tengono tutte')
+
+  const store = new Map<string, string[]>()
+  let translations = 0
+  const deps = {
+    translate: async () => { translations++; return generated },
+    get: async (k: string) => store.get(k) ?? null,
+    set: async (k: string, v: string[]) => { store.set(k, v); return true },
+  }
+  const log = console.log
+  console.log = () => {}
+  try {
+    const first = await getRedditQueries('Just Add Water Meals', deps)
+    const second = await getRedditQueries('just add water meals ', deps)
+    assert.deepEqual(first, second, 'stesse frasi alla seconda analisi')
+    assert.equal(translations, 1, 'una sola traduzione AI')
+    assert.ok(store.has('reddit:queries:v1:just add water meals'))
+    await getRedditQueries('other keyword', { ...deps, translate: async () => ['other keyword'] })
+    assert.ok(!store.has('reddit:queries:v1:other keyword'), 'il ripiego sulla sola keyword non si salva')
+  } finally { console.log = log }
+})
